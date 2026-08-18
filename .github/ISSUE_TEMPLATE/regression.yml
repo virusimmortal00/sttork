@@ -1,0 +1,114 @@
+name: Regression report
+description: Report behavior that worked previously and now fails or degrades.
+title: "[Regression]: "
+labels:
+  - regression
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, private audio, raw authorization data, or
+        sensitive transcripts/saves. Report security or privacy incidents using
+        the private process in SECURITY.md.
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What previously happened, and in which known-good version?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What changed, including whether a command was committed.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Suggested severity
+      description: Maintainers will confirm this classification.
+      options:
+        - S0 — security/privacy breach, broad corruption, or uncontrolled spend
+        - S1 — unintended mutation, data loss, inaccessible or broken primary
+          flow
+        - S2 — recoverable incorrect behavior or material quality degradation
+        - S3 — minor defect with a usable workaround
+    validations:
+      required: true
+
+  - type: dropdown
+    id: classes
+    attributes:
+      label: Regression classes
+      description: Select every affected surface.
+      multiple: true
+      options:
+        - engine
+        - guide-grounding
+        - guide-action
+        - spoiler
+        - speech-input
+        - audio-output
+        - accessibility
+        - provider
+        - privacy-security
+        - performance-cost
+        - observability
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description:
+        Provide minimal, sanitized steps or a redacted golden replay ID.
+      placeholder: |
+        1. Start from...
+        2. Say or select...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and environment
+      description:
+        Release/commit, browser/OS, story/interpreter, provider profile/model,
+        and prompt/schema versions when applicable.
+    validations:
+      required: true
+
+  - type: textarea
+    id: integrity
+    attributes:
+      label: State, privacy, latency, and cost impact
+      description:
+        State whether game state stayed valid, whether a command committed, and
+        whether private data, latency, or spend may be affected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description:
+        Redacted correlation IDs, event types, timings, state digests, or
+        screenshots. Never attach secrets or private audio.
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label:
+            I removed credentials, private audio, authorization data, and
+            sensitive transcript/save content.
+          required: true

@@ -1,0 +1,12 @@
+# Default review ownership while the maintainer team is small.
+* @virusimmortal00
+
+# Changes to trust boundaries, releases, and redistribution evidence require an
+# explicit maintainer review even after more area owners are added.
+/.github/ @virusimmortal00
+/LICENSE @virusimmortal00
+/LICENSES/ @virusimmortal00
+/SECURITY.md @virusimmortal00
+/docs/adr/ @virusimmortal00
+/provenance/ @virusimmortal00
+/packages/contracts/ @virusimmortal00
