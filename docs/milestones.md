@@ -222,6 +222,16 @@ saves, and polished UI.
 Add an agent that understands player intent and helps with the parser while
 preserving the engine as the sole state authority.
 
+### Status — initial bounded subset landed (2026-08-18)
+
+Initial Voice Slice 2 provides strict runtime validation for the canonical
+decision union, reviewed opening grammar, observed-object grounding,
+deterministic parser help, a fake guide model, and guide-to-engine safety
+regressions. M2 remains incomplete: observed memory, mediated tools, contextual
+referents, hint policy/content, full grammar generation, the release evaluation
+corpus, and provider qualification are still required by the deliverables and
+exit criteria below.
+
 ### Deliverables
 
 - The canonical strict guide decision schema from `docs/guide-agent.md` for

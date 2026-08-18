@@ -4,5 +4,9 @@
   "private": true,
   "description": "Versioned parser grammar and player-observed affordances.",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/contracts": "workspace:*"
+  }
 }

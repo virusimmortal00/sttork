@@ -74,6 +74,12 @@ checkpoint, receipt, and RNG evidence. The earlier
 [Bocfel spike](docs/m0-bocfel-spike-2026-08-17.md) remains oracle/fallback
 evidence.
 
+Initial Voice Slice 2 has also landed as a bounded, provider-neutral guide
+checkpoint: strict decision validation, opening grammar, observed-object command
+grounding, deterministic parser help, and fake-model guide-to-engine
+regressions. This is not M2 completion or live-model qualification; observed
+memory, hint policy, full grammar generation, and provider evaluation remain.
+
 ## Development
 
 Use Node 24.19.0 and pnpm 11.19.0, then run:

@@ -51,7 +51,11 @@ importers:
 
   packages/audio: {}
 
-  packages/command-knowledge: {}
+  packages/command-knowledge:
+    dependencies:
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/contracts: {}
 
@@ -69,7 +73,14 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/guide-core: {}
+  packages/guide-core:
+    dependencies:
+      '@zork-voice/command-knowledge':
+        specifier: workspace:*
+        version: link:../command-knowledge
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/observability: {}
 

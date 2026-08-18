@@ -200,6 +200,13 @@ configured length, command separators/newlines, and decisions inconsistent with
 session state. Rejection becomes a safe clarification or provider error; it
 never falls through to execution.
 
+The initial bounded implementation lives in `packages/guide-core` and
+`packages/command-knowledge`. It validates the full decision union but enables
+only execute, clarification, and deterministic command-help explanation for the
+first vertical slice. Its curated opening grammar and caller-supplied observed
+object names are a narrow bootstrap view, not the complete generated grammar,
+memory model, or hint registry described below.
+
 An execute decision contains one command. A multi-step player request is stored
 as a pending goal and advanced through successive decisions, one command per
 engine revision. Each intermediate response is observed and revalidated before

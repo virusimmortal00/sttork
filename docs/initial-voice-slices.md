@@ -85,6 +85,11 @@ and formal Dork acceptance—remains governed by the M0 ledger.
 
 ## Slice 2 — Minimal bounded Dungeon Guide
 
+Implementation checkpoint: bounded developer exit met on 2026-08-18. The landed
+subset validates the complete provider-neutral decision union, while the initial
+policy accepts only `execute`, `clarify`, and deterministic command-help
+`explain` outcomes. This does not complete M2 or qualify a live guide model.
+
 ### Deliverables
 
 - Implement the provider-neutral guide decision contract and deterministic
@@ -115,6 +120,23 @@ and formal Dork acceptance—remains governed by the M0 ledger.
 The complete observed-memory model, progressive hint ladder, full command
 knowledge extraction, release evaluation corpus, companion personality, and
 provider-specific prompting remain M2 work beyond this initial subset.
+
+### Landed evidence
+
+- `guide-core` treats model output as `unknown`, rejects additional fields and
+  malformed union branches, propagates cancellation, and converts ordinary
+  provider failure into an explicit non-mutating result.
+- The initial execute gate rejects low confidence, negation, command batches,
+  remaining multi-step goals, unsupported grammar, hidden object referents, and
+  substitutions not grounded in the player's utterance.
+- `command-knowledge` exposes only reviewed opening grammar and object names
+  supplied as observed context. Command-help prose is generated
+  deterministically from that view; provider prose is not forwarded.
+- Hermetic regressions use a deterministic fake model and the isolated Dork
+  candidate with the project-owned minimal story. Direct movement and a spoken
+  `pick up` paraphrase reach one expected engine turn; clarification,
+  explanation, rejection, and provider failure leave the engine revision
+  unchanged.
 
 ## Slice 3 — Semantic turn orchestrator
 

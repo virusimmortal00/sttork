@@ -1,0 +1,262 @@
+import {
+  createOpeningCommandKnowledge,
+  groundOpeningCommand,
+  openingCommandHelp,
+  type OpeningCommandKnowledge,
+} from "@zork-voice/command-knowledge";
+import type { CanonicalCommand, GuideDecision } from "@zork-voice/contracts";
+
+import { validateGuideDecision } from "./decision-validator.js";
+
+export const INITIAL_EXECUTE_CONFIDENCE = 0.8;
+export const INITIAL_TRANSCRIPT_CONFIDENCE = 0.75;
+
+export interface InitialGuideInput {
+  readonly interactionId: string;
+  readonly playerUtterance: string;
+  readonly transcriptConfidence?: number;
+  readonly observedObjects: readonly string[];
+}
+
+export interface InitialGuideModelInput extends InitialGuideInput {
+  readonly knowledge: OpeningCommandKnowledge;
+}
+
+export interface GuideModel {
+  decide(input: InitialGuideModelInput, signal: AbortSignal): Promise<unknown>;
+}
+
+export type InitialGuideResult =
+  | {
+      readonly kind: "execute";
+      readonly command: CanonicalCommand;
+      readonly decision: Extract<GuideDecision, { readonly kind: "execute" }>;
+      readonly groundingSourceId: string;
+    }
+  | {
+      readonly kind: "clarify";
+      readonly decision: Extract<GuideDecision, { readonly kind: "clarify" }>;
+    }
+  | {
+      readonly kind: "explain";
+      readonly decision: Extract<GuideDecision, { readonly kind: "explain" }>;
+    }
+  | {
+      readonly kind: "rejected";
+      readonly decision: Extract<
+        GuideDecision,
+        { readonly kind: "cannot_comply" }
+      >;
+      readonly cause:
+        | "malformed-provider-decision"
+        | "unsupported-initial-decision"
+        | "ungrounded-command"
+        | "invalid-context";
+    }
+  | {
+      readonly kind: "provider-failure";
+      readonly decision: Extract<
+        GuideDecision,
+        { readonly kind: "cannot_comply" }
+      >;
+    };
+
+function clarification(
+  question: string,
+  ambiguity: string,
+): InitialGuideResult {
+  return {
+    kind: "clarify",
+    decision: { kind: "clarify", question, ambiguity },
+  };
+}
+
+function appearsMultiStep(utterance: string): boolean {
+  return /[;\n]|\b(?:and then|then|after that|followed by)\b/iu.test(utterance);
+}
+
+function containsNegation(utterance: string): boolean {
+  return /\b(?:do not|don't|dont|never|not)\b/iu.test(utterance);
+}
+
+export async function decideInitialGuideTurn(
+  model: GuideModel,
+  input: InitialGuideInput,
+  signal: AbortSignal,
+): Promise<InitialGuideResult> {
+  let knowledge: OpeningCommandKnowledge;
+  try {
+    if (
+      typeof input.interactionId !== "string" ||
+      input.interactionId.length === 0 ||
+      input.interactionId.length > 160 ||
+      typeof input.playerUtterance !== "string" ||
+      input.playerUtterance.trim().length === 0 ||
+      input.playerUtterance.length > 2_000 ||
+      /\p{Cc}/u.test(input.interactionId) ||
+      /\p{Cc}/u.test(input.playerUtterance)
+    ) {
+      throw new TypeError("Initial guide context strings are invalid.");
+    }
+    knowledge = createOpeningCommandKnowledge({
+      observedObjects: input.observedObjects,
+    });
+  } catch {
+    return {
+      kind: "rejected",
+      cause: "invalid-context",
+      decision: {
+        kind: "cannot_comply",
+        response:
+          "The guide context could not be safely bounded. Your game has not changed.",
+        reason: "unsafe",
+      },
+    };
+  }
+  let unknownDecision: unknown;
+  try {
+    unknownDecision = await model.decide({ ...input, knowledge }, signal);
+  } catch (error) {
+    if (signal.aborted) {
+      throw signal.reason ?? error;
+    }
+    return {
+      kind: "provider-failure",
+      decision: {
+        kind: "cannot_comply",
+        response: "The guide is unavailable. Your game has not changed.",
+        reason: "provider-limitation",
+      },
+    };
+  }
+  signal.throwIfAborted();
+
+  let decision: GuideDecision;
+  try {
+    decision = validateGuideDecision(unknownDecision);
+  } catch {
+    return {
+      kind: "rejected",
+      cause: "malformed-provider-decision",
+      decision: {
+        kind: "cannot_comply",
+        response:
+          "I could not safely interpret that response. Your game has not changed.",
+        reason: "unsafe",
+      },
+    };
+  }
+
+  if (decision.kind === "clarify") {
+    return { kind: "clarify", decision };
+  }
+
+  if (decision.kind === "explain") {
+    if (
+      decision.basis !== "command-help" ||
+      decision.sourceIds.length === 0 ||
+      decision.sourceIds.some(
+        (sourceId) => !knowledge.sourceIds.includes(sourceId),
+      )
+    ) {
+      return {
+        kind: "rejected",
+        cause: "unsupported-initial-decision",
+        decision: {
+          kind: "cannot_comply",
+          response:
+            "I can only explain parser help grounded in what is currently available.",
+          reason: "not-observed",
+        },
+      };
+    }
+    return {
+      kind: "explain",
+      decision: {
+        kind: "explain",
+        response: openingCommandHelp(knowledge),
+        basis: "command-help",
+        sourceIds: decision.sourceIds,
+      },
+    };
+  }
+
+  if (decision.kind !== "execute") {
+    return {
+      kind: "rejected",
+      cause: "unsupported-initial-decision",
+      decision: {
+        kind: "cannot_comply",
+        response:
+          "That guide action is not available in the initial bounded guide.",
+        reason: "unsupported",
+      },
+    };
+  }
+
+  if (
+    (input.transcriptConfidence !== undefined &&
+      (!Number.isFinite(input.transcriptConfidence) ||
+        input.transcriptConfidence < INITIAL_TRANSCRIPT_CONFIDENCE ||
+        input.transcriptConfidence > 1)) ||
+    decision.confidence < INITIAL_EXECUTE_CONFIDENCE
+  ) {
+    return clarification(
+      "Could you say which single action you want me to try?",
+      "The interpretation confidence is too low to safely execute.",
+    );
+  }
+
+  if (
+    appearsMultiStep(input.playerUtterance) ||
+    decision.remainingGoal !== undefined
+  ) {
+    return clarification(
+      "Which one action should I try first?",
+      "The request contains more than one possible game turn.",
+    );
+  }
+
+  if (containsNegation(input.playerUtterance)) {
+    return clarification(
+      "What single action would you like me to perform instead?",
+      "The utterance contains a negation, so executing the proposed command would be unsafe.",
+    );
+  }
+
+  try {
+    const grounded = groundOpeningCommand(
+      decision.command,
+      input.playerUtterance,
+      knowledge,
+    );
+    if (!grounded.ok) {
+      return {
+        kind: "rejected",
+        cause: "ungrounded-command",
+        decision: {
+          kind: "cannot_comply",
+          response:
+            "I could not ground that command in your words and the observed scene.",
+          reason: "not-observed",
+        },
+      };
+    }
+    return {
+      kind: "execute",
+      command: grounded.command,
+      decision,
+      groundingSourceId: grounded.ruleId,
+    };
+  } catch {
+    return {
+      kind: "rejected",
+      cause: "ungrounded-command",
+      decision: {
+        kind: "cannot_comply",
+        response: "I could not safely form one parser command.",
+        reason: "unsafe",
+      },
+    };
+  }
+}

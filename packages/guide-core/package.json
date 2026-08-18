@@ -4,5 +4,10 @@
   "private": true,
   "description": "Provider-neutral Dungeon Guide policy and orchestration.",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/command-knowledge": "workspace:*",
+    "@zork-voice/contracts": "workspace:*"
+  }
 }
