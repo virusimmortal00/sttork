@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "inform6-compiler-v6-44",
+  "name": "Inform 6 compiler 6.44",
+  "origin": "third-party",
+  "kind": "build-tool",
+  "importStatus": "reviewed",
+  "upstream": {
+    "url": "https://github.com/DavidKinder/Inform6",
+    "revision": "973a81bebcbd613578b1cc6a1b23a009fe06abd8"
+  },
+  "license": {
+    "spdx": "Artistic-2.0",
+    "sourceUrl": "https://github.com/DavidKinder/Inform6/blob/973a81bebcbd613578b1cc6a1b23a009fe06abd8/licence.txt",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "eligible-after-audit",
+    "trademarkGrant": false,
+    "conditions": [
+      "The project exercises the upstream Artistic License 2.0 option.",
+      "The compiler executable and source are build inputs, not repository or release artifacts.",
+      "Any future redistribution of the compiler requires a separate notice and artifact audit."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "The fixture manifest pins release tag v6.44 and the full commit revision.",
+    "The build validates the Inform 6.44 release banner but does not claim a portable compiler-executable or OCI digest."
+  ]
+}

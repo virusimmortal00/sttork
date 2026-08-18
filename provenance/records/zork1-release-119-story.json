@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "zork1-release-119-story",
+  "name": "Zork I Release 119 compiled Z-machine story",
+  "origin": "third-party",
+  "kind": "story-artifact",
+  "importStatus": "imported",
+  "upstream": {
+    "url": "https://github.com/historicalsource/zork1",
+    "revision": "97b7b3d68c075dd9af7da499c3e9690ada3471fd",
+    "artifactSha256": "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79"
+  },
+  "license": {
+    "spdx": "MIT",
+    "sourceUrl": "https://github.com/historicalsource/zork1/blob/97b7b3d68c075dd9af7da499c3e9690ada3471fd/LICENSE",
+    "localNoticePaths": ["LICENSES/zork1/LICENSE"]
+  },
+  "redistribution": {
+    "decision": "approved",
+    "trademarkGrant": false,
+    "conditions": [
+      "Preserve the Microsoft MIT license with the story artifact.",
+      "Distribute only the audited code/game-data artifact; do not imply rights to names, logos, packaging, marketing assets, or endorsement.",
+      "Identify this as the final-development Release 119 / serial 880429 artifact, not as a retail-release reconstruction."
+    ]
+  },
+  "localPaths": [
+    {
+      "path": "vendor/zork1/zork1.z3",
+      "sha256": "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79"
+    }
+  ],
+  "verifiedAt": "2026-08-18",
+  "notes": [
+    "The artifact is 86838 bytes, Z-machine version 3, Release 119, serial 880429, MD5 1d4606016ea58ee038da53d994392323, and SHA-1 c4f162274869b5433e4b9dfa7ee770fc3b789525.",
+    "It is copied directly from COMPILED/zork1.z3 at the recorded historicalsource commit.",
+    "It is byte-identical to Dork's misleadingly named vendor/zork1/zork1.zip, which is raw Z-machine data rather than a ZIP archive.",
+    "The separate zork1-upstream record covers the source tree; this record covers the compiled story artifact."
+  ]
+}

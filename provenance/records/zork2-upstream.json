@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "zork2-upstream",
+  "name": "Zork II microcomputer source collection",
+  "origin": "third-party",
+  "kind": "story-source",
+  "importStatus": "not-imported",
+  "upstream": {
+    "url": "https://github.com/historicalsource/zork2",
+    "revision": "3da9661098809788a99cef00f00c865c6c204f96"
+  },
+  "license": {
+    "spdx": "MIT",
+    "sourceUrl": "https://github.com/historicalsource/zork2/blob/3da9661098809788a99cef00f00c865c6c204f96/LICENSE",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "eligible-after-audit",
+    "trademarkGrant": false,
+    "conditions": [
+      "Audit the exact source and compiled artifact selected for distribution.",
+      "Preserve the upstream Microsoft copyright and MIT license.",
+      "Do not imply rights to names, logos, packaging, or marketing assets."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "Research record only; no source or story binary has been imported.",
+    "Zork II is outside the initial Zork I compatibility milestone."
+  ]
+}

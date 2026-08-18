@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "records": [
+    "records/bocfel-interpreter-v2-5-1.json",
+    "records/czech-conformance-v0-8.json",
+    "records/dork-interpreter-e5fce5c.json",
+    "records/inform6-compiler-v6-44.json",
+    "records/minimal-story-artifact.json",
+    "records/zork-working-name-review.json",
+    "records/zork1-upstream.json",
+    "records/zork1-release-119-story.json",
+    "records/zork2-upstream.json",
+    "records/zork3-upstream.json"
+  ]
+}

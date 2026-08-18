@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "zork-working-name-review",
+  "name": "Zork working-name and trademark review",
+  "origin": "third-party",
+  "kind": "name-trademark",
+  "importStatus": "reviewed",
+  "upstream": {
+    "url": "https://opensource.microsoft.com/blog/2025/11/20/preserving-code-that-shaped-generations-zork-i-ii-and-iii-go-open-source/",
+    "revision": "2025-11-20"
+  },
+  "license": {
+    "spdx": "NOASSERTION",
+    "sourceUrl": "https://opensource.microsoft.com/blog/2025/11/20/preserving-code-that-shaped-generations-zork-i-ii-and-iii-go-open-source/",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "blocked",
+    "trademarkGrant": false,
+    "conditions": [
+      "Treat Zork Voice as a development working title, not an approved public brand.",
+      "Complete a qualified name and trademark review or rename the project before a promoted public release.",
+      "Do not use third-party logos, trade dress, packaging, or language implying sponsorship or endorsement."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "The upstream source-code license expressly does not grant trademark or brand rights.",
+    "This record documents an unresolved rights gate; it does not authorize trademark use.",
+    "The working title currently appears in repository metadata and documentation, so M0 cannot close until this record is superseded by an approved decision or the project is renamed."
+  ]
+}

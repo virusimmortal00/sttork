@@ -1,0 +1,271 @@
+{
+  "schemaVersion": 3,
+  "candidate": {
+    "repository": "https://github.com/ntoskrnlexe/dork",
+    "commit": "e5fce5ca678660611b5d2daa94bbffdb3a84e622",
+    "tree": "73de3daa6c28926b0d9d628f064f9c0ffe7f0ab0",
+    "archiveUrl": "https://codeload.github.com/ntoskrnlexe/dork/tar.gz/e5fce5ca678660611b5d2daa94bbffdb3a84e622",
+    "archiveSha256": "12a93295d6b16b88eeee999c78a96aee2cc0d68070f61ffff8215133163ba541"
+  },
+  "adaptation": {
+    "forkStatus": "modified-unendorsed",
+    "description": "This is a modified downstream fork. It retains two build/type-only adaptations and adds explicit behavioral changes for a validated Version 3 host checkpoint at the post-decode READ boundary, a finite per-turn instruction budget, enforcement of the story's parse-buffer token capacity, and checkpointable Z-machine RANDOM semantics with deterministic reseeding and unbiased tail-rejection sampling.",
+    "runtimeCompatibilityId": "dork-e5fce5ca678660611b5d2daa94bbffdb3a84e622-fork-a0a31ec97a78771229615c4311ea4209813e29a65df421f0e020b161447f1605",
+    "changes": [
+      {
+        "changeId": "dork-nodenext-relative-imports-v1",
+        "classification": "build-only",
+        "purpose": "Use .js relative TypeScript import specifiers for this repository's NodeNext declaration and JavaScript build.",
+        "affectedPaths": [
+          "vendor/dork/src/zmachine/index.ts",
+          "vendor/dork/src/zmachine/machine.ts",
+          "vendor/dork/src/zmachine/saves.ts",
+          "vendor/dork/src/zmachine/text.ts",
+          "vendor/dork/src/zmachine/vocab.ts"
+        ]
+      },
+      {
+        "changeId": "dork-exact-optional-initial-seed-v1",
+        "classification": "type-only",
+        "purpose": "Spell initialSeed as number | undefined for exactOptionalPropertyTypes compatibility.",
+        "affectedPaths": ["vendor/dork/src/zmachine/machine.ts"]
+      },
+      {
+        "changeId": "dork-input-boundary-host-checkpoint-v1",
+        "classification": "behavioral-fork",
+        "purpose": "Capture, validate, detach, and resume a Version 3 post-decode READ checkpoint with dynamic memory, stacks, stream-3 state, PRNG state, instruction counters, pending-input continuation, and a finite per-turn instruction budget.",
+        "affectedPaths": [
+          "vendor/dork/src/zmachine/index.ts",
+          "vendor/dork/src/zmachine/machine.ts"
+        ]
+      },
+      {
+        "changeId": "dork-parse-buffer-capacity-v1",
+        "classification": "behavioral-fork",
+        "purpose": "Stop tokenization at the story-declared parse-buffer capacity so interpreter input cannot overwrite adjacent dynamic memory.",
+        "affectedPaths": ["vendor/dork/src/zmachine/vocab.ts"]
+      },
+      {
+        "changeId": "dork-rng-correctness-v1",
+        "classification": "behavioral-fork",
+        "purpose": "Replace the checkpoint seed pair with schema-v2 RNG mode, gameplay, and reseed state; make RANDOM 0 and RESTART deterministically reseedable; interpret RANDOM operands as signed words; scale uint32 draws over 2^32; and export internal helpers for exact regression vectors.",
+        "affectedPaths": [
+          "vendor/dork/src/zmachine/index.ts",
+          "vendor/dork/src/zmachine/machine.ts"
+        ]
+      },
+      {
+        "changeId": "dork-rng-tail-rejection-v1",
+        "classification": "behavioral-fork",
+        "purpose": "Replace single-draw RANDOM scaling with deterministic tail-rejection sampling so non-divisor ranges are unbiased while the checkpoint retains the final accepted gameplay state; export the exact draw helper for regression vectors.",
+        "affectedPaths": [
+          "vendor/dork/src/zmachine/index.ts",
+          "vendor/dork/src/zmachine/machine.ts"
+        ]
+      }
+    ],
+    "behavioralPatchIdentity": {
+      "format": "git-diff-no-index-full-index-unified-3-v1",
+      "recipe": "Stage each immutable upstream blob as upstream/<upstreamPath> and its frozen local blob as local/<localPath>. In orderedLocalPaths order, concatenate stdout from LC_ALL=C GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git diff --no-index --no-color --no-ext-diff --full-index --unified=3 -- upstream/<upstreamPath> local/<localPath>; exit status 1 means differences and is expected.",
+      "orderedChangeIds": [
+        "dork-input-boundary-host-checkpoint-v1",
+        "dork-parse-buffer-capacity-v1",
+        "dork-rng-correctness-v1",
+        "dork-rng-tail-rejection-v1"
+      ],
+      "orderedLocalPaths": [
+        "vendor/dork/src/zmachine/index.ts",
+        "vendor/dork/src/zmachine/machine.ts",
+        "vendor/dork/src/zmachine/vocab.ts"
+      ],
+      "byteLength": 28043,
+      "sha256": "a0a31ec97a78771229615c4311ea4209813e29a65df421f0e020b161447f1605"
+    },
+    "behavioralForkLedgerSemantics": "Behavioral fork records are append-only transitions. A record's localSha256 is the output when that change was introduced; selectedFiles contains the current cumulative fork hashes.",
+    "behavioralForks": [
+      {
+        "changeId": "dork-input-boundary-host-checkpoint-v1",
+        "baseKind": "upstream",
+        "purpose": "Provide a validated input-boundary state handoff that a project-owned host can encode and restore into a replacement session without replaying the already-decoded READ instruction.",
+        "affectedFiles": [
+          {
+            "upstreamPath": "src/zmachine/index.ts",
+            "upstreamSha256": "cb4a0239fb09f6346d31b5dce712cb5028922eec34d954ba67bc045c68459079",
+            "localPath": "vendor/dork/src/zmachine/index.ts",
+            "localSha256": "7370bb8f6ce4b2c747369ce2527c03a61ab978d7cf06b81822ca0274e3059651"
+          },
+          {
+            "upstreamPath": "src/zmachine/machine.ts",
+            "upstreamSha256": "f2b82f9b7dd9cefb94af8f9d9df949b7736f4702782e124a11940c44072de1ec",
+            "localPath": "vendor/dork/src/zmachine/machine.ts",
+            "localSha256": "d6172bb7268fcc226e086f279fed76e1ae3a9deda9d6666551b5d25a35c55b69"
+          }
+        ],
+        "patchIdentity": {
+          "format": "git-diff-no-index-full-index-unified-3-v1",
+          "orderedLocalPaths": [
+            "vendor/dork/src/zmachine/index.ts",
+            "vendor/dork/src/zmachine/machine.ts"
+          ],
+          "byteLength": 21619,
+          "sha256": "881e4e9d6932691410454eb5fce7b049ece2bf0e73871a10665bafc3529f6eb0"
+        }
+      },
+      {
+        "changeId": "dork-parse-buffer-capacity-v1",
+        "baseKind": "upstream",
+        "purpose": "Honor the story-declared parse-buffer token limit before appending another token record.",
+        "affectedFiles": [
+          {
+            "upstreamPath": "src/zmachine/vocab.ts",
+            "upstreamSha256": "c3a25606e2190f4e10c7b9693414db8d22554557a8e8bc000e0d82e7dff9ee8b",
+            "localPath": "vendor/dork/src/zmachine/vocab.ts",
+            "localSha256": "bc4853e0d30709faf5369f4e1a9a665073d3e3431d29952e58eb5e5ac8ac7c6e"
+          }
+        ],
+        "patchIdentity": {
+          "format": "git-diff-no-index-full-index-unified-3-v1",
+          "orderedLocalPaths": ["vendor/dork/src/zmachine/vocab.ts"],
+          "byteLength": 1293,
+          "sha256": "8365b0715a889b6d2665492bc95b4d8e61fc861d5a317de794f0d354fb1390ac"
+        }
+      },
+      {
+        "changeId": "dork-rng-correctness-v1",
+        "baseKind": "prior-fork",
+        "purpose": "Make the interpreter's random-mode selection, gameplay stream, and entropy-reseed stream explicit and checkpointable while correcting signed RANDOM operands and unbiased uint32 scaling.",
+        "affectedFiles": [
+          {
+            "upstreamPath": "src/zmachine/index.ts",
+            "upstreamSha256": "cb4a0239fb09f6346d31b5dce712cb5028922eec34d954ba67bc045c68459079",
+            "baseLocalSha256": "7370bb8f6ce4b2c747369ce2527c03a61ab978d7cf06b81822ca0274e3059651",
+            "localPath": "vendor/dork/src/zmachine/index.ts",
+            "localSha256": "5ccceca2c003dc79a95b0a85409a1ded86817b778efa5441a9d076b89494dae0"
+          },
+          {
+            "upstreamPath": "src/zmachine/machine.ts",
+            "upstreamSha256": "f2b82f9b7dd9cefb94af8f9d9df949b7736f4702782e124a11940c44072de1ec",
+            "baseLocalSha256": "d6172bb7268fcc226e086f279fed76e1ae3a9deda9d6666551b5d25a35c55b69",
+            "localPath": "vendor/dork/src/zmachine/machine.ts",
+            "localSha256": "3b99f70ebfc9fcb96f1c26e1b3bfda8e3f31e0934df411e7d20a596ab545341b"
+          }
+        ],
+        "patchIdentity": {
+          "format": "git-diff-no-index-full-index-unified-3-v1",
+          "baseChangeId": "dork-input-boundary-host-checkpoint-v1",
+          "recipe": "Stage each base fork blob as previous/<localPath> and its frozen successor as local/<localPath>. In orderedLocalPaths order, concatenate stdout from LC_ALL=C GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git diff --no-index --no-color --no-ext-diff --full-index --unified=3 -- previous/<localPath> local/<localPath>; exit status 1 means differences and is expected.",
+          "orderedLocalPaths": [
+            "vendor/dork/src/zmachine/index.ts",
+            "vendor/dork/src/zmachine/machine.ts"
+          ],
+          "byteLength": 10519,
+          "sha256": "1cb1b0e2901844e9b2128a99d4301dc4a7d1b961aad455ed02e41fe3e3a83f98"
+        }
+      },
+      {
+        "changeId": "dork-rng-tail-rejection-v1",
+        "baseKind": "prior-fork",
+        "purpose": "Draw uniformly from each positive RANDOM range by consuming deterministic gameplay states until one lies below the largest range-aligned uint32 acceptance limit, and retain the accepted state for checkpoint equivalence.",
+        "correctsHistoricalClaim": "The preceding dork-rng-correctness-v1 record's description of its single-draw 2^32 scaling as unbiased was incomplete for non-divisor ranges; this successor supplies the required rejection step.",
+        "affectedFiles": [
+          {
+            "upstreamPath": "src/zmachine/index.ts",
+            "upstreamSha256": "cb4a0239fb09f6346d31b5dce712cb5028922eec34d954ba67bc045c68459079",
+            "baseLocalSha256": "5ccceca2c003dc79a95b0a85409a1ded86817b778efa5441a9d076b89494dae0",
+            "localPath": "vendor/dork/src/zmachine/index.ts",
+            "localSha256": "29642e45451cc71200ae65ac0b5d39e8babca9b1cc6bbf5a9d5fb8b16aba3276"
+          },
+          {
+            "upstreamPath": "src/zmachine/machine.ts",
+            "upstreamSha256": "f2b82f9b7dd9cefb94af8f9d9df949b7736f4702782e124a11940c44072de1ec",
+            "baseLocalSha256": "3b99f70ebfc9fcb96f1c26e1b3bfda8e3f31e0934df411e7d20a596ab545341b",
+            "localPath": "vendor/dork/src/zmachine/machine.ts",
+            "localSha256": "630da1585f5e12d99a93b12ad35a4eaa8b13c2b218a9cc4f9e4e175ab007e944"
+          }
+        ],
+        "patchIdentity": {
+          "format": "git-diff-no-index-full-index-unified-3-v1",
+          "baseChangeId": "dork-rng-correctness-v1",
+          "recipe": "Stage each base fork blob as previous/<localPath> and its frozen successor as local/<localPath>. In orderedLocalPaths order, concatenate stdout from LC_ALL=C GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git diff --no-index --no-color --no-ext-diff --full-index --unified=3 -- previous/<localPath> local/<localPath>; exit status 1 means differences and is expected.",
+          "orderedLocalPaths": [
+            "vendor/dork/src/zmachine/index.ts",
+            "vendor/dork/src/zmachine/machine.ts"
+          ],
+          "byteLength": 2391,
+          "sha256": "60056c6fb6842563a264bc438d4ab7800efac54d698e06b0a957c1ab2b4be8d8"
+        }
+      }
+    ],
+    "projectOwnedPathsExcludedFromForkProvenance": [
+      "spikes/dork-worker/checkpoint-envelope.ts",
+      "spikes/dork-worker/dork-candidate-session.ts"
+    ],
+    "selectedFiles": [
+      {
+        "upstreamPath": "src/zmachine/index.ts",
+        "upstreamSha256": "cb4a0239fb09f6346d31b5dce712cb5028922eec34d954ba67bc045c68459079",
+        "localPath": "vendor/dork/src/zmachine/index.ts",
+        "localSha256": "29642e45451cc71200ae65ac0b5d39e8babca9b1cc6bbf5a9d5fb8b16aba3276"
+      },
+      {
+        "upstreamPath": "src/zmachine/io.ts",
+        "upstreamSha256": "845ff234e89e383f6dc97e447cb1f3779bf85b757a9d6b1613d74121450f8a6d",
+        "localPath": "vendor/dork/src/zmachine/io.ts",
+        "localSha256": "845ff234e89e383f6dc97e447cb1f3779bf85b757a9d6b1613d74121450f8a6d"
+      },
+      {
+        "upstreamPath": "src/zmachine/machine.ts",
+        "upstreamSha256": "f2b82f9b7dd9cefb94af8f9d9df949b7736f4702782e124a11940c44072de1ec",
+        "localPath": "vendor/dork/src/zmachine/machine.ts",
+        "localSha256": "630da1585f5e12d99a93b12ad35a4eaa8b13c2b218a9cc4f9e4e175ab007e944"
+      },
+      {
+        "upstreamPath": "src/zmachine/memory.ts",
+        "upstreamSha256": "a945c1eb3591892214547561c160283017e4480373afd36b3006fa161b01e7f5",
+        "localPath": "vendor/dork/src/zmachine/memory.ts",
+        "localSha256": "a945c1eb3591892214547561c160283017e4480373afd36b3006fa161b01e7f5"
+      },
+      {
+        "upstreamPath": "src/zmachine/saves.ts",
+        "upstreamSha256": "bdb1c6806e2e8535e31ff07061caa0bf7ea4366dd5675fa86770aafcb481ead6",
+        "localPath": "vendor/dork/src/zmachine/saves.ts",
+        "localSha256": "3aaf18eec09507ffe2fc2142d5178a1958cb10849308f245f44cf2b4e41d6be7"
+      },
+      {
+        "upstreamPath": "src/zmachine/text.ts",
+        "upstreamSha256": "f13161088413dcfe392429c998bb3392ff9eae3b23e723e4d5fcfde17a7cc443",
+        "localPath": "vendor/dork/src/zmachine/text.ts",
+        "localSha256": "cc34bb4b34451f8811ca5dd1a3f46bc2ed222ed08c495a2ec23a18fef291b927"
+      },
+      {
+        "upstreamPath": "src/zmachine/vocab.ts",
+        "upstreamSha256": "c3a25606e2190f4e10c7b9693414db8d22554557a8e8bc000e0d82e7dff9ee8b",
+        "localPath": "vendor/dork/src/zmachine/vocab.ts",
+        "localSha256": "bc4853e0d30709faf5369f4e1a9a665073d3e3431d29952e58eb5e5ac8ac7c6e"
+      }
+    ],
+    "notices": [
+      {
+        "localPath": "LICENSES/dork/LICENSE",
+        "sha256": "2f5781c6d90c6390c06ab0048fbcb73db05a713b6f214d9a079dc7b895a2b735"
+      },
+      {
+        "localPath": "LICENSES/dork/NOTICE.md",
+        "sha256": "d88be0fa1fbdf954fae2da277820d6d136521e77d539e2fa0c5fc7c03853199a"
+      }
+    ]
+  },
+  "story": {
+    "repository": "https://github.com/historicalsource/zork1",
+    "commit": "97b7b3d68c075dd9af7da499c3e9690ada3471fd",
+    "upstreamPath": "COMPILED/zork1.z3",
+    "localPath": "vendor/zork1/zork1.z3",
+    "sha256": "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79",
+    "byteLength": 86838,
+    "zMachineVersion": 3,
+    "release": 119,
+    "serial": "880429",
+    "licensePath": "LICENSES/zork1/LICENSE",
+    "licenseSha256": "98a96c38494df4963951e32b81ec4effebe4c8a812ab8d9e7d185d59e86fe2fc"
+  }
+}

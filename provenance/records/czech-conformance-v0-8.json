@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "czech-conformance-v0-8",
+  "name": "CZECH 0.8 Z-machine conformance package",
+  "origin": "third-party",
+  "kind": "test-fixture",
+  "importStatus": "not-imported",
+  "upstream": {
+    "url": "https://ifarchive.org/if-archive/infocom/interpreters/tools/czech_0_8.zip",
+    "revision": "czech-0.8",
+    "artifactSha256": "d0795723e98563050575c4d3c08fdd29ade2543e132d8190255763e3bf6fef6a"
+  },
+  "license": {
+    "spdx": "LicenseRef-CZECH-0.8",
+    "sourceUrl": "https://ifarchive.org/if-archive/infocom/interpreters/tools/czech_0_8.zip",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "blocked",
+    "trademarkGrant": false,
+    "conditions": [
+      "Complete legal review of the custom CZECH 0.8 license before importing or redistributing source, compiled stories, transcripts, or package contents.",
+      "Define and review the LicenseRef-CZECH-0.8 text used by repository and release license tooling.",
+      "Preserve verbatim the copyright and license notice for copyright 2003 Amir Karger in every approved redistribution unit."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "Research record only; no CZECH source, story binary, transcript, README, license text, or archive has been imported.",
+    "Observed package-member SHA-256 values were 783ca6ed532b985b62b8c28ffed5de5634b5e7c18698f671b0b09083c4de9d4b for czech.inf, 4a2c1880e5ac8fa264c6362d2fdea4b9edece35b956a758ae3e319ed6ca96c61 for czech.out3, and 01219007c87a3f9bb8790a31049b258b206e74743fc31891f4fdd352e4439b6d for README.txt.",
+    "The disposable CZECH run is conformance research evidence only and does not authorize repository fixture use or package redistribution."
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "dork-interpreter-e5fce5c",
+  "name": "Dork TypeScript Z-machine interpreter core",
+  "origin": "third-party",
+  "kind": "interpreter",
+  "importStatus": "imported",
+  "upstream": {
+    "url": "https://github.com/ntoskrnlexe/dork",
+    "revision": "e5fce5ca678660611b5d2daa94bbffdb3a84e622",
+    "artifactSha256": "12a93295d6b16b88eeee999c78a96aee2cc0d68070f61ffff8215133163ba541"
+  },
+  "license": {
+    "spdx": "MIT",
+    "sourceUrl": "https://github.com/ntoskrnlexe/dork/blob/e5fce5ca678660611b5d2daa94bbffdb3a84e622/LICENSE",
+    "localNoticePaths": ["LICENSES/dork/LICENSE", "LICENSES/dork/NOTICE.md"]
+  },
+  "redistribution": {
+    "decision": "approved",
+    "trademarkGrant": false,
+    "conditions": [
+      "Redistribute only the selected interpreter-core files claimed by this record, not the Bun server, xterm UI, upstream test fixtures, walkthrough transcript, or unrelated npm package.",
+      "Preserve the Dork MIT license and JSZM ancestry notice.",
+      "Keep the exact upstream and locally adapted hashes in spikes/dork-worker/source-lock.json; record and review every further fork change.",
+      "Mark the vendored interpreter as a modified downstream fork and do not imply that Dork's authors sponsor or endorse it.",
+      "Rotate the checkpoint runtime compatibility identity whenever selected fork bytes or checkpoint semantics change, and version the project-owned envelope and adapter when their wire contract changes.",
+      "Do not describe the imported source as an accepted production interpreter until every ADR-0009 gate passes for the emitted bundle."
+    ]
+  },
+  "localPaths": [
+    {
+      "path": "vendor/dork/src/zmachine/index.ts",
+      "sha256": "29642e45451cc71200ae65ac0b5d39e8babca9b1cc6bbf5a9d5fb8b16aba3276"
+    },
+    {
+      "path": "vendor/dork/src/zmachine/io.ts",
+      "sha256": "845ff234e89e383f6dc97e447cb1f3779bf85b757a9d6b1613d74121450f8a6d"
+    },
+    {
+      "path": "vendor/dork/src/zmachine/machine.ts",
+      "sha256": "630da1585f5e12d99a93b12ad35a4eaa8b13c2b218a9cc4f9e4e175ab007e944"
+    },
+    {
+      "path": "vendor/dork/src/zmachine/memory.ts",
+      "sha256": "a945c1eb3591892214547561c160283017e4480373afd36b3006fa161b01e7f5"
+    },
+    {
+      "path": "vendor/dork/src/zmachine/saves.ts",
+      "sha256": "3aaf18eec09507ffe2fc2142d5178a1958cb10849308f245f44cf2b4e41d6be7"
+    },
+    {
+      "path": "vendor/dork/src/zmachine/text.ts",
+      "sha256": "cc34bb4b34451f8811ca5dd1a3f46bc2ed222ed08c495a2ec23a18fef291b927"
+    },
+    {
+      "path": "vendor/dork/src/zmachine/vocab.ts",
+      "sha256": "bc4853e0d30709faf5369f4e1a9a665073d3e3431d29952e58eb5e5ac8ac7c6e"
+    }
+  ],
+  "verifiedAt": "2026-08-18",
+  "notes": [
+    "The upstream candidate has no tag, release, or package version; the full commit and tree are the identity.",
+    "The codeload archive at the recorded commit was 154389 bytes and matched the recorded SHA-256.",
+    "The vendored core is an intentionally modified, unendorsed downstream fork. Source-lock change dork-input-boundary-host-checkpoint-v1 adds a validated Version 3 post-decode READ checkpoint/resume seam and a finite per-turn instruction budget; dork-parse-buffer-capacity-v1 enforces the story-declared parse-buffer token capacity; dork-rng-correctness-v1 makes RNG mode, gameplay state, and reseed state checkpointable and corrects signed RANDOM operands and deterministic reseeding; dork-rng-tail-rejection-v1 makes positive non-divisor ranges unbiased while retaining the accepted gameplay state.",
+    "The current cumulative upstream-to-local behavioral transition is SHA-256 a0a31ec97a78771229615c4311ea4209813e29a65df421f0e020b161447f1605 under the canonical diff recipe in spikes/dork-worker/source-lock.json; every selected upstream and local blob remains hashed separately.",
+    "The append-only RNG successor transition from the preceding local checkpoint fork is SHA-256 1cb1b0e2901844e9b2128a99d4301dc4a7d1b961aad455ed02e41fe3e3a83f98 and retains the preceding local hashes as its explicit base.",
+    "The append-only tail-rejection successor transition from the RNG correctness fork is SHA-256 60056c6fb6842563a264bc438d4ab7800efac54d698e06b0a957c1ab2b4be8d8 and retains the preceding local hashes as its explicit base.",
+    "The schema-v2 checkpoint envelope, v2 adapter, and candidate-session orchestration under spikes/dork-worker are project-owned integration code outside vendor/dork and are not claimed as Dork-derived source.",
+    "Dork attributes its interpreter ancestry to public-domain JSZM.",
+    "The current upstream save encoding is private rather than Quetzal, is story-opcode driven, and omits PRNG state; redistribution approval does not accept those runtime semantics."
+  ]
+}

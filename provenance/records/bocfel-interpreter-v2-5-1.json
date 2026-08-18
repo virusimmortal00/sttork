@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "bocfel-interpreter-v2-5-1",
+  "name": "Bocfel Z-machine interpreter 2.5.1 source archive",
+  "origin": "third-party",
+  "kind": "interpreter",
+  "importStatus": "not-imported",
+  "upstream": {
+    "url": "https://cspiegel.github.io/bocfel/downloads/bocfel-2.5.1.tar.gz",
+    "revision": "bocfel-2.5.1",
+    "artifactSha256": "33c26329d8341a772a488a062ce9941a9e847fb56cd96cf2ee4537c14c023942"
+  },
+  "license": {
+    "spdx": "MIT",
+    "sourceUrl": "https://cspiegel.github.io/bocfel/downloads/bocfel-2.5.1.tar.gz",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "eligible-after-audit",
+    "trademarkGrant": false,
+    "conditions": [
+      "Audit the complete generated redistribution unit, including Bocfel, selected RemGlk components, selected Emglken glue, JavaScript, WebAssembly, and transitive linked dependencies.",
+      "Pass every acceptance gate in ADR-0006 using a reproducible build from the pinned official archive and pinned companion inputs.",
+      "Generate artifact and builder SBOMs, preserve all required notices, and prove that no unapproved GPL component is linked or packaged.",
+      "Omit the nonessential Garglk static-patches.h input and resolve or remove the pb-imgsize notice gap before redistribution."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "Research record only; no Bocfel source, license, JavaScript, WebAssembly, or other upstream artifact has been imported.",
+    "The official archive is the preferred production-candidate source; files common to it and the pinned Garglk Bocfel subtree were byte-identical in the disposable source-closure audit.",
+    "The observed Bocfel MIT license text had SHA-256 f8a7cb5097ca3cf3149c40d256eb1244ee787bda4cd6f6dff42a59a2e802aee9; that identity is not redistribution approval for a composite build."
+  ]
+}

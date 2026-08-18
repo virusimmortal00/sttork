@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal-story-artifact",
+  "name": "Project-owned minimal Z-machine story artifact",
+  "origin": "project-owned",
+  "kind": "story-artifact",
+  "importStatus": "imported",
+  "generation": {
+    "sourcePaths": [
+      {
+        "path": "fixtures/stories/minimal/source/minimal.inf",
+        "sha256": "dc84d54c2ef840e077c6fab1a68c8e87889a4a286e6088a1637e1f92e20d6f80"
+      }
+    ],
+    "toolRecordIds": ["inform6-compiler-v6-44"],
+    "manifestPath": "fixtures/stories/minimal/artifact/manifest.json"
+  },
+  "license": {
+    "spdx": "MIT",
+    "sourcePath": "fixtures/stories/minimal/LICENSE",
+    "localNoticePaths": ["fixtures/stories/minimal/LICENSE"]
+  },
+  "redistribution": {
+    "decision": "approved",
+    "trademarkGrant": false,
+    "conditions": [
+      "Redistribute the fixture under its local MIT license notice.",
+      "Do not represent the fixture as Zork or as evidence of rights to Zork names, artwork, packaging, or content."
+    ]
+  },
+  "localPaths": [
+    {
+      "path": "fixtures/stories/minimal/artifact/minimal.z3",
+      "sha256": "67d3a47a48227988a29b2f4111da4cf5cd0efec4a8873d717c9e610984fb7389"
+    },
+    {
+      "path": "fixtures/stories/minimal/artifact/manifest.json",
+      "sha256": "df7c3fb1fb9a8370fd2f71837eabe2827d28af788852fc84e1e429580050e08a"
+    }
+  ],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "This is generated from original repository-owned source and contains no Zork source, story data, prose, map, objects, or solution material.",
+    "Two clean builds under LC_ALL=C and TZ=UTC matched byte-for-byte before the artifact was committed."
+  ]
+}

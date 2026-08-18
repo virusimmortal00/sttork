@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "zork3-upstream",
+  "name": "Zork III source collection",
+  "origin": "third-party",
+  "kind": "story-source",
+  "importStatus": "not-imported",
+  "upstream": {
+    "url": "https://github.com/historicalsource/zork3",
+    "revision": "3ec9ed412b5f3cafe65d83c727d07db1fe4a86a8"
+  },
+  "license": {
+    "spdx": "MIT",
+    "sourceUrl": "https://github.com/historicalsource/zork3/blob/3ec9ed412b5f3cafe65d83c727d07db1fe4a86a8/LICENSE",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "eligible-after-audit",
+    "trademarkGrant": false,
+    "conditions": [
+      "Audit the exact source and compiled artifact selected for distribution.",
+      "Preserve the upstream Microsoft copyright and MIT license.",
+      "Do not imply rights to names, logos, packaging, or marketing assets."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-17",
+  "notes": [
+    "Research record only; no source or story binary has been imported.",
+    "Zork III is outside the initial Zork I compatibility milestone."
+  ]
+}
