@@ -15,17 +15,20 @@ They describe intended boundaries rather than a finalized technology stack.
 5. [Testing](testing.md) — verification, evaluations, regression gates, and
    operational quality signals.
 6. [Milestones](milestones.md) — implementation order and exit criteria.
-7. [Project decisions](project-decisions.md) — settled decisions, assumptions,
+7. [Initial voice slices](initial-voice-slices.md) — the five narrow vertical
+   checkpoints to fake-audio and live developer voice tests.
+8. [Project decisions](project-decisions.md) — settled decisions, assumptions,
    and questions that require evidence before resolution.
-8. [M0 interpreter evidence](m0-interpreter-evidence.md) — the open acceptance
+9. [M0 interpreter evidence](m0-interpreter-evidence.md) — the open acceptance
    ledger for the proposed browser Z-machine candidate.
-9. [Dated Dork spike](m0-dork-spike-2026-08-18.md) — pinned source/story and
-   bounded turn/checkpoint/RNG/cold-restore evidence; all gates remain non-pass.
-10. [Dated Bocfel spike](m0-bocfel-spike-2026-08-17.md) — historical oracle and
+10. [Dated Dork spike](m0-dork-spike-2026-08-18.md) — pinned source/story and
+    bounded turn/checkpoint/RNG/cold-restore evidence; all gates remain
+    non-pass.
+11. [Dated Bocfel spike](m0-bocfel-spike-2026-08-17.md) — historical oracle and
     fallback worker/persistence evidence.
-11. [Development](development.md) — pinned runtime, installation, canonical
+12. [Development](development.md) — pinned runtime, installation, canonical
     commands, test placement, and workspace rules.
-12. [Repository operations](repository-operations.md) — CI behavior, required
+13. [Repository operations](repository-operations.md) — CI behavior, required
     GitHub protections, dependency updates, and release prerequisites.
 
 The dated [provider and upstream research snapshot](provider-research.md) and

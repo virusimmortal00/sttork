@@ -60,6 +60,16 @@ M0 Licensing and foundation
 M4 and M5 may be developed in parallel after M3. M6 never blocks release when M4
 or M5 supplies a supported production path.
 
+### Initial developer voice-smoke checkpoints
+
+The [initial voice vertical slices](initial-voice-slices.md) provide five narrow
+integration checkpoints across this roadmap: a real Dork Worker bridge, a
+minimal bounded guide, a semantic turn orchestrator, a deterministic browser
+audio shell, and one budget-limited live provider profile. Slice 4 produces the
+fake/recorded-audio end-to-end checkpoint; slice 5 produces the initial live
+developer voice smoke. These checkpoints do not replace M0-M7 exits or accept
+Dork as the production runtime.
+
 ## M0 — Licensing, decisions, and repository foundation
 
 ### Goal
