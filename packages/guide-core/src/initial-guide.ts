@@ -3,8 +3,11 @@ import {
   groundOpeningCommand,
   openingCommandHelp,
   type OpeningCommandKnowledge,
-} from "@zork-voice/command-knowledge";
-import type { CanonicalCommand, GuideDecision } from "@zork-voice/contracts";
+} from "../../command-knowledge/src/index.js";
+import type {
+  CanonicalCommand,
+  GuideDecision,
+} from "../../contracts/src/index.js";
 
 import { validateGuideDecision } from "./decision-validator.js";
 

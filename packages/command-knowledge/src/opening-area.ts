@@ -1,7 +1,7 @@
 import {
   canonicalizeCommand,
   type CanonicalCommand,
-} from "@zork-voice/contracts";
+} from "../../contracts/src/index.js";
 
 export const OPENING_AREA_KNOWLEDGE_VERSION = 1;
 export const MAX_OBSERVED_OBJECTS = 32;

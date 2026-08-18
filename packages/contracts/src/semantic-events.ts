@@ -6,6 +6,29 @@ export type ProseRetention = "session-only" | "local-save";
 export type NarrationRole = "guide" | "narrator";
 
 export interface SemanticEventPayloads {
+  readonly "session.paused": {
+    readonly reason: "player-request";
+  };
+  readonly "session.resumed": Record<string, never>;
+  readonly "audio.capture.started": {
+    readonly captureId: string;
+    readonly mode: "push-to-talk";
+  };
+  readonly "audio.capture.ended": {
+    readonly captureId: string;
+    readonly durationMs: number;
+    readonly outcome: "submitted" | "cancelled" | "silence" | "failed";
+  };
+  readonly "audio.playback.started": {
+    readonly narrationId: string;
+    readonly role: NarrationRole;
+    readonly sourceEventId: string;
+  };
+  readonly "audio.playback.ended": {
+    readonly narrationId: string;
+    readonly role: NarrationRole;
+    readonly outcome: "complete" | "interrupted" | "failed";
+  };
   readonly "transcript.final": {
     readonly text: string;
     readonly confidence?: number;
@@ -98,6 +121,7 @@ export interface SemanticEventPayloads {
   };
   readonly "system.error": {
     readonly stage:
+      | "audio"
       | "transcription"
       | "guide"
       | "engine"

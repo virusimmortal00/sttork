@@ -1,0 +1,64 @@
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: #080b0a;
+  color: #f4f7f4;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+}
+
+main {
+  width: min(42rem, calc(100% - 2rem));
+  text-align: center;
+}
+
+.eyebrow,
+.cue {
+  color: #aeb8b0;
+}
+
+#capture {
+  min-width: 12rem;
+  min-height: 4rem;
+  border: 2px solid #d7e4da;
+  border-radius: 999px;
+  background: #17211b;
+  color: inherit;
+  font: inherit;
+}
+
+button,
+input {
+  margin: 0.35rem;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #a8d9b4;
+  outline-offset: 3px;
+}
+
+section,
+pre {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid #536158;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

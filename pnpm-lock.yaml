@@ -47,9 +47,35 @@ importers:
 
   apps/server: {}
 
-  apps/web: {}
+  apps/web:
+    dependencies:
+      '@zork-voice/audio':
+        specifier: workspace:*
+        version: link:../../packages/audio
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@zork-voice/events':
+        specifier: workspace:*
+        version: link:../../packages/events
+      '@zork-voice/experience':
+        specifier: workspace:*
+        version: link:../../packages/experience
+      '@zork-voice/guide-core':
+        specifier: workspace:*
+        version: link:../../packages/guide-core
+      '@zork-voice/session':
+        specifier: workspace:*
+        version: link:../../packages/session
 
-  packages/audio: {}
+  packages/audio:
+    dependencies:
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@zork-voice/session':
+        specifier: workspace:*
+        version: link:../session
 
   packages/command-knowledge:
     dependencies:
@@ -65,7 +91,11 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/experience: {}
+  packages/experience:
+    dependencies:
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/game-engine:
     dependencies:

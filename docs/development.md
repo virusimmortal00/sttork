@@ -47,6 +47,8 @@ dependency to the owning workspace and commit the resulting lockfile change.
 | `pnpm dork:verify`                          | Authenticate the Dork core and bundled Zork I artifact      | no      |
 | `pnpm dork:worker:build`                    | Build the ignored Dork browser-Worker smoke module graph    | no      |
 | `pnpm dork:worker:serve`                    | Serve the built smoke on loopback with restrictive CSP      | no      |
+| `pnpm voice:shell:build`                    | Build the deterministic browser audio shell and Worker      | no      |
+| `pnpm voice:shell:serve`                    | Serve that shell on loopback with restrictive CSP           | no      |
 | `pnpm story:build -- --compiler PATH`       | Rebuild twice and write the deterministic story artifact    | no\*    |
 | `pnpm story:build:check -- --compiler PATH` | Rebuild twice and compare without writing                   | no\*    |
 | `pnpm check:provenance`                     | Validate upstream records and admitted files                | no      |
@@ -70,6 +72,15 @@ Worker-isolation flags and exact restore flow. Record the browser version and
 console/CSP result separately; Safari and the full release matrix remain
 required even after one Chrome pass.
 
+The Slice 4 voice shell is also bounded manual browser evidence. Run
+`pnpm voice:shell:build`, then `pnpm voice:shell:serve`, and open the printed
+loopback URL. Its scripted clips are metadata-only fixtures: no recorded player
+audio, microphone permission, paid API, or provider credential is used. Verify
+the default-hidden transcript/debug surfaces, one committed spoken turn, a
+non-mutating clarification and silence turn, session controls, Worker-isolation
+flags, and a clean console. This smoke does not qualify a live provider or the
+supported-browser matrix.
+
 `pnpm run ci` does not install dependencies and does not include an advisory
 query. The explicit `run` is required: pnpm 11 owns a separate built-in
 `pnpm ci` command that performs a clean dependency installation. The GitHub
@@ -81,9 +92,9 @@ remains available for deployment-focused diagnosis.
 available. Obtaining its pinned source revision requires network access; the
 compiler path is explicit and the build scripts never download tools.
 
-There is no live-provider, browser, or release command yet. Those commands will
-be added only alongside real implementations and non-empty tests; the repository
-never uses a successful placeholder command to imply a milestone gate exists.
+There is no live-provider or release command yet. Those commands will be added
+only alongside real implementations and non-empty tests; the repository never
+uses a successful placeholder command to imply a milestone gate exists.
 
 The minimal story pipeline is accepted by ADR-0007 and proves a deterministic,
 legal fixture. `dork:verify` authenticates the ADR-0009 candidate inputs but

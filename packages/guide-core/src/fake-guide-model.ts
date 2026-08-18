@@ -1,4 +1,4 @@
-import type { GuideDecision } from "@zork-voice/contracts";
+import type { GuideDecision } from "../../contracts/src/index.js";
 
 import type { GuideModel, InitialGuideModelInput } from "./initial-guide.js";
 

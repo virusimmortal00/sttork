@@ -1,8 +1,11 @@
 import {
   isCanonicalEventTimestamp,
   isEventEnvelopeV1,
-} from "@zork-voice/contracts";
-import type { EventEnvelope, EventVisibility } from "@zork-voice/contracts";
+} from "../../contracts/src/index.js";
+import type {
+  EventEnvelope,
+  EventVisibility,
+} from "../../contracts/src/index.js";
 
 export interface EventSequenceOptions {
   readonly sessionId: string;

@@ -1,4 +1,4 @@
-import type { GuideDecision, MetaControl } from "@zork-voice/contracts";
+import type { GuideDecision, MetaControl } from "../../contracts/src/index.js";
 
 export type GuideDecisionValidationCode =
   | "not-an-object"

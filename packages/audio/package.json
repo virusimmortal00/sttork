@@ -4,5 +4,10 @@
   "private": true,
   "description": "Capture, playback, turn-taking, cancellation, and semantic audio roles.",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/contracts": "workspace:*",
+    "@zork-voice/session": "workspace:*"
+  }
 }

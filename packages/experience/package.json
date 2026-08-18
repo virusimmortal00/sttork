@@ -4,5 +4,9 @@
   "private": true,
   "description": "Audio session state and optional event projections.",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/contracts": "workspace:*"
+  }
 }

@@ -7,13 +7,13 @@ import type {
   SemanticEvent,
   SemanticEventPayloads,
   SemanticEventType,
-} from "@zork-voice/contracts";
-import type { EventSequence } from "@zork-voice/events";
+} from "../../contracts/src/index.js";
+import type { EventSequence } from "../../events/src/index.js";
 import {
   decideInitialGuideTurn,
   type GuideModel,
   type InitialGuideResult,
-} from "@zork-voice/guide-core";
+} from "../../guide-core/src/index.js";
 
 export const MAX_COORDINATED_TURNS = 128;
 export const MAX_TURN_TRANSCRIPT_LENGTH = 2_000;
@@ -329,6 +329,164 @@ export class SemanticTurnCoordinator {
       result,
     });
     return result;
+  }
+
+  public recordAudioFailure(input: {
+    readonly interactionId: string;
+    readonly code: string;
+  }): SemanticTurnResult {
+    if (
+      typeof input.interactionId !== "string" ||
+      input.interactionId.length === 0 ||
+      input.interactionId.length > 160 ||
+      /\p{Cc}/u.test(input.interactionId) ||
+      typeof input.code !== "string" ||
+      input.code.length === 0 ||
+      input.code.length > 160 ||
+      /\p{Cc}/u.test(input.code)
+    ) {
+      throw new TypeError("audio failure fields must be bounded strings");
+    }
+    if (this.#turns.has(input.interactionId)) {
+      throw new SemanticTurnConflictError(input.interactionId);
+    }
+    if (this.#turns.size >= this.#maxTurns) {
+      throw new SemanticTurnCapacityError(this.#maxTurns);
+    }
+    const local: SemanticEvent[] = [];
+    this.#emit(
+      local,
+      "system.error",
+      input.interactionId,
+      undefined,
+      "accessible",
+      {
+        stage: "audio",
+        code: input.code,
+        recoverable: true,
+        engineCommitState: "not-submitted",
+      },
+    );
+    const result: SemanticTurnResult = {
+      interactionId: input.interactionId,
+      outcome: "failed",
+      events: local,
+    };
+    this.#turns.set(input.interactionId, {
+      kind: "complete",
+      fingerprint: `audio-failure:${input.code}`,
+      result,
+    });
+    return result;
+  }
+
+  public recordCaptureStarted(input: {
+    readonly interactionId: string;
+    readonly captureId: string;
+  }): SemanticEvent<"audio.capture.started"> {
+    return this.#emit(
+      [],
+      "audio.capture.started",
+      input.interactionId,
+      undefined,
+      "accessible",
+      {
+        captureId: this.#requireId(input.captureId, "capture"),
+        mode: "push-to-talk",
+      },
+    );
+  }
+
+  public recordCaptureEnded(input: {
+    readonly interactionId: string;
+    readonly captureId: string;
+    readonly durationMs: number;
+    readonly outcome: SemanticEventPayloads["audio.capture.ended"]["outcome"];
+  }): SemanticEvent<"audio.capture.ended"> {
+    if (!Number.isSafeInteger(input.durationMs) || input.durationMs < 0) {
+      throw new RangeError(
+        "capture durationMs must be a non-negative safe integer",
+      );
+    }
+    return this.#emit(
+      [],
+      "audio.capture.ended",
+      input.interactionId,
+      undefined,
+      "accessible",
+      {
+        captureId: this.#requireId(input.captureId, "capture"),
+        durationMs: input.durationMs,
+        outcome: input.outcome,
+      },
+    );
+  }
+
+  public recordPlaybackStarted(input: {
+    readonly interactionId: string;
+    readonly narrationId: string;
+    readonly role: NarrationRole;
+    readonly sourceEventId: string;
+  }): SemanticEvent<"audio.playback.started"> {
+    return this.#emit(
+      [],
+      "audio.playback.started",
+      input.interactionId,
+      input.sourceEventId,
+      "accessible",
+      {
+        narrationId: this.#requireId(input.narrationId, "narration"),
+        role: input.role,
+        sourceEventId: this.#requireId(input.sourceEventId, "source event"),
+      },
+    );
+  }
+
+  public recordPlaybackEnded(input: {
+    readonly interactionId: string;
+    readonly narrationId: string;
+    readonly role: NarrationRole;
+    readonly sourceEventId: string;
+    readonly outcome: SemanticEventPayloads["audio.playback.ended"]["outcome"];
+  }): SemanticEvent<"audio.playback.ended"> {
+    return this.#emit(
+      [],
+      "audio.playback.ended",
+      input.interactionId,
+      input.sourceEventId,
+      "accessible",
+      {
+        narrationId: this.#requireId(input.narrationId, "narration"),
+        role: input.role,
+        outcome: input.outcome,
+      },
+    );
+  }
+
+  public recordPaused(interactionId: string): SemanticEvent<"session.paused"> {
+    return this.#emit(
+      [],
+      "session.paused",
+      interactionId,
+      undefined,
+      "accessible",
+      {
+        reason: "player-request",
+      },
+    );
+  }
+
+  public recordResumed(
+    interactionId: string,
+  ): SemanticEvent<"session.resumed"> {
+    return this.#emit(
+      [],
+      "session.resumed",
+      interactionId,
+      undefined,
+      "accessible",
+      {},
+    );
   }
 
   async #runNew(

@@ -84,7 +84,14 @@ Initial Voice Slice 3 now adds the provider-neutral semantic turn coordinator:
 ordered attributable events, at-most-once interaction delivery, exact uncertain
 engine retry, confirmed checkpoints, and distinct guide/narrator requests. A
 real isolated Dork scenario reaches exact engine narration input and one
-checkpoint. The browser audio shell and live providers remain later slices.
+checkpoint.
+
+Initial Voice Slice 4 now adds the visually minimal deterministic browser audio
+shell: scripted push-to-talk, typed audio lifecycle, narrator/guide playback,
+Stop, repeat, pause/resume, and optional attributed transcript/debug
+projections. A real module Worker completes the end-to-end path under
+restrictive CSP without paid calls. Production microphone/provider adapters and
+the initial live voice smoke remain Slice 5 work.
 
 ## Development
 

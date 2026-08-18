@@ -201,6 +201,12 @@ provider authentication, and live networking are deferred.
 
 ## Slice 4 — Browser audio shell with deterministic fakes
 
+Implementation checkpoint: bounded developer exit met on 2026-08-18 in the
+in-app Chromium browser. The deterministic shell exercises a real module
+Dedicated Worker under restrictive CSP with no provider call or recorded player
+audio. This is not M3 completion, production microphone support, or browser and
+assistive-technology signoff.
+
 ### Deliverables
 
 - Add explicit push-to-talk capture, playback, stop/interruption, and a virtual
@@ -223,7 +229,8 @@ provider authentication, and live networking are deferred.
   states.
 - Transcript/debug projections preserve player transcript, guide decision,
   canonical command, exact engine output, and errors without changing behavior.
-- The focused browser suite and hermetic repository gate pass.
+- Focused audio/projection regressions, a real manual browser/CSP smoke, and the
+  hermetic repository gate pass.
 
 ### Deliberately deferred
 
@@ -233,6 +240,25 @@ remain deferred.
 
 **Checkpoint after slice 4:** the project has an initial fake/recorded-audio
 end-to-end voice loop suitable for reliable local development and CI.
+
+### Landed evidence
+
+- The default browser surface exposes only session status and five controls;
+  transcript, accessible text input, exact game prose, and developer event
+  evidence are hidden until explicitly opened.
+- Scripted push-to-talk runs through capture, final transcript, the bounded
+  guide, the real Dork Worker, checkpointing, exact narration input, and virtual
+  playback. Narrator and guide playback retain separate typed roles.
+- The browser smoke proves one executable movement, an ambiguous request with
+  zero mutation, deterministic parser help, silence with zero mutation, and the
+  same semantic path through accessible text input. The Worker reports that it
+  has `WorkerGlobalScope` and no `document` or `window`.
+- Pause/resume, repeat, Stop, keyboard capture, microphone-denial recovery, and
+  mid-playback interruption have focused regressions. Projection replay proves
+  stable attribution and rejects out-of-order events.
+- A clean browser load and committed turn produced no console warning or error
+  under `default-src 'none'`, same-origin script/Worker/connect directives, and
+  no media permission or network provider.
 
 ## Slice 5 — One budget-limited live provider profile
 

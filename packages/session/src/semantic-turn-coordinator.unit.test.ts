@@ -531,6 +531,38 @@ describe("SemanticTurnCoordinator", () => {
     expect(engine.revision).toBe(0);
   });
 
+  it("records microphone denial without consulting guide or engine", () => {
+    const engine = new FakeEngine();
+    const guide = FakeGuideModel.returning({
+      kind: "execute",
+      command: "north",
+      intentSummary: "Move north",
+      confidence: 0.99,
+    });
+    const result = coordinator(
+      engine,
+      new FakeNarrator(),
+      guide,
+    ).recordAudioFailure({
+      interactionId: "microphone-denial",
+      code: "microphone-unavailable",
+    });
+
+    expect(result.outcome).toBe("failed");
+    expect(result.events).toEqual([
+      expect.objectContaining({
+        type: "system.error",
+        payload: expect.objectContaining({
+          stage: "audio",
+          code: "microphone-unavailable",
+          engineCommitState: "not-submitted",
+        }),
+      }),
+    ]);
+    expect(guide.calls).toBe(0);
+    expect(engine.revision).toBe(0);
+  });
+
   it("rejects oversized semantic input before allocating an event or calling guide", async () => {
     const engine = new FakeEngine();
     const guide = FakeGuideModel.returning({
