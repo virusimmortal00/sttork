@@ -88,6 +88,18 @@ importers:
 
   packages/providers: {}
 
+  packages/session:
+    dependencies:
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@zork-voice/events':
+        specifier: workspace:*
+        version: link:../events
+      '@zork-voice/guide-core':
+        specifier: workspace:*
+        version: link:../guide-core
+
   packages/test-support: {}
 
 packages:

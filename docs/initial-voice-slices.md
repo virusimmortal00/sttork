@@ -140,6 +140,12 @@ provider-specific prompting remain M2 work beyond this initial subset.
 
 ## Slice 3 — Semantic turn orchestrator
 
+Implementation checkpoint: bounded developer exit met on 2026-08-18. The landed
+session coordinator connects deterministic final transcripts, the Slice 2 guide,
+authoritative engine execution, snapshots, typed events, and a provider-neutral
+narration request. This does not include an audio shell, live provider, durable
+event store, or cloud checkpoint persistence.
+
 ### Deliverables
 
 - Connect final transcript, guide decision, command validation, Dork execution,
@@ -170,6 +176,28 @@ provider-specific prompting remain M2 work beyond this initial subset.
 
 Long-session memory compaction, polished projections, cloud persistence,
 provider authentication, and live networking are deferred.
+
+### Landed evidence
+
+- The coordinator is the sole event-sequence allocator and emits closed typed
+  payloads for transcript, guide decision, command, exact engine output,
+  checkpoint, narration, recovery, and system-error families. Prose events carry
+  an explicit retention classification.
+- Interaction IDs are bounded and journaled. Concurrent and completed duplicate
+  delivery returns one result; conflicting reuse fails. Journal capacity fails
+  before work begins.
+- An engine exception after request submission is recorded as unknown and
+  authorizes only an exact retry of the same request ID, revision, and command.
+  Receipt recovery produces one committed event/output sequence and does not
+  advance the engine twice.
+- Cancellation before engine submission cannot mutate. Cancellation after a
+  confirmed commit preserves and checkpoints that commit, suppresses narration,
+  and never claims an undo. Late guide callbacks cannot re-enter the turn.
+- Hermetic fake-port tests cover guide, transcription, engine inspection,
+  checkpoint, narration, projection, cancellation, duplicate, and uncertainty
+  failures. A real isolated Dork integration proves final transcript through
+  exact narration input and checkpoint, with duplicate delivery held to one
+  revision.
 
 ## Slice 4 — Browser audio shell with deterministic fakes
 

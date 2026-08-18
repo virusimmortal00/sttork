@@ -407,6 +407,13 @@ Only one player turn may reach `executing`. New microphone input during guide or
 narrator playback first cancels playback, emits a cancellation event, and then
 opens a new turn. Stale provider responses are ignored using correlation IDs.
 
+The bounded implementation is `packages/session`. It journals interaction IDs,
+owns the `EventSequence`, and coordinates final transcript, guide policy, engine
+inspection/execution, snapshot, and narration ports. Unknown engine outcomes
+remain journaled with their exact request tuple; only the same interaction may
+recover that receipt. Projection publication occurs after the canonical append
+and cannot alter engine commit control flow.
+
 ## 7. Game state, guide memory, and saves
 
 Three state domains remain separate:
@@ -598,15 +605,18 @@ contracts + engine + command-knowledge <- guide
 contracts <- providers
 contracts <- persistence
 contracts <- observability
+contracts + events + guide + engine ports <- session
 
-web -> audio + guide + engine + providers + persistence + observability
+web -> audio + session + providers + persistence + observability
 server -> providers + persistence + observability
 ```
 
-`engine` imports no provider, UI, or guide package. `guide` imports the engine
-port types but no interpreter implementation. Provider packages import domain
-contracts but contain no game rules. UI projections receive an event stream and
-cannot access an engine implementation. Circular workspace dependencies fail CI.
+`engine` imports no provider, UI, guide, or session package. `guide` imports
+domain contracts and command knowledge but no interpreter implementation. The
+session coordinator depends only on ports and never imports a provider or
+interpreter. Provider packages import domain contracts but contain no game
+rules. UI projections receive an event stream and cannot access an engine
+implementation. Circular workspace dependencies fail CI.
 
 Initial directories are described in
 [the strategy](./strategy.md#high-level-repository-layout). Platform and library

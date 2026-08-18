@@ -278,7 +278,8 @@ packages/
   contracts/              Versioned events, decisions, commands, save manifests
   audio/                  Capture, playback, turn-taking, cancellation, earcons
   engine/                 Z-machine worker and authoritative adapter
-  guide/                  Guide policy, orchestration, memory, hint policy
+  guide/                  Guide policy, memory, and hint policy
+  session/                Semantic turn ordering and commit-boundary recovery
   command-knowledge/      Extracted grammar and player-safe affordance index
   providers/              Provider ports and profile composition
   persistence/            Local checkpoints and optional cloud-facing ports

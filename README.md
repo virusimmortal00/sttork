@@ -80,6 +80,12 @@ grounding, deterministic parser help, and fake-model guide-to-engine
 regressions. This is not M2 completion or live-model qualification; observed
 memory, hint policy, full grammar generation, and provider evaluation remain.
 
+Initial Voice Slice 3 now adds the provider-neutral semantic turn coordinator:
+ordered attributable events, at-most-once interaction delivery, exact uncertain
+engine retry, confirmed checkpoints, and distinct guide/narrator requests. A
+real isolated Dork scenario reaches exact engine narration input and one
+checkpoint. The browser audio shell and live providers remain later slices.
+
 ## Development
 
 Use Node 24.19.0 and pnpm 11.19.0, then run:

@@ -227,10 +227,12 @@ preserving the engine as the sole state authority.
 Initial Voice Slice 2 provides strict runtime validation for the canonical
 decision union, reviewed opening grammar, observed-object grounding,
 deterministic parser help, a fake guide model, and guide-to-engine safety
-regressions. M2 remains incomplete: observed memory, mediated tools, contextual
-referents, hint policy/content, full grammar generation, the release evaluation
-corpus, and provider qualification are still required by the deliverables and
-exit criteria below.
+regressions. Slice 3 adds an idempotent semantic-turn coordinator with typed
+events, checkpoint/narration ports, and exact uncertain-command recovery. M2
+remains incomplete: observed memory, mediated tools, contextual referents, hint
+policy/content, full grammar generation, the release evaluation corpus, and
+provider qualification are still required by the deliverables and exit criteria
+below.
 
 ### Deliverables
 

@@ -66,6 +66,7 @@ Keep the core organized around these conceptual packages even if names evolve:
 - `guide-core`: provider-neutral decisions, policy, hint limits, memory.
 - `command-knowledge`: parser vocabulary, syntax, and observed affordances.
 - `events`: versioned domain event schemas and replay.
+- `session`: semantic turn ordering, idempotency, and commit-boundary recovery.
 - `providers`: speech, reasoning, and narration capability adapters.
 - `experience`: audio session state and optional transcript/debug renderers.
 - `server`: OAuth exchange, ephemeral credentials, optional encrypted sync.
