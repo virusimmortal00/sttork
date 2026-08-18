@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "candidate": "bocfel-noz6-2.5.1-m0-spike",
+  "bocfel": {
+    "version": "2.5.1",
+    "archiveUrl": "https://cspiegel.github.io/bocfel/downloads/bocfel-2.5.1.tar.gz",
+    "archiveSha256": "33c26329d8341a772a488a062ce9941a9e847fb56cd96cf2ee4537c14c023942",
+    "archiveByteLength": 171007,
+    "archiveRoot": "bocfel-2.5.1",
+    "allowedOrigins": ["https://cspiegel.github.io"],
+    "directoryCount": 3,
+    "materialMemberCount": 69,
+    "metadataMemberCount": 1,
+    "regularFileCount": 66,
+    "shapeSha256": "d6835e317559af2f3cc4012785de4a5633b0aee831b8c65b9acf63ef319f7399",
+    "uncompressedByteLength": 675840,
+    "verifiedFiles": {
+      "LICENSE": "f8a7cb5097ca3cf3149c40d256eb1244ee787bda4cd6f6dff42a59a2e802aee9",
+      "options.h": "a964a6294e54ccca99d1f48324fafdc8004b4b54c6e1da9fbdcf571eba202d7a",
+      "osdep.cpp": "e3ca77fa0560e9e354178ed9a31a35b3985cf84429602d27ec30593f6fcc7aa5",
+      "patches.cpp": "9590385176b0929163727052588ef9f190185d80fe330489eca332483852ee74"
+    }
+  },
+  "remglk": {
+    "repositoryUrl": "https://github.com/curiousdannii/remglk-rs.git",
+    "revision": "34e0ed91c1d6949862409c19d1b11816debb9ade",
+    "tree": "3e495e0895e1b1bc18f58f0cd0d42bb5ffe5708b",
+    "verifiedFiles": {
+      "LICENSE": "98b2179558b1ea72993f2b6bcbebd954be85de7f550965edcfd0969efdc76152",
+      "Cargo.toml": "134eaf6fc2835b062340c3a7f9d337d083f74cd5e61cf1373d6b50308ecc4571",
+      "remglk/Cargo.toml": "2047b79433b9dd55b345c6efebfb3a291269fd827603cf5644dff7bc93003ed8",
+      "remglk/src/blorb/mod.rs": "ff16b608b4cea7886b227223f2c04e88424b78d03392f646fa910cb280ba4cf1",
+      "remglk_capi/Cargo.toml": "f0157fddcd9812519b4fb25cc91fefb24cb3312e1934999b1054e6f9d79172a4",
+      "remglk_capi/src/glk/glk.h": "b17d3ed4c7e5df4285a6f530a4e412bc8f00e4f1a7d8634313c353b76ec516e5",
+      "remglk_capi/src/systems/library_emglken.js": "58f42705ca8b8af2969e53a61de555d8e584dc1db44bf43032624bde26957d94"
+    }
+  },
+  "emglkenGlue": {
+    "repositoryUrl": "https://github.com/curiousdannii/emglken.git",
+    "revision": "36ba70f5f0f7f7b1f9daa0c1e45fde0cdc196ec3",
+    "tree": "3fe8fac4a820b7b1615ba8a437e689934d827096",
+    "selectedFiles": {
+      "LICENSE": "7f832914e3a094960455f9a5ef730c7d6141222f1da8649511839bb3e0efd38c",
+      "Cargo.lock": "a3d0fecac711b66f7d5ad6d800de60572b53a3cc3b7ab0996623bd45741c4a51",
+      "src/asyncify-remove-list-bocfel-noz6.txt": "d3eb36838038ea47ce71e1425864686467ff7f6f8ee97083f306af8542ac8b90",
+      "src/preamble.js": "81196720c4f50f1ce5d125b2324dd94c706b05b496d0239a443d9dc0e49f7efc"
+    }
+  },
+  "transformations": {
+    "bocfel-autosave-v1": {
+      "files": {
+        "options.h": {
+          "inputSha256": "a964a6294e54ccca99d1f48324fafdc8004b4b54c6e1da9fbdcf571eba202d7a",
+          "outputSha256": "531af4ee078454b605f9c0771d2774fa7e43f24c6feca153716412165e652b21",
+          "operations": [
+            {
+              "id": "enable-autosave",
+              "offset": 1710,
+              "length": 22,
+              "segmentSha256": "c3390f810f8fa065e15dfd756c02d7bce55c4baea48c3f0389f03f4d1e30abd5",
+              "replacementUtf8": "bool autosave = true;"
+            }
+          ]
+        },
+        "osdep.cpp": {
+          "inputSha256": "e3ca77fa0560e9e354178ed9a31a35b3985cf84429602d27ec30593f6fcc7aa5",
+          "outputSha256": "2ceb9dbf8d34e3497f959d76f04ddb6eeb1660026f0e25f25125625068f8ecce",
+          "operations": [
+            {
+              "id": "set-in-memory-autosave-path",
+              "offset": 30938,
+              "length": 20,
+              "segmentSha256": "6599188cea27e50e6befa01e6cb765833ceeb6210d6618761f3244ceee5569a3",
+              "replacementUtf8": "    return std::make_unique<std::string>(\"/zork-voice-autosave.bfzs\");\n"
+            }
+          ]
+        }
+      }
+    },
+    "remglk-no-image-metadata-v1": {
+      "files": {
+        "Cargo.lock": {
+          "inputSha256": "a3d0fecac711b66f7d5ad6d800de60572b53a3cc3b7ab0996623bd45741c4a51",
+          "outputSha256": "b1433d3ccb046629676a5dd2ecf2cca26cb0e787caf403618a0a9956086e28db",
+          "operations": [
+            {
+              "id": "remove-cfg-if-lock-package",
+              "offset": 533,
+              "length": 190,
+              "segmentSha256": "df07b161292d87f551eadf6ef6161a7ef988994637d8ad59258119e81e91003a",
+              "replacementUtf8": ""
+            },
+            {
+              "id": "remove-crc32fast-lock-package",
+              "offset": 723,
+              "length": 223,
+              "segmentSha256": "24c6efa98db4f583eece32a3e2b9463cb20138da2c55ac0a3a38d7af13149eab",
+              "replacementUtf8": ""
+            },
+            {
+              "id": "remove-pb-imgsize-lock-package",
+              "offset": 2903,
+              "length": 238,
+              "segmentSha256": "f9646e416265308a89c67453eb3ced44afa58c8483fef485bbdde159a668e612",
+              "replacementUtf8": ""
+            },
+            {
+              "id": "remove-pb-imgsize-lock-edge",
+              "offset": 4159,
+              "length": 15,
+              "segmentSha256": "be2f2e47b10eb114aee15a5ac25386bab6fc76d7f552661a0e73685b821f84a3",
+              "replacementUtf8": ""
+            }
+          ]
+        },
+        "remglk/Cargo.toml": {
+          "inputSha256": "2047b79433b9dd55b345c6efebfb3a291269fd827603cf5644dff7bc93003ed8",
+          "outputSha256": "a9257985294ea5ff834744af9106088b5decd624a38dd14758699cf56dcb960d",
+          "operations": [
+            {
+              "id": "remove-pb-imgsize-manifest-entry",
+              "offset": 442,
+              "length": 21,
+              "segmentSha256": "ae6a7e4b035ca534ac3c05a1b0967b812720320f6b8d7f550252021a32709b79",
+              "replacementUtf8": ""
+            }
+          ]
+        },
+        "remglk/src/blorb/mod.rs": {
+          "inputSha256": "ff16b608b4cea7886b227223f2c04e88424b78d03392f646fa910cb280ba4cf1",
+          "outputSha256": "78f95026fafeb6960a2f450b7638236c5a17fe59d1b4a22827b68ed5a4498a32",
+          "operations": [
+            {
+              "id": "remove-pb-imgsize-import",
+              "offset": 222,
+              "length": 27,
+              "segmentSha256": "ee0b7ea95ac4d0845e43d17de0cb3686ddeef2730ddf7cb44856c2ac1685a9f3",
+              "replacementUtf8": ""
+            },
+            {
+              "id": "remove-image-metadata-parser",
+              "offset": 4984,
+              "length": 455,
+              "segmentSha256": "604b14416fa03bf5c72cd8c4a4b8f810d85237d328cfce51f6ef83619e84f5d9",
+              "replacementUtf8": ""
+            }
+          ]
+        }
+      }
+    }
+  },
+  "experimentalBuilder": {
+    "localImageId": "sha256:4a20e69e6a940f27738693b67d0aa83cec65ee74230229c1d9fc91d9a8dcd6f6",
+    "platform": "linux/arm64",
+    "baseImageIndexDigest": "sha256:cc4dcb4ca57cb35858b7fbb606c0ee857051d9f76b452f7fcfc3d8159dae670c",
+    "baseImagePlatformDigest": "sha256:fdeb6390adf809104c13bd1696eed36d1ab832a0d6f421ec4ff97cbd87a00dba",
+    "observedVersions": {
+      "emscripten": "5.0.5",
+      "rustc": "1.94.0",
+      "cmake": "3.28.3",
+      "node": "22.16.0",
+      "python": "3.12.3"
+    },
+    "acceptanceWarning": "This local image was extended by a mutable rustup installer and is not an accepted or portable release-toolchain pin."
+  },
+  "forbiddenClosureNames": ["pb-imgsize", "scare", "tads"]
+}
