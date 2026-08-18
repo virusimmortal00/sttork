@@ -1,0 +1,103 @@
+! Zork Voice repository-owned deterministic engine fixture.
+! SPDX-License-Identifier: MIT
+
+Release 1;
+Serial "260817";
+
+Global current_room = 0;
+Global token_taken = 0;
+Global score = 0;
+
+Array text_buffer -> 63;
+Array parse_buffer -> 42;
+
+[ ParsedWordAddress word_number byte_offset;
+  byte_offset = (word_number * 4) - 2;
+  return (parse_buffer->byte_offset * 256) + parse_buffer->(byte_offset + 1);
+];
+
+[ PrintLocation;
+  if (current_room == 0) {
+      print "South Room^A plain room with an exit north.^";
+      if (token_taken == 0) print "A brass token rests on the floor.^";
+  } else {
+      print "North Room^A quiet room with an exit south.^";
+  }
+];
+
+[ PrintInventory;
+  if (token_taken == 1) print "You are carrying a brass token.^";
+  else print "You are carrying nothing.^";
+];
+
+[ Main first_word second_word;
+  print "Minimal Fixture^Release 1 / Serial number 260817^";
+  PrintLocation();
+
+  for (::) {
+      print "^> ";
+      text_buffer->0 = 60;
+      parse_buffer->0 = 10;
+      read text_buffer parse_buffer;
+
+      if (parse_buffer->1 == 0) {
+          print "Please enter a command.^";
+          continue;
+      }
+
+      first_word = ParsedWordAddress(1);
+      second_word = 0;
+      if (parse_buffer->1 > 1) second_word = ParsedWordAddress(2);
+
+      if (first_word == 'look' or 'l//') {
+          PrintLocation();
+          continue;
+      }
+
+      if (first_word == 'north' or 'n//') {
+          if (current_room == 0) {
+              current_room = 1;
+              PrintLocation();
+          } else print "You cannot go farther north.^";
+          continue;
+      }
+
+      if (first_word == 'south' or 's//') {
+          if (current_room == 1) {
+              current_room = 0;
+              PrintLocation();
+          } else print "You cannot go farther south.^";
+          continue;
+      }
+
+      if (first_word == 'take' or 'get') {
+          if (second_word == 'token') {
+              if (current_room ~= 0) print "The token is not here.^";
+              else if (token_taken == 1) print "You already have the token.^";
+              else {
+                  token_taken = 1;
+                  score = score + 1;
+                  print "Taken.^";
+              }
+          } else print "What do you want to take?^";
+          continue;
+      }
+
+      if (first_word == 'inventory' or 'inv' or 'i//') {
+          PrintInventory();
+          continue;
+      }
+
+      if (first_word == 'score') {
+          print "Your score is ", score, " out of 1.^";
+          continue;
+      }
+
+      if (first_word == 'quit' or 'q//') {
+          print "Session ended.^";
+          quit;
+      }
+
+      print "I do not understand that command.^";
+  }
+];

@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal-zmachine-story",
+  "ownership": {
+    "kind": "project-owned-original",
+    "license": "MIT",
+    "licensePath": "fixtures/stories/minimal/LICENSE",
+    "contentStatement": "Original test content only; contains no Zork source, story data, prose, map, objects, or solution material."
+  },
+  "source": {
+    "format": "Inform 6 source without the Inform library",
+    "path": "fixtures/stories/minimal/source/minimal.inf",
+    "sha256": "dc84d54c2ef840e077c6fab1a68c8e87889a4a286e6088a1637e1f92e20d6f80"
+  },
+  "artifact": {
+    "format": "Z-machine story file",
+    "path": "fixtures/stories/minimal/artifact/minimal.z3",
+    "sha256": "67d3a47a48227988a29b2f4111da4cf5cd0efec4a8873d717c9e610984fb7389",
+    "zMachineVersion": 3,
+    "release": 1,
+    "serial": "260817",
+    "compilerVersion": "6.44",
+    "byteLength": 2166,
+    "declaredByteLength": 2166,
+    "trailingPaddingBytes": 0,
+    "trailingPaddingValue": 0,
+    "headerChecksum": "0x63c0",
+    "checksumAlgorithm": "Sum bytes from 0x40 through the declared story length modulo 65536.",
+    "specification": "https://inform-fiction.org/zmachine/standards/z1point1/sect11.html"
+  },
+  "compiler": {
+    "name": "Inform",
+    "version": "6.44",
+    "releaseDate": "2025-09-11",
+    "banner": "Inform 6.44 (11th September 2025)",
+    "upstreamUrl": "https://github.com/DavidKinder/Inform6",
+    "sourceTag": "v6.44",
+    "sourceRevision": "973a81bebcbd613578b1cc6a1b23a009fe06abd8",
+    "license": "Artistic-2.0",
+    "licenseUrl": "https://github.com/DavidKinder/Inform6/blob/973a81bebcbd613578b1cc6a1b23a009fe06abd8/licence.txt"
+  },
+  "build": {
+    "script": "scripts/build-minimal-story.mjs",
+    "command": "inform -v3 -Cu '$ZCODE_FILE_END_PADDING=0' minimal.inf minimal.z3",
+    "arguments": [
+      "-v3",
+      "-Cu",
+      "$ZCODE_FILE_END_PADDING=0",
+      "minimal.inf",
+      "minimal.z3"
+    ],
+    "environment": {
+      "LC_ALL": "C",
+      "TZ": "UTC"
+    },
+    "fileEndPaddingArgument": "$ZCODE_FILE_END_PADDING=0",
+    "warningsAllowed": false,
+    "reproducibility": {
+      "independentBuilds": 2,
+      "comparison": "byte-for-byte",
+      "requiredResult": "identical"
+    },
+    "attestationScope": "The source revision and compiler banner are pinned. No compiler executable hash or container digest is asserted."
+  },
+  "provenanceRecords": [
+    "provenance/records/inform6-compiler-v6-44.json",
+    "provenance/records/minimal-story-artifact.json"
+  ]
+}
