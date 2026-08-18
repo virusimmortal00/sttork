@@ -25,6 +25,8 @@
     "story:build:check": "node scripts/build-minimal-story.mjs --check",
     "story:verify": "node scripts/verify-minimal-story.mjs",
     "dork:verify": "node scripts/verify-dork-candidate.mjs",
+    "dork:worker:build": "node scripts/build-dork-worker-browser.mjs",
+    "dork:worker:serve": "node scripts/serve-dork-worker-smoke.mjs",
     "check:provenance": "node scripts/check-provenance.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",

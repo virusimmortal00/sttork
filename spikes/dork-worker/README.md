@@ -72,17 +72,24 @@ unbiased and cold-restorable.
 ## Remaining boundary
 
 This remains spike/test code and is not exported or compiled by the production
-`game-engine` package. It does not yet provide a real browser Worker or factory
-swap, receipt journal/idempotency, cancellation or watchdog behavior, or the
-complete browser/CSP, conformance, output-class, and SBOM evidence.
+`game-engine` package. The isolated Slice 1 bridge now supplies a versioned
+browser message boundary, disposable Worker leases, a bounded outer receipt
+journal, outer `EngineSnapshot` SHA-256 validation, and virgin-worker restore.
+Receipt capacity rejects before mutation, while a lost submitted response
+quarantines execution until the exact request recovers its receipt.
 
-The standalone Dork envelope is structurally validated, but it is not yet wired
-through the outer `EngineSnapshot` SHA-256 check. Until that integration lands,
-an arbitrary bit change that still forms a structurally valid checkpoint relies
-on the future outer digest for detection. SHA-256 provides integrity checking,
-not authenticity.
+Build the ignored browser module graph with `pnpm dork:worker:build`, then run
+`pnpm dork:worker:serve` and open the printed loopback URL. The smoke uses only
+external scripts under a restrictive CSP and proves boot, exact output,
+snapshot, termination of the old lease, silent replacement-worker restore,
+branch receipt replay, corrupt-restore rejection, and continued active-worker
+use. It is developer evidence, not a production bundle or release artifact.
+
+SHA-256 provides integrity checking, not authenticity. Restore remains an
+explicit lifecycle operation and is not exposed as a guide tool.
 
 Missing behavioral fixtures include operand-zero READ, the full
-status/style/general-restart output matrix, and a 50-turn cold restore. Dork's
-story-driven save encoding is not Quetzal and is not used as the project
-checkpoint. No M0 gate is accepted by this slice.
+status/style/general-restart output matrix, a 50-turn cold-worker comparison,
+Safari evidence, watchdog termination, conformance reruns, and release
+bundle/SBOM closure. Dork's story-driven save encoding is not Quetzal and is not
+used as the project checkpoint. No M0 gate is accepted by this slice.

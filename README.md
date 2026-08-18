@@ -60,16 +60,17 @@ release is intended to require no separate story download.
 The exact candidate is a modified, unendorsed fork: upstream Dork commit
 `e5fce5ca678660611b5d2daa94bbffdb3a84e622` plus behavioral patch SHA-256
 `a0a31ec97a78771229615c4311ea4209813e29a65df421f0e020b161447f1605`. A bounded
-Version 3 schema-v2 checkpoint and in-process cold-restore slice, including
-RANDOM/reseed/RESTART equivalence, has landed, but all six M0 interpreter gates
-remain non-pass. Real Worker/factory restore, outer snapshot-integrity wiring,
-receipt/cancellation behavior, 50-turn and full behavioral/conformance coverage,
-browsers/CSP, and final bundle/SBOM evidence remain. The working-title review,
-GitHub protection settings, and remaining security evidence must also pass. See
-[milestones](docs/milestones.md) and the
+Version 3 schema-v2 checkpoint and cold-restore slice, including
+RANDOM/reseed/RESTART equivalence, has landed. The isolated Slice 1 bridge now
+adds real browser Worker/factory restore, outer snapshot integrity, bounded
+receipts, exact-retry quarantine, and one Chrome 151 restrictive-CSP smoke, but
+all six M0 interpreter gates remain non-pass. Safari, watchdog behavior, 50-turn
+and full behavioral/conformance coverage, and final bundle/SBOM evidence remain.
+The working-title review, GitHub protection settings, and remaining security
+evidence must also pass. See [milestones](docs/milestones.md) and the
 [M0 interpreter evidence ledger](docs/m0-interpreter-evidence.md). The
-[dated Dork spike](docs/m0-dork-spike-2026-08-18.md) records the bounded turn
-checkpoint, and RNG evidence. The earlier
+[dated Dork spike](docs/m0-dork-spike-2026-08-18.md) records the bounded Worker,
+checkpoint, receipt, and RNG evidence. The earlier
 [Bocfel spike](docs/m0-bocfel-spike-2026-08-17.md) remains oracle/fallback
 evidence.
 

@@ -427,7 +427,7 @@ class DeterministicFakeWorkerTransport implements EngineWorkerTransport {
       result: {
         status: "restored",
         revision: stored.revision,
-        output: "Restored.\n\n> ",
+        output: "",
         turnComplete: true,
         boundary: stored.boundary,
       },
@@ -722,7 +722,7 @@ describe("generic worker engine adapter contract", () => {
     await expect(adapter.restore(snapshot)).resolves.toMatchObject({
       status: "restored",
       revision: 1,
-      output: "Restored.\n\n> ",
+      output: "",
       turnComplete: true,
     });
     expect(transport.restoreRequests).toBe(1);

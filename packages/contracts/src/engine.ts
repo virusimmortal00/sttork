@@ -62,7 +62,8 @@ export interface CommittedExecuteResult extends ExecuteResultBase {
 
 export interface RejectedExecuteResult extends ExecuteResultBase {
   readonly status: "rejected";
-  readonly rejection: "stale_revision" | "duplicate" | "invalid_command";
+  readonly rejection:
+    "stale_revision" | "duplicate" | "invalid_command" | "receipt_capacity";
 }
 
 export type ExecuteResult = CommittedExecuteResult | RejectedExecuteResult;
@@ -82,7 +83,8 @@ export interface EngineSnapshot {
 export interface RestoredResult {
   readonly status: "restored";
   readonly revision: number;
-  readonly output: string;
+  /** Restore is lifecycle state, not new authoritative engine prose. */
+  readonly output: "";
   readonly turnComplete: true;
   readonly boundary: EngineTurnBoundary;
 }

@@ -13,7 +13,7 @@ import {
   type ExecuteResult,
   type PublicEngineState,
   type RestoreResult,
-} from "@zork-voice/contracts";
+} from "../../contracts/src/index.js";
 
 import {
   ENGINE_WORKER_PROTOCOL_VERSION,
@@ -487,6 +487,11 @@ export class WorkerEngineAdapter implements EnginePort {
       requireTurnComplete(result);
       requireRevision(result.revision, "restore revision");
       if (result.status === "restored") {
+        if (result.output !== "") {
+          throw new EngineWorkerProtocolError(
+            "successful restore must not emit engine output",
+          );
+        }
         if (result.revision !== candidate.revision) {
           throw new EngineWorkerProtocolError(
             "restored revision does not match the snapshot revision",
@@ -730,7 +735,8 @@ export class WorkerEngineAdapter implements EnginePort {
     if (
       (result.rejection !== "stale_revision" &&
         result.rejection !== "duplicate" &&
-        result.rejection !== "invalid_command") ||
+        result.rejection !== "invalid_command" &&
+        result.rejection !== "receipt_capacity") ||
       result.previousRevision !== result.revision ||
       result.revision > currentRevision ||
       (result.revision === currentRevision &&

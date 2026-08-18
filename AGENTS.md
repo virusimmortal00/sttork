@@ -149,6 +149,9 @@ Canonical repository commands are:
   compiler; `pnpm story:build:check` compares that rebuild without writing.
 - `pnpm dork:verify` authenticates the source-pinned Dork core, preserved
   notices, and bundled Zork I Release 119 story without network access.
+- `pnpm dork:worker:build` emits the ignored Slice 1 browser-Worker smoke graph;
+  `pnpm dork:worker:serve` serves it on loopback under restrictive CSP for a
+  manual browser run. Neither command accepts Dork or produces a release bundle.
 - `pnpm check` is the hermetic source gate: formatting, linting, typechecking,
   every non-live test, fixture verification, provenance, licenses, and secrets.
 - `pnpm build` emits the current TypeScript build; `pnpm run ci` runs `check`
@@ -160,9 +163,10 @@ Canonical repository commands are:
   not part of the hermetic source gate. The GitHub verify job runs the full
   audit after `pnpm run ci`.
 
-There is no provider-live, browser, or release command until its real
-implementation and non-empty tests land. Do not invent competing or successful
-placeholder scripts. See `docs/development.md` for setup and command details.
+There is no provider-live, automated browser-test, or release command until its
+real implementation and non-empty tests land. Do not invent competing or
+successful placeholder scripts. See `docs/development.md` for setup and command
+details.
 
 ## External calls and test fixtures
 

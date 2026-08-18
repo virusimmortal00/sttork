@@ -105,16 +105,16 @@ and verifier-locked to golden SHA-256
 project-owned in-memory test now proves positive RANDOM—including deterministic
 tail rejection for unbiased non-divisor ranges—RANDOM 0, negative predictable
 mode, and RESTART remain exact across cold restore. Opaque-save and cold-restart
-evidence are only `running`: the Dork spike is not wired to a real
-Worker/factory swap or the outer `EngineSnapshot` SHA-256 check, and it still
-lacks receipt/idempotency, cancellation/watchdog, complete
-status/style/operand-zero READ/general-restart fixtures, a 50-turn cold restore,
-the worker/CSP browser matrix, fork conformance rerun, and final bundle/SBOM
-evidence. The working-name record remains blocked pending a qualified trademark
-review or rename. GitHub branch/protection settings must be applied and
-evidenced, and the remaining security/provenance exit review must complete. A
-committed workflow file alone is not evidence that remote repository protections
-are active.
+evidence are only `running`: the isolated bridge now has real Worker/factory
+swap, outer `EngineSnapshot` SHA-256 validation, bounded receipt/idempotency,
+exact-retry quarantine, and one Chrome 151 restrictive-CSP smoke. It still lacks
+watchdog termination, complete status/style/operand-zero READ/general-restart
+fixtures, a 50-turn cold-worker restore, Safari and the full browser matrix,
+fork conformance rerun, and final bundle/SBOM evidence. The working-name record
+remains blocked pending a qualified trademark review or rename. GitHub
+branch/protection settings must be applied and evidenced, and the remaining
+security/provenance exit review must complete. A committed workflow file alone
+is not evidence that remote repository protections are active.
 
 ### Deliverables
 

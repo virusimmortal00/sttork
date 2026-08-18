@@ -2,7 +2,7 @@ import {
   canonicalizeCommand,
   type CanonicalCommand,
   type EngineTurnBoundary,
-} from "@zork-voice/contracts";
+} from "../../packages/contracts/src/index.js";
 
 import {
   ZMachine,

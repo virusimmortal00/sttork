@@ -1,6 +1,8 @@
 # Dork TypeScript candidate spike — 2026-08-18
 
-Status: bounded integration, checkpoint, and RNG evidence; no M0 gate accepted  
+Status: bounded Worker, checkpoint, receipt, and RNG evidence; no M0 gate
+accepted
+
 Candidate: modified, unendorsed fork of Dork commit
 `e5fce5ca678660611b5d2daa94bbffdb3a84e622`  
 Decision: [ADR-0009](adr/0009-dork-typescript-interpreter-candidate.md)
@@ -13,9 +15,9 @@ checkpoint slice against both the repository-owned fixture and the separately
 approved Zork I Release 119 story.
 
 The result supports evaluating Dork as the primary candidate. It does not accept
-the interpreter: there is no real browser Worker/factory swap, production
-`EnginePort` wiring, receipt journal/idempotency, cancellation/watchdog,
-complete behavioral or conformance matrix, final bundle, or SBOM yet.
+the interpreter: the real Worker bridge remains isolated spike code, and the
+complete browser/watchdog, behavioral, conformance, release-bundle, and SBOM
+evidence is not complete.
 
 ## Immutable inputs
 
@@ -130,16 +132,43 @@ buckets for unbiased ranges that do not divide 2^32.
 ## Integrity and production boundary
 
 The generic engine snapshot contract caps bytes at 4 MiB before copying or
-hashing; the Dork envelope has the stricter 1 MiB cap. The standalone Dork spike
-bytes receive strict structural validation, but the spike is not yet wired
-through the outer `EngineSnapshot` SHA-256 check. An arbitrary bit change that
-still forms a structurally valid Dork envelope therefore relies on the future
-outer digest for detection. SHA-256 checks integrity, not authenticity.
+hashing; the Dork envelope has the stricter 1 MiB cap. Slice 1 now authenticates
+the copied outer bytes with SHA-256, validates the inner envelope in a virgin
+Worker, and swaps leases only after a silent boundary proof. A failed or
+cancelled staged restore terminates only the candidate and preserves the active
+worker. SHA-256 checks integrity, not authenticity.
 
-The in-process replacement proves the failure-atomicity shape, not a real
-replacement Worker or factory/active-lease swap. There is no persistent receipt
-journal or idempotent retry path, cancellation/watchdog behavior, or quarantine
-proof yet.
+The outer Worker snapshot schema retains an insertion-ordered, bounded receipt
+journal with complete committed-revision history. Exact request retries replay
+the stored result. Conflicting IDs and stale revisions do not mutate. Capacity
+is preflighted before command submission and returns a deterministic
+`receipt_capacity` rejection rather than an ambiguous transport error. A lost
+response after submission quarantines the adapter; inspection may diagnose the
+revision but only the exact request retry recovers the receipt and resumes work.
+
+## Real browser Worker smoke
+
+The ignored module graph is built with `pnpm dork:worker:build` and served from
+loopback with `pnpm dork:worker:serve`. On 2026-08-18, Chrome `151.0.0.0` on
+macOS ran the smoke under `default-src 'none'` with only same-origin scripts,
+Workers, and fetch enabled. Node was `24.19.0`, pnpm `11.19.0`, and TypeScript
+`6.0.3`.
+
+The browser created two real Dedicated Workers. It authenticated and booted the
+minimal story, checked exact LOOK output, snapshotted, executed NORTH,
+terminated the old lease, silently restored into the replacement Worker,
+replayed the pre-snapshot receipt, reproduced the uninterrupted NORTH result,
+rejected a corrupt restore, and proved the preserved worker could commit SOUTH
+at revision 3. The Worker reported `WorkerGlobalScope=true`, `document` absent,
+and `window` absent. No browser warning, error, or CSP violation was recorded.
+The run's snapshot SHA-256 was
+`3fdab402801392609597652e58a232f63120db71fa5a88f627e033f0a398c34b`; secure seed
+generation intentionally prevents treating it as a cross-run golden. The ignored
+emitted Worker entry SHA-256 was
+`17f9621d277ef519910ed22b2573329e9b1b0881039209918e7651e97d69151b`, and the
+runtime module SHA-256 was
+`96e6c303c6c67b5b686eac3e37959ab698c4c18296e3197d7df7b941c730b630`; these are
+smoke identities, not an accepted release bundle.
 
 ## Explicit limitations
 
@@ -148,21 +177,25 @@ The slice does not yet include:
 - an operand-zero READ fixture;
 - the complete status/style/general-restart/output-class matrix;
 - a 50-turn cold-restore comparison;
-- dedicated Chrome/Safari Worker and production-CSP runs;
+- Safari and the complete browser/CSP matrix;
+- watchdog termination and timeout recovery in a hung interpreter;
 - an applicable conformance rerun for the exact fork; or
 - final bundle, patch-closure, notice-bundle, and generated-SBOM evidence.
 
 ## Gate disposition
 
-- Dedicated worker: **not run**.
+- Dedicated worker: **running**; the Chrome 151 restrictive-CSP Worker and
+  replacement-lease smoke passed, but Safari, watchdog, termination, and the
+  complete matrix remain.
 - Turn boundary: **running**; the 50-turn movement run lacks the required
   status/style/restart/output-class coverage.
-- Opaque save bytes: **running**; bounded automatic snapshots, structural
-  rejection, failure atomicity, repeat restore, and detached bytes are proven
-  only in the standalone in-process spike, without outer snapshot-SHA wiring.
-- Cold restart: **running**; minimal-story and bounded Zork replacement-session
-  smokes plus the in-memory RNG/reseed/RESTART equivalence test exist, but no
-  Worker restart or 50-turn comparison exists.
+- Opaque save bytes: **running**; bounded automatic snapshots, outer SHA and
+  inner structural rejection, failure atomicity, receipt history, repeat
+  restore, and detached bytes are wired, while the full hostile-input/browser
+  matrix remains.
+- Cold restart: **running**; a real replacement Worker matches the uninterrupted
+  branch and receipt behavior, and the minimal/Zork/RNG smokes pass, but the
+  50-turn cold-worker and Safari comparisons remain.
 - Conformance: **running**; disposable upstream results are partial evidence and
   have not been rerun against the exact fork.
 - SBOM/redistribution: **running**; source/story provenance is recorded, but the

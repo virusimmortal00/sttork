@@ -37,6 +37,11 @@ or uncertain intent does not execute.
 
 ## Slice 1 — Real Dork Worker bridge
 
+Implementation checkpoint: bounded developer exit met on 2026-08-18 in
+Chrome 151. This records the isolated Worker bridge and one restrictive-CSP
+smoke; it does not accept Dork or satisfy the broader M0 browser, watchdog,
+conformance, long-run, or packaging gates.
+
 ### Deliverables
 
 - Run the pinned Dork candidate and pinned story in an actual dedicated Worker,

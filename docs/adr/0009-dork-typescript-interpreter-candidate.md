@@ -74,10 +74,12 @@ rejects incomplete tail buckets for unbiased ranges that do not divide 2^32. A
 project-owned, in-memory Version 3 test covers those paths across cold restore
 without adding a story artifact.
 
-This is evidence, not production selection. The Dork spike is not wired to a
-real Worker/factory swap or the outer `EngineSnapshot` SHA-256 verification, and
-it lacks receipt journaling/idempotency, cancellation/watchdog behavior, the
-complete behavioral matrix, browser/CSP evidence, conformance rerun, and final
+This is evidence, not production selection. The isolated Slice 1 spike now runs
+through real disposable browser Worker leases, outer `EngineSnapshot` SHA-256
+verification, a bounded receipt journal, exact-retry quarantine, and
+replacement-worker restore. One Chrome 151 restrictive-CSP developer smoke is
+recorded. It still lacks Safari and full browser-matrix evidence, watchdog
+termination, the complete behavioral matrix, conformance rerun, and final
 bundle/SBOM closure. The generic 4 MiB snapshot cap applies before copying or
 hashing, while the Dork envelope applies its stricter 1 MiB limit. SHA-256 is an
 integrity check, not authentication.

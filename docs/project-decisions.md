@@ -108,10 +108,11 @@ rejection for unbiased non-divisor ranges—RANDOM 0, negative predictable mode,
 and RESTART equivalence across cold restore. Automatic snapshot and cold-restore
 evidence is `running`, not `pass`.
 
-The spike is not wired to a real Worker/factory swap or the outer
-`EngineSnapshot` SHA-256 check. It still lacks receipt journaling/idempotency,
-cancellation/watchdog behavior, an operand-zero READ fixture, the complete
-status/style/general-restart matrix, a 50-turn cold restore, browsers/CSP,
+The isolated Slice 1 spike now has a real Worker/factory swap, outer
+`EngineSnapshot` SHA-256 check, bounded receipt journal, exact-retry quarantine,
+and one Chrome 151 restrictive-CSP smoke. It still lacks Safari and full
+browser-matrix evidence, watchdog termination, an operand-zero READ fixture, the
+complete status/style/general-restart matrix, a 50-turn cold-worker restore,
 exact-fork conformance, and final bundle/SBOM closure. Dork's separate
 story-driven save bytes are not Quetzal despite its README wording and are not
 the project checkpoint. SHA-256 checks integrity, not authenticity.
@@ -122,10 +123,9 @@ historical evidence, but none of its gate results transfers to Dork.
 
 ## Assumptions to validate
 
-- The bounded Dork checkpoint fork can be integrated into a real replacement
-  Worker/factory, outer snapshot-integrity boundary, and receipt/cancellation
-  lifecycle without weakening `EnginePort` or growing into disproportionate
-  private interpreter maintenance.
+- The bounded Dork Worker bridge can complete Safari, watchdog, long cold-run,
+  conformance, and release-artifact evidence without weakening `EnginePort` or
+  growing into disproportionate private interpreter maintenance.
 - The admitted Zork I Release 119 story remains bound to its immutable
   historical-acquisition record; any future reconstruction or Zork II/III
   artifact needs its own reproducible build or approved acquisition evidence.

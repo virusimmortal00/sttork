@@ -466,11 +466,12 @@ states when needed so non-divisor ranges remain unbiased. The outer
 changes relative to trusted metadata. Runtime envelope decoders still perform
 their own bounded structural, compatibility, and semantic validation.
 
-The standalone Dork spike is not yet passed through the outer
-`EngineSnapshot.sha256` path. Its inner envelope can reject malformed data and
-runtime/adapter/story mismatches, but an arbitrary bit change that remains
-structurally valid relies on the future outer digest for detection. Neither
-layer may be described as cryptographic authenticity.
+The isolated Dork Worker bridge now passes copied bytes through the outer
+`EngineSnapshot.sha256` path, then validates the inner envelope in a virgin
+Worker before swapping active leases. Its bounded receipt journal is part of the
+outer snapshot and retains every committed revision so exact retries remain
+branch-local across restore. Neither integrity layer may be described as
+cryptographic authenticity.
 
 Migration code is one-way and fixture-tested. An unsupported save is preserved
 and reported, never overwritten. Cloud synchronization, when added, treats the

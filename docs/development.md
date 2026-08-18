@@ -45,6 +45,8 @@ dependency to the owning workspace and commit the resulting lockfile change.
 | `pnpm test`                                 | Run every current non-live Vitest test                      | no      |
 | `pnpm story:verify`                         | Authenticate the checked-in minimal story and manifest      | no      |
 | `pnpm dork:verify`                          | Authenticate the Dork core and bundled Zork I artifact      | no      |
+| `pnpm dork:worker:build`                    | Build the ignored Dork browser-Worker smoke module graph    | no      |
+| `pnpm dork:worker:serve`                    | Serve the built smoke on loopback with restrictive CSP      | no      |
 | `pnpm story:build -- --compiler PATH`       | Rebuild twice and write the deterministic story artifact    | no\*    |
 | `pnpm story:build:check -- --compiler PATH` | Rebuild twice and compare without writing                   | no\*    |
 | `pnpm check:provenance`                     | Validate upstream records and admitted files                | no      |
@@ -60,6 +62,13 @@ dependency to the owning workspace and commit the resulting lockfile change.
 categories. Any future non-live test matching the root Vitest configuration
 therefore enters the source gate automatically. Focused test commands remain
 available for fast local iteration.
+
+The Dork Worker smoke is manual browser evidence, not a production build or an
+M0 pass. Run `pnpm dork:worker:build`, then `pnpm dork:worker:serve`, and open
+the printed loopback URL in the browser under test. A passing page records the
+Worker-isolation flags and exact restore flow. Record the browser version and
+console/CSP result separately; Safari and the full release matrix remain
+required even after one Chrome pass.
 
 `pnpm run ci` does not install dependencies and does not include an advisory
 query. The explicit `run` is required: pnpm 11 owns a separate built-in

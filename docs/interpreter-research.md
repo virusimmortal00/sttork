@@ -60,12 +60,13 @@ the story reaches an input boundary. `io.print()` preserves interpreter output,
 and resolution of `run()` identifies termination. This makes boot and
 one-command turn handling substantially smaller than a Glk bridge.
 
-The current implementation still lacks cancellation/watchdog behavior and a
-browser-worker transport. The generic adapter is a single-transport scaffold;
-the in-process Dork spike does not implement a real Worker factory or active
-lease swap. Dedicated Chrome/Safari Worker execution under the production CSP,
-complete turn-boundary classification, and failure/quarantine behavior remain
-project tests rather than inferred capabilities.
+The isolated Slice 1 implementation adds a versioned browser transport,
+disposable Worker factory/leases, bounded receipt history, exact-retry
+quarantine, outer snapshot integrity, and virgin-worker restore without
+exporting Dork from the production package. One Chrome 151 restrictive-CSP smoke
+passed. Safari, watchdog termination, complete turn-boundary classification, and
+the full failure/browser matrix remain acceptance work rather than inferred
+capabilities.
 
 ### Checkpoint fork evidence and remaining gap
 
@@ -108,19 +109,19 @@ divide 2^32. A project-owned Version 3 story built only in test memory proves
 positive RANDOM, RANDOM 0, negative RANDOM, and RESTART output/state equivalence
 across cold restore without adding a fixture artifact.
 
-This is bounded evidence. The Dork spike is not connected to a replacement
-Worker/factory or the outer `EngineSnapshot` SHA-256 verifier. Its standalone
-bytes receive structural validation, but an arbitrary bit change that remains
-structurally valid relies on the future outer digest for detection. The generic
-contract's 4 MiB before-copy cap and outer digest complement the Dork envelope's
-stricter 1 MiB cap; SHA-256 supplies integrity, not authenticity.
+This is bounded evidence. The Worker bridge copies and caps outer bytes before
+asynchronous work, checks SHA-256, validates the inner envelope in a replacement
+Worker, and swaps only after a silent boundary proof. Its receipt journal blocks
+capacity before mutation and preserves exact request replay across restore. A
+lost response remains quarantined until the exact request recovers its stored
+result. The generic 4 MiB cap complements the Dork envelope's stricter 1 MiB
+cap; SHA-256 supplies integrity, not authenticity.
 
-Still missing are receipt journaling/idempotency, cancellation/watchdog, an
-operand-zero READ fixture, the complete status/style/general-restart/output
-matrix, a 50-turn cold restore, Chrome/Safari and CSP evidence, conformance
-rerun for the exact fork, and final bundle/SBOM closure. The opaque-save and
-cold-restart gates are therefore only `running`; all six M0 gates remain
-non-pass.
+Still missing are watchdog behavior, an operand-zero READ fixture, the complete
+status/style/general-restart/output matrix, a 50-turn cold-worker restore,
+Safari and full CSP/browser evidence, conformance rerun for the exact fork, and
+final bundle/SBOM closure. The dedicated-worker, opaque-save, and cold-restart
+gates are therefore only `running`; all six M0 gates remain non-pass.
 
 ### Upstream test evidence
 

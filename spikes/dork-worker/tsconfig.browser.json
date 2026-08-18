@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ES2023", "WebWorker"],
+    "noEmit": false,
+    "outDir": "../../.ci/dork-worker",
+    "rootDir": "../..",
+    "sourceMap": true,
+    "types": []
+  },
+  "files": [
+    "browser-smoke.ts",
+    "browser-worker-entry.ts",
+    "browser-worker-transport.ts",
+    "dork-worker-engine.ts"
+  ],
+  "include": []
+}
