@@ -1,0 +1,19 @@
+node_modules/
+.pnpm-store/
+.ci/
+dist/
+coverage/
+.turbo/
+.vite/
+.DS_Store
+*.log
+
+# Local credentials and deployment state
+.env
+.env.*
+!.env.example
+.vercel/
+
+# Generated story/tool artifacts are admitted only by provenance policy.
+fixtures/stories/**/build/
+vendor/**/build/

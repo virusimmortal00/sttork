@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: "true"
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+          check-latest: false
+
+      - name: Install the pinned package manager
+        run: npm install --global --ignore-scripts pnpm@11.19.0
+
+      - name: Verify runtime versions
+        run: |
+          test "$(node --version)" = "v24.19.0"
+          test "$(pnpm --version)" = "11.19.0"
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the hermetic source gate and build
+        run: pnpm run ci
+
+      - name: Audit all locked dependencies
+        run: pnpm audit:all
+
+  story-reproducibility:
+    name: Rebuild minimal story
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      CI: "true"
+    steps:
+      - name: Check out the exact project revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out the pinned Inform 6 source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: DavidKinder/Inform6
+          ref: 973a81bebcbd613578b1cc6a1b23a009fe06abd8
+          path: .ci/inform6
+          persist-credentials: false
+
+      - name: Install the pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+          check-latest: false
+
+      - name: Install the pinned package manager
+        run: npm install --global --ignore-scripts pnpm@11.19.0
+
+      - name: Verify the Inform source revision
+        run: |
+          test "$(git -C .ci/inform6 rev-parse HEAD)" = \
+            "973a81bebcbd613578b1cc6a1b23a009fe06abd8"
+
+      - name: Build the pinned Inform 6 compiler
+        run: cc -O2 -o "$RUNNER_TEMP/inform6" .ci/inform6/*.c
+
+      - name: Rebuild and compare the minimal story
+        run: pnpm story:build:check -- --compiler "$RUNNER_TEMP/inform6"

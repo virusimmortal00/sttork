@@ -1,0 +1,50 @@
+{
+  "name": "zork-voice",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A free, open-source, voice-native interface to the MIT-licensed Zork trilogy.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "pnpm": ">=11.19.0 <12"
+  },
+  "scripts": {
+    "preinstall": "node scripts/check-runtime.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:contract": "vitest run --config vitest.contract.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "story:build": "node scripts/build-minimal-story.mjs",
+    "story:build:check": "node scripts/build-minimal-story.mjs --check",
+    "story:verify": "node scripts/verify-minimal-story.mjs",
+    "dork:verify": "node scripts/verify-dork-candidate.mjs",
+    "check:provenance": "node scripts/check-provenance.mjs",
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "audit:all": "pnpm audit --audit-level high",
+    "audit:production": "pnpm audit --prod --audit-level high",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm story:verify && pnpm dork:verify && pnpm check:provenance && pnpm check:licenses && pnpm check:secrets",
+    "ci": "pnpm check && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.2.0",
+    "@zork-voice/contracts": "workspace:*",
+    "@zork-voice/events": "workspace:*",
+    "@zork-voice/test-support": "workspace:*",
+    "ajv": "8.18.0",
+    "eslint": "10.8.1",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.10"
+  }
+}

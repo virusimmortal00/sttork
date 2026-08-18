@@ -1,0 +1,12 @@
+{
+  "name": "@zork-voice/events",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Ordered canonical event construction and replay primitives.",
+  "license": "MIT",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/contracts": "workspace:*"
+  }
+}

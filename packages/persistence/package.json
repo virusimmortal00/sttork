@@ -1,0 +1,8 @@
+{
+  "name": "@zork-voice/persistence",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Atomic local checkpoints and versioned persistence ports.",
+  "license": "MIT",
+  "type": "module"
+}

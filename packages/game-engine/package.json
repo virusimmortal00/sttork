@@ -1,0 +1,12 @@
+{
+  "name": "@zork-voice/game-engine",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generic typed worker protocol and authoritative engine adapter boundary.",
+  "license": "MIT",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/contracts": "workspace:*"
+  }
+}

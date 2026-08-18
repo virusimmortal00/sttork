@@ -1,0 +1,9 @@
+{
+  "name": "@zork-voice/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Provider-neutral commands, events, engine, guide, and save contracts.",
+  "license": "MIT",
+  "type": "module",
+  "exports": "./src/index.ts"
+}

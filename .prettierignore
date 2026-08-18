@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+vendor/
+LICENSES/dork/NOTICE.md
+fixtures/stories/**/build/
+pnpm-lock.yaml

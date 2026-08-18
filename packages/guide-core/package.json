@@ -1,0 +1,8 @@
+{
+  "name": "@zork-voice/guide-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Provider-neutral Dungeon Guide policy and orchestration.",
+  "license": "MIT",
+  "type": "module"
+}
