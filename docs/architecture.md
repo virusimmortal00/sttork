@@ -226,6 +226,16 @@ views:
 - **Hint registry:** reviewed, spoiler-tagged hints and solutions released only
   through hint policy.
 
+Natural-language authorization does not require a literal grammar alias in every
+valid paraphrase. Per
+[ADR-0012](adr/0012-structured-semantic-command-intents.md), the provider-facing
+guide selects a bounded affordance ID and typed slots from the current index.
+Command knowledge validates those IDs, observed referents, revision, and local
+risk tier, then compiles the canonical parser string. During the compatibility
+slice, only certified global observations may use this semantic lane; other
+actions retain lexical grounding until their slot and confirmation contracts
+land.
+
 The normal guide context never includes the complete object table, map, puzzle
 solutions, or engine memory. `inspectPublicState` exposes only supported public
 facts; it is not a generic memory inspector. When reliable structured state is

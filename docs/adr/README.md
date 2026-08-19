@@ -38,6 +38,8 @@ decision with a new ADR and link both records.
   — accepted; supersedes ADR-0008.
 - [ADR-0011: Show transient canonical command and activity status](0011-transient-command-and-activity-status.md)
   — accepted.
+- [ADR-0012: Resolve natural language through structured command intents](0012-structured-semantic-command-intents.md)
+  — accepted; the first rollout is limited to certified global observations.
 
 ## Template
 

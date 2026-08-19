@@ -124,6 +124,7 @@ interface CommandAffordance {
   aliases: readonly string[];
   grammar: readonly string[];
   candidateObjects: readonly string[];
+  riskTier: 0 | 1 | 2 | 3 | 4;
   source: "compiled-grammar" | "observed-context" | "parser-feedback";
 }
 
@@ -317,6 +318,15 @@ model. It contains verbs, aliases, recognized grammar forms, standard parser
 commands, and contextually visible object names. It does not expose hidden
 solutions.
 
+Aliases are parser examples and high-precision fast paths, not an exhaustive
+natural-language authorization list. The provider-facing model selects a bounded
+affordance ID and typed slots from the current index. Command knowledge
+validates that selection and locally compiles the parser command under the
+risk-tier policy in [ADR-0012](adr/0012-structured-semantic-command-intents.md).
+The compatibility slice permits semantic paraphrases only for certified
+zero-slot `look` and `inventory`; higher-risk actions retain lexical grounding
+until their typed slots land.
+
 Before execution, the orchestrator checks:
 
 - the decision matches the runtime schema;
@@ -506,9 +516,9 @@ details appear only in debug mode unless the player needs them to reconnect.
 The guide contract is not complete until automated fixtures cover at least:
 
 1. A direct intent such as “open the mailbox” executes one grounded command.
-2. A natural request such as “look around for anything useful,” “what do I see
-   around me?,” or “what do I see in front of me?” maps to observation without
-   fabricated findings.
+2. A paraphrase family for current-location observation—including unseen test
+   wording—maps to one `look` intent without fabricated findings, while negated,
+   hypothetical, quoted, or multi-action contrasts do not execute.
 3. An ambiguous object reference produces a clarification and no engine turn.
 4. A multi-step request observes each engine response and stops after an
    unexpected result.

@@ -38,6 +38,13 @@ command language, resolves references from observed context, asks for
 clarification, remembers previously observed facts, and provides graduated hints
 when requested.
 
+[ADR-0012](adr/0012-structured-semantic-command-intents.md) makes this semantic
+role explicit: provider models select bounded affordances and slots, while local
+command knowledge validates and compiles the canonical parser command. Parser
+aliases are examples and deterministic fast paths, not an exhaustive list of
+ways a player may express an intent. Semantic rollout is risk-tiered; unknown or
+consequential intents remain non-executing until their stricter policy lands.
+
 It does not silently solve puzzles, invent game facts, or expose unseen world
 state.
 
