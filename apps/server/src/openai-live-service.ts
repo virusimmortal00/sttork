@@ -1,5 +1,5 @@
 import { createOpeningCommandKnowledge } from "@zork-voice/command-knowledge";
-import { validateGuideDecision } from "@zork-voice/guide-core";
+import { validateInitialGuideModelDecision } from "@zork-voice/guide-core";
 import type {
   GuideDecisionWithUsage,
   ProviderSpeech,
@@ -209,7 +209,7 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
         );
         let decision;
         try {
-          decision = validateGuideDecision(result.decision);
+          decision = validateInitialGuideModelDecision(result.decision);
         } catch (error) {
           throw new ProviderAdapterError(
             "malformed-response",

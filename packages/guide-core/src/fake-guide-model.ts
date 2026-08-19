@@ -1,6 +1,5 @@
-import type { GuideDecision } from "../../contracts/src/index.js";
-
 import type { GuideModel, InitialGuideModelInput } from "./initial-guide.js";
+import type { InitialGuideModelDecision } from "./initial-model-decision-validator.js";
 
 export type FakeGuideResolver = (
   input: InitialGuideModelInput,
@@ -23,7 +22,7 @@ export class FakeGuideModel implements GuideModel {
     return await this.#resolver(input);
   }
 
-  public static returning(decision: GuideDecision): FakeGuideModel {
+  public static returning(decision: InitialGuideModelDecision): FakeGuideModel {
     return new FakeGuideModel(() => decision);
   }
 }

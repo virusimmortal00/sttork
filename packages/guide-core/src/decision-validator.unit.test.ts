@@ -63,6 +63,13 @@ describe("validateGuideDecision", () => {
       confidence: 0.9,
       injected: true,
     },
+    {
+      kind: "execute",
+      command: "look",
+      affordanceId: "grammar.look",
+      intentSummary: "Observe the location",
+      confidence: 0.9,
+    },
     { kind: "session_control", control: "delete-save" },
     { kind: "request_hint", puzzleContext: "mailbox", requestedLevel: 5 },
     { kind: "invent-world", room: "secret" },

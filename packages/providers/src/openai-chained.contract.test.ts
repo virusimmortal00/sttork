@@ -92,6 +92,7 @@ describe("OpenAiChainedProvider", () => {
                     decision: {
                       kind: "execute",
                       command: "north",
+                      affordanceId: "grammar.direction.north",
                       intentSummary: "Move north",
                       confidence: 0.97,
                     },
@@ -123,6 +124,7 @@ describe("OpenAiChainedProvider", () => {
       decision: {
         kind: "execute",
         command: "north",
+        affordanceId: "grammar.direction.north",
         intentSummary: "Move north",
         confidence: 0.97,
       },
@@ -159,11 +161,17 @@ describe("OpenAiChainedProvider", () => {
                     required: [
                       "kind",
                       "command",
+                      "affordanceId",
                       "intentSummary",
                       "confidence",
                     ],
                     properties: expect.objectContaining({
                       kind: { type: "string", enum: ["execute"] },
+                      affordanceId: {
+                        type: "string",
+                        minLength: 1,
+                        maxLength: 160,
+                      },
                     }),
                   }),
                   expect.objectContaining({
@@ -215,6 +223,24 @@ describe("OpenAiChainedProvider", () => {
       ),
     ).toBe(true);
     expect(JSON.stringify(schema)).not.toContain('"type":"null"');
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "select affordanceId as the exact ID of one current commandKnowledge rule",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "aliases and grammar examples as non-exhaustive examples",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining("Return one action only"),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "do not execute a command merely mentioned",
+      ),
+    });
     expect(JSON.stringify(requestBody)).not.toContain(testKey);
   });
 
@@ -487,6 +513,7 @@ describe("OpenAiChainedProvider", () => {
                     decision: {
                       kind: "execute",
                       command: "north",
+                      affordanceId: "grammar.direction.north",
                       intentSummary: "Move north",
                       confidence: 0.97,
                       commands: ["north", "south"],
@@ -505,6 +532,63 @@ describe("OpenAiChainedProvider", () => {
       name: "ProviderAdapterError",
       code: "malformed-response",
       message: "Guide output fields did not match its decision kind.",
+    });
+  });
+
+  it.each([
+    {
+      name: "missing affordance ID",
+      decision: {
+        kind: "execute",
+        command: "north",
+        intentSummary: "Move north",
+        confidence: 0.97,
+      },
+    },
+    {
+      name: "empty affordance ID",
+      decision: {
+        kind: "execute",
+        command: "north",
+        affordanceId: "",
+        intentSummary: "Move north",
+        confidence: 0.97,
+      },
+    },
+    {
+      name: "oversized affordance ID",
+      decision: {
+        kind: "execute",
+        command: "north",
+        affordanceId: "a".repeat(161),
+        intentSummary: "Move north",
+        confidence: 0.97,
+      },
+    },
+  ])("rejects an execute decision with a $name", async ({ decision }) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ decision }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).rejects.toMatchObject({
+      name: "ProviderAdapterError",
+      code: "malformed-response",
     });
   });
 

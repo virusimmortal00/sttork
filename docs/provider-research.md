@@ -97,6 +97,16 @@ Keeping branch-specific fields inside those variants prevents a schema-valid
 response from pairing a decision kind with null or unrelated fields; the
 provider-neutral runtime validator remains the final authority.
 
+The live execute branch also requires a bounded `affordanceId` selected from the
+current command-knowledge rules. Aliases and grammar strings are prompt
+examples, not an exhaustive paraphrase list. Guide core verifies that the ID and
+proposed command agree, permits semantic fallback only for locally certified
+global observations, compiles the canonical command locally, and removes this
+provider-only field before canonical guide events are recorded. This is the
+compatibility stage of
+[ADR-0012](adr/0012-structured-semantic-command-intents.md), not the completed
+typed-slot migration.
+
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
 - [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)

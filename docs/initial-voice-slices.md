@@ -90,6 +90,14 @@ subset validates the complete provider-neutral decision union, while the initial
 policy accepts only `execute`, `clarify`, and deterministic command-help
 `explain` outcomes. This does not complete M2 or qualify a live guide model.
 
+Evolution note, 2026-08-19: the chained OpenAI smoke now requires execute
+proposals to select a current command-knowledge affordance ID. The first
+risk-tiered semantic lane covers only zero-slot `look` and `inventory`, allowing
+unseen natural paraphrases without adding literal aliases. Navigation and object
+actions retain lexical grounding until the typed-slot design in
+[ADR-0012](adr/0012-structured-semantic-command-intents.md) is implemented and
+evaluated. This does not reopen the Slice 2 checkpoint or complete M2.
+
 ### Deliverables
 
 - Implement the provider-neutral guide decision contract and deterministic

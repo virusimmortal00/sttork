@@ -389,6 +389,7 @@ describe("OpenAiLiveGuideModel", () => {
     const decision = {
       kind: "execute",
       command: "north",
+      affordanceId: "grammar.direction.north",
       intentSummary: "Move north",
       confidence: 0.98,
     };

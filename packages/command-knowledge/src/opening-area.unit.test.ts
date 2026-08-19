@@ -8,6 +8,7 @@ import {
   groundPendingOpeningObjectReply,
   inferPendingOpeningObjectIntent,
   openingCommandHelp,
+  resolveOpeningAffordanceCommand,
 } from "./opening-area.js";
 
 describe("opening-area command knowledge", () => {
@@ -49,6 +50,54 @@ describe("opening-area command knowledge", () => {
         knowledge,
       ),
     ).toEqual({ ok: false, code: "unsupported-grammar" });
+  });
+
+  it("resolves only locally described affordances and marks the semantic tier", () => {
+    expect(
+      resolveOpeningAffordanceCommand("look", "grammar.look", knowledge),
+    ).toEqual({
+      ok: true,
+      command: "look",
+      ruleId: "grammar.look",
+      riskTier: 1,
+      semanticFallbackAllowed: true,
+    });
+    expect(
+      resolveOpeningAffordanceCommand(
+        "inventory",
+        "grammar.inventory",
+        knowledge,
+      ),
+    ).toEqual({
+      ok: true,
+      command: "inventory",
+      ruleId: "grammar.inventory",
+      riskTier: 1,
+      semanticFallbackAllowed: true,
+    });
+    expect(
+      resolveOpeningAffordanceCommand(
+        "open mailbox",
+        "grammar.open",
+        knowledge,
+      ),
+    ).toMatchObject({
+      ok: true,
+      command: "open mailbox",
+      riskTier: 3,
+      semanticFallbackAllowed: false,
+    });
+  });
+
+  it.each([
+    ["look", "grammar.direction.north", "affordance-command-mismatch"],
+    ["north", "grammar.look", "affordance-command-mismatch"],
+    ["look", "grammar.unknown", "unknown-affordance"],
+    ["take sword", "grammar.take", "unobserved-object"],
+  ])("rejects command %s for affordance %s", (command, affordanceId, code) => {
+    expect(
+      resolveOpeningAffordanceCommand(command, affordanceId, knowledge),
+    ).toEqual({ ok: false, code });
   });
 
   it.each([
@@ -162,7 +211,25 @@ describe("opening-area command knowledge", () => {
     expect(Object.isFrozen(knowledge.rules)).toBe(true);
     expect(Object.isFrozen(knowledge.observedObjects)).toBe(true);
     expect(knowledge.version).toBe(OPENING_AREA_KNOWLEDGE_VERSION);
-    expect(knowledge.version).toBe(4);
+    expect(knowledge.version).toBe(5);
+    expect(
+      knowledge.rules.find((rule) => rule.id === "grammar.look"),
+    ).toMatchObject({
+      semanticDescription: expect.any(String),
+      riskTier: 1,
+      semanticFallbackAllowed: true,
+    });
+    expect(
+      knowledge.rules.find((rule) => rule.id === "grammar.look")?.aliases,
+    ).not.toContain("tell me where i am");
+    expect(
+      knowledge.rules
+        .filter((rule) => rule.semanticFallbackAllowed)
+        .map((rule) => [rule.id, rule.riskTier]),
+    ).toEqual([
+      ["grammar.look", 1],
+      ["grammar.inventory", 1],
+    ]);
   });
 
   it("rejects oversized observed context before constructing model input", () => {

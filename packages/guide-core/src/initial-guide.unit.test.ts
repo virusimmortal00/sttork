@@ -55,6 +55,149 @@ describe("initial bounded Dungeon Guide", () => {
     },
   );
 
+  it.each([
+    ["Tell me where I am.", "grammar.look", "look"],
+    ["Describe this place.", "grammar.look", "look"],
+    ["Give me a sense of my surroundings.", "grammar.look", "look"],
+    ["What can I see from here?", "grammar.look", "look"],
+    ["What have I got with me?", "grammar.inventory", "inventory"],
+    ["List my possessions.", "grammar.inventory", "inventory"],
+  ])(
+    "semantically resolves the paraphrase %s through %s",
+    async (playerUtterance, affordanceId, command) => {
+      const result = await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          command,
+          affordanceId,
+          intentSummary: "Resolve one global observation",
+          confidence: 0.99,
+        }),
+        { ...baseInput, playerUtterance },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "execute",
+        command,
+        groundingSourceId: affordanceId,
+      });
+      if (result.kind === "execute") {
+        expect(result.decision).not.toHaveProperty("affordanceId");
+      }
+    },
+  );
+
+  it.each([
+    {
+      name: "mismatched command",
+      playerUtterance: "Tell me where I am.",
+      command: "north",
+      affordanceId: "grammar.look",
+    },
+    {
+      name: "mismatched affordance",
+      playerUtterance: "Tell me where I am.",
+      command: "look",
+      affordanceId: "grammar.direction.north",
+    },
+    {
+      name: "unknown affordance",
+      playerUtterance: "Tell me where I am.",
+      command: "look",
+      affordanceId: "grammar.unknown",
+    },
+    {
+      name: "higher-risk semantic bypass",
+      playerUtterance: "Please reveal the mailbox.",
+      command: "open mailbox",
+      affordanceId: "grammar.open",
+    },
+  ])(
+    "rejects $name without lexical authorization",
+    async ({ playerUtterance, command, affordanceId }) => {
+      expect(
+        await decideInitialGuideTurn(
+          FakeGuideModel.returning({
+            kind: "execute",
+            command,
+            affordanceId,
+            intentSummary: "Unsafe semantic proposal",
+            confidence: 0.99,
+          }),
+          { ...baseInput, playerUtterance, observedObjects: ["mailbox"] },
+          signal,
+        ),
+      ).toMatchObject({ kind: "rejected", cause: "ungrounded-command" });
+    },
+  );
+
+  it.each([
+    ["go north", "north", "grammar.direction.north"],
+    ["open the mailbox", "open mailbox", "grammar.open"],
+  ])(
+    "retains lexical grounding for the higher-risk request %s",
+    async (playerUtterance, command, affordanceId) => {
+      expect(
+        await decideInitialGuideTurn(
+          FakeGuideModel.returning({
+            kind: "execute",
+            command,
+            affordanceId,
+            intentSummary: "Perform the explicitly requested action",
+            confidence: 0.99,
+          }),
+          { ...baseInput, playerUtterance, observedObjects: ["mailbox"] },
+          signal,
+        ),
+      ).toMatchObject({
+        kind: "execute",
+        command,
+        groundingSourceId: affordanceId,
+      });
+    },
+  );
+
+  it.each([
+    "Do not tell me where I am.",
+    "Tell me where I am, then open the mailbox.",
+  ])(
+    "does not ask the model to execute the unsafe semantic contrast %s",
+    async (playerUtterance) => {
+      const model = FakeGuideModel.returning({
+        kind: "execute",
+        command: "look",
+        affordanceId: "grammar.look",
+        intentSummary: "Observe the location",
+        confidence: 0.99,
+      });
+      expect(
+        await decideInitialGuideTurn(
+          model,
+          { ...baseInput, playerUtterance },
+          signal,
+        ),
+      ).toMatchObject({ kind: "clarify" });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("clarifies a low-confidence semantic observation", async () => {
+    expect(
+      await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          command: "look",
+          affordanceId: "grammar.look",
+          intentSummary: "Observe the location",
+          confidence: 0.5,
+        }),
+        { ...baseInput, playerUtterance: "Tell me where I am." },
+        signal,
+      ),
+    ).toMatchObject({ kind: "clarify" });
+  });
+
   it("routes an exact observed-object content question without calling the provider", async () => {
     const model = new FakeGuideModel(() => {
       throw new Error(

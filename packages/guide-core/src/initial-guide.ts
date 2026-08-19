@@ -5,6 +5,7 @@ import {
   groundPendingOpeningObjectReply,
   inferPendingOpeningObjectIntent,
   openingCommandHelp,
+  resolveOpeningAffordanceCommand,
   type OpeningCommandKnowledge,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
@@ -13,7 +14,10 @@ import type {
   GuideDecision,
 } from "../../contracts/src/index.js";
 
-import { validateGuideDecision } from "./decision-validator.js";
+import {
+  type InitialGuideModelDecision,
+  validateInitialGuideModelDecision,
+} from "./initial-model-decision-validator.js";
 
 export const INITIAL_EXECUTE_CONFIDENCE = 0.8;
 export const INITIAL_TRANSCRIPT_CONFIDENCE = 0.75;
@@ -111,6 +115,15 @@ function validPendingIntent(
       Object.keys(value).length === 1 &&
       ["examine", "open", "read", "take"].includes(value.action))
   );
+}
+
+function materializeExecuteDecision(
+  proposal: Extract<InitialGuideModelDecision, { readonly kind: "execute" }>,
+  command: CanonicalCommand,
+): Extract<GuideDecision, { readonly kind: "execute" }> {
+  const { affordanceId: _providerOnlyAffordanceId, ...decision } = proposal;
+  void _providerOnlyAffordanceId;
+  return { ...decision, command };
 }
 
 export async function decideInitialGuideTurn(
@@ -233,9 +246,9 @@ export async function decideInitialGuideTurn(
   }
   signal.throwIfAborted();
 
-  let decision: GuideDecision;
+  let decision: InitialGuideModelDecision;
   try {
-    decision = validateGuideDecision(unknownDecision);
+    decision = validateInitialGuideModelDecision(unknownDecision);
   } catch {
     return {
       kind: "rejected",
@@ -320,12 +333,46 @@ export async function decideInitialGuideTurn(
   }
 
   try {
-    const grounded = groundOpeningCommand(
+    const lexicalGrounding = groundOpeningCommand(
       decision.command,
       input.playerUtterance,
       knowledge,
     );
-    if (!grounded.ok) {
+    if (decision.affordanceId === undefined) {
+      if (!lexicalGrounding.ok) {
+        return {
+          kind: "rejected",
+          cause: "ungrounded-command",
+          decision: {
+            kind: "cannot_comply",
+            response:
+              "I could not ground that command in your words and the observed scene.",
+            reason: "not-observed",
+          },
+        };
+      }
+      return {
+        kind: "execute",
+        command: lexicalGrounding.command,
+        decision: materializeExecuteDecision(
+          decision,
+          lexicalGrounding.command,
+        ),
+        groundingSourceId: lexicalGrounding.ruleId,
+      };
+    }
+
+    const semanticGrounding = resolveOpeningAffordanceCommand(
+      decision.command,
+      decision.affordanceId,
+      knowledge,
+    );
+    if (
+      !semanticGrounding.ok ||
+      (!lexicalGrounding.ok &&
+        (!semanticGrounding.semanticFallbackAllowed ||
+          semanticGrounding.riskTier !== 1))
+    ) {
       return {
         kind: "rejected",
         cause: "ungrounded-command",
@@ -339,9 +386,9 @@ export async function decideInitialGuideTurn(
     }
     return {
       kind: "execute",
-      command: grounded.command,
-      decision,
-      groundingSourceId: grounded.ruleId,
+      command: semanticGrounding.command,
+      decision: materializeExecuteDecision(decision, semanticGrounding.command),
+      groundingSourceId: semanticGrounding.ruleId,
     };
   } catch {
     return {

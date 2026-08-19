@@ -64,10 +64,17 @@ const guideDecisionSchema = {
         {
           type: "object",
           additionalProperties: false,
-          required: ["kind", "command", "intentSummary", "confidence"],
+          required: [
+            "kind",
+            "command",
+            "affordanceId",
+            "intentSummary",
+            "confidence",
+          ],
           properties: {
             kind: { type: "string", enum: ["execute"] },
             command: { type: "string", minLength: 1, maxLength: 160 },
+            affordanceId: { type: "string", minLength: 1, maxLength: 160 },
             intentSummary: {
               type: "string",
               minLength: 1,
@@ -186,6 +193,7 @@ function normalizeGuideDecision(value: unknown): unknown {
     assertExactDecisionKeys(value, [
       "kind",
       "command",
+      "affordanceId",
       "intentSummary",
       "confidence",
     ]);
@@ -204,6 +212,7 @@ function normalizeGuideDecision(value: unknown): unknown {
     return {
       kind,
       command: string("command", 160),
+      affordanceId: string("affordanceId", 160),
       intentSummary: string("intentSummary", 240),
       confidence,
     };
@@ -542,7 +551,7 @@ export class OpenAiChainedProvider implements GuideModel {
           ? {}
           : { safety_identifier: this.#safetyIdentifier }),
         instructions:
-          "You are a constrained parser guide. Return one schema-valid decision. Use execute only for one unambiguous game action. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed. Do not emit multiple commands or hidden game facts.",
+          "You are a constrained parser guide. Return one schema-valid decision. Use execute only when the player directly requests one unambiguous game action; do not execute a command merely mentioned in a question, quotation, example, hypothetical, or description. For execute, select affordanceId as the exact ID of one current commandKnowledge rule and ensure command agrees with that rule. Treat commandKnowledge aliases and grammar examples as non-exhaustive examples of how a player may express that action, not as an exhaustive natural-language allowlist. Return one action only; never combine, sequence, or emit multiple commands. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed or reveal hidden game facts.",
         input: serializedInput,
         text: {
           verbosity: this.#profile.guideVerbosity,

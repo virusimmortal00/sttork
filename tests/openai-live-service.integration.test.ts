@@ -40,6 +40,7 @@ class FakeProvider implements OpenAiLiveProviderPort {
         decision: {
           kind: "execute",
           command: "north",
+          affordanceId: "grammar.direction.north",
           intentSummary: "Move north",
           confidence: 0.98,
         },
@@ -234,6 +235,7 @@ describe("OpenAI local live service", () => {
       decision: {
         kind: "execute",
         command: "north",
+        affordanceId: "grammar.direction.north",
         intentSummary: "Move north",
         confidence: 0.98,
       },
@@ -372,6 +374,26 @@ describe("OpenAI local live service", () => {
     expect(await budget.text()).toBe(
       JSON.stringify({ error: { code: "budget-exhausted" } }),
     );
+
+    provider.decideWithUsage.mockResolvedValueOnce({
+      decision: {
+        kind: "execute",
+        command: "look",
+        affordanceId: "",
+        intentSummary: "Observe the location",
+        confidence: 0.99,
+      },
+      usage: {
+        provider: "openai",
+        capability: "guide",
+        model: "guide-test",
+      },
+    });
+    const invalidAffordance = await handle(guideRequest());
+    expect(invalidAffordance.status).toBe(502);
+    expect(await invalidAffordance.json()).toEqual({
+      error: { code: "malformed-response" },
+    });
 
     provider.decideWithUsage.mockResolvedValueOnce({
       decision: { kind: "execute", command: "north", extra: "unsafe" },

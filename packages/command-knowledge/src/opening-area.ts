@@ -3,7 +3,7 @@ import {
   type CanonicalCommand,
 } from "../../contracts/src/index.js";
 
-export const OPENING_AREA_KNOWLEDGE_VERSION = 4;
+export const OPENING_AREA_KNOWLEDGE_VERSION = 5;
 export const MAX_OBSERVED_OBJECTS = 32;
 export const MAX_OBSERVED_OBJECT_LENGTH = 80;
 
@@ -33,6 +33,9 @@ export interface OpeningCommandRule {
   readonly aliases: readonly string[];
   readonly objectRequired: boolean;
   readonly grammar: string;
+  readonly semanticDescription: string;
+  readonly riskTier: 1 | 2 | 3;
+  readonly semanticFallbackAllowed: boolean;
 }
 
 export interface OpeningCommandKnowledge {
@@ -46,13 +49,28 @@ export type CommandGroundingFailureCode =
   | "unsupported-grammar"
   | "missing-object"
   | "unobserved-object"
-  | "not-grounded-in-utterance";
+  | "not-grounded-in-utterance"
+  | "unknown-affordance"
+  | "affordance-command-mismatch";
 
 export type CommandGroundingResult =
   | {
       readonly ok: true;
       readonly command: CanonicalCommand;
       readonly ruleId: string;
+    }
+  | {
+      readonly ok: false;
+      readonly code: CommandGroundingFailureCode;
+    };
+
+export type OpeningAffordanceResolution =
+  | {
+      readonly ok: true;
+      readonly command: CanonicalCommand;
+      readonly ruleId: string;
+      readonly riskTier: 1 | 2 | 3;
+      readonly semanticFallbackAllowed: boolean;
     }
   | {
       readonly ok: false;
@@ -71,6 +89,10 @@ const RULES: readonly OpeningCommandRule[] = [
     ],
     objectRequired: false,
     grammar: "look",
+    semanticDescription:
+      "Describe the player's current location and visible surroundings.",
+    riskTier: 1,
+    semanticFallbackAllowed: true,
   },
   {
     id: "grammar.inventory",
@@ -78,6 +100,9 @@ const RULES: readonly OpeningCommandRule[] = [
     aliases: ["inventory", "check inventory", "what am i carrying"],
     objectRequired: false,
     grammar: "inventory",
+    semanticDescription: "List the possessions the player currently carries.",
+    riskTier: 1,
+    semanticFallbackAllowed: true,
   },
   ...(["north", "south", "east", "west", "up", "down"] as const).map(
     (direction): OpeningCommandRule => ({
@@ -86,6 +111,9 @@ const RULES: readonly OpeningCommandRule[] = [
       aliases: [direction, `go ${direction}`, `head ${direction}`],
       objectRequired: false,
       grammar: direction,
+      semanticDescription: `Move in the ${direction} direction.`,
+      riskTier: 3,
+      semanticFallbackAllowed: false,
     }),
   ),
   {
@@ -94,6 +122,9 @@ const RULES: readonly OpeningCommandRule[] = [
     aliases: ["examine", "inspect", "look at", "x"],
     objectRequired: true,
     grammar: "examine <observed object>",
+    semanticDescription: "Observe one currently observed object more closely.",
+    riskTier: 2,
+    semanticFallbackAllowed: false,
   },
   {
     id: "grammar.open",
@@ -101,6 +132,9 @@ const RULES: readonly OpeningCommandRule[] = [
     aliases: ["open"],
     objectRequired: true,
     grammar: "open <observed object>",
+    semanticDescription: "Open one currently observed object.",
+    riskTier: 3,
+    semanticFallbackAllowed: false,
   },
   {
     id: "grammar.read",
@@ -108,6 +142,9 @@ const RULES: readonly OpeningCommandRule[] = [
     aliases: ["read"],
     objectRequired: true,
     grammar: "read <observed object>",
+    semanticDescription: "Read one currently observed object.",
+    riskTier: 3,
+    semanticFallbackAllowed: false,
   },
   {
     id: "grammar.take",
@@ -115,6 +152,9 @@ const RULES: readonly OpeningCommandRule[] = [
     aliases: ["take", "get", "pick up"],
     objectRequired: true,
     grammar: "take <observed object>",
+    semanticDescription: "Take one currently observed object.",
+    riskTier: 3,
+    semanticFallbackAllowed: false,
   },
 ];
 
@@ -265,6 +305,61 @@ function findRule(command: string): {
   return null;
 }
 
+function compileParsedOpeningCommand(
+  parsed: NonNullable<ReturnType<typeof findRule>>,
+  knowledge: OpeningCommandKnowledge,
+): CommandGroundingResult {
+  if (!parsed.rule.objectRequired) {
+    return {
+      ok: true,
+      command: canonicalizeCommand(parsed.rule.verb),
+      ruleId: parsed.rule.id,
+    };
+  }
+  if (parsed.object.length === 0) {
+    return { ok: false, code: "missing-object" };
+  }
+  if (!knowledge.observedObjects.includes(parsed.object)) {
+    return { ok: false, code: "unobserved-object" };
+  }
+  return {
+    ok: true,
+    command: canonicalizeCommand(`${parsed.rule.verb} ${parsed.object}`),
+    ruleId: parsed.rule.id,
+  };
+}
+
+export function resolveOpeningAffordanceCommand(
+  proposedCommand: unknown,
+  affordanceId: unknown,
+  knowledge: OpeningCommandKnowledge,
+): OpeningAffordanceResolution {
+  if (typeof affordanceId !== "string") {
+    return { ok: false, code: "unknown-affordance" };
+  }
+  const selectedRule = RULES.find((rule) => rule.id === affordanceId);
+  if (
+    selectedRule === undefined ||
+    !knowledge.sourceIds.includes(selectedRule.id)
+  ) {
+    return { ok: false, code: "unknown-affordance" };
+  }
+
+  const candidate = canonicalizeCommand(proposedCommand);
+  const parsed = findRule(normalizeWords(candidate));
+  if (parsed === null || parsed.rule.id !== selectedRule.id) {
+    return { ok: false, code: "affordance-command-mismatch" };
+  }
+
+  const compiled = compileParsedOpeningCommand(parsed, knowledge);
+  if (!compiled.ok) return compiled;
+  return {
+    ...compiled,
+    riskTier: selectedRule.riskTier,
+    semanticFallbackAllowed: selectedRule.semanticFallbackAllowed,
+  };
+}
+
 export function groundOpeningCommand(
   proposedCommand: unknown,
   playerUtterance: string,
@@ -285,28 +380,15 @@ export function groundOpeningCommand(
     return { ok: false, code: "not-grounded-in-utterance" };
   }
 
-  if (!parsed.rule.objectRequired) {
-    return {
-      ok: true,
-      command: canonicalizeCommand(parsed.rule.verb),
-      ruleId: parsed.rule.id,
-    };
-  }
-  if (parsed.object.length === 0) {
-    return { ok: false, code: "missing-object" };
-  }
-  if (!knowledge.observedObjects.includes(parsed.object)) {
-    return { ok: false, code: "unobserved-object" };
-  }
-  if (!includesPhrase(normalizedUtterance, parsed.object)) {
+  const compiled = compileParsedOpeningCommand(parsed, knowledge);
+  if (!compiled.ok) return compiled;
+  if (
+    parsed.rule.objectRequired &&
+    !includesPhrase(normalizedUtterance, parsed.object)
+  ) {
     return { ok: false, code: "not-grounded-in-utterance" };
   }
-
-  return {
-    ok: true,
-    command: canonicalizeCommand(`${parsed.rule.verb} ${parsed.object}`),
-    ruleId: parsed.rule.id,
-  };
+  return compiled;
 }
 
 export function groundObservedObjectContentQuestion(

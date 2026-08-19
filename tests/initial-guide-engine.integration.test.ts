@@ -82,10 +82,11 @@ describe("initial guide to authoritative engine boundary", () => {
       FakeGuideModel.returning({
         kind: "execute",
         command: "look",
+        affordanceId: "grammar.look",
         intentSummary: "Observe the current surroundings",
         confidence: 0.99,
       }),
-      "What do I see in front of me?",
+      "Tell me where I am.",
     );
     expect(look?.output).toBe(
       "South Room\nA plain room with an exit north.\nA brass token rests on the floor.\n\n> ",

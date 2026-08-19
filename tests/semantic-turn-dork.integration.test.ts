@@ -127,7 +127,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(narration).toHaveLength(1);
   });
 
-  it("commits a front-facing observation as one Zork I look turn", async () => {
+  it("commits a semantic location request as one Zork I look turn", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({
       factory: new RuntimeFactory(),
@@ -148,6 +148,7 @@ describe("semantic turn through the isolated Dork engine", () => {
       guide: FakeGuideModel.returning({
         kind: "execute",
         command: "look",
+        affordanceId: "grammar.look",
         intentSummary: "Observe the current surroundings",
         confidence: 0.99,
       }),
@@ -170,7 +171,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     const result = await subject.submitTurn(
       {
         interactionId: "front-look-interaction",
-        transcript: "What do I see in front of me?",
+        transcript: "Tell me where I am.",
         transcriptConfidence: 0.99,
         observedObjects: ["house", "door", "mailbox"],
       },
@@ -191,6 +192,10 @@ describe("semantic turn through the isolated Dork engine", () => {
         .filter((event) => event.type === "engine.command.requested")
         .map((event) => event.payload.command),
     ).toEqual(["look"]);
+    const proposed = published.find(
+      (event) => event.type === "guide.decision.proposed",
+    );
+    expect(proposed?.payload.decision).not.toHaveProperty("affordanceId");
     expect(narration).toEqual([
       expect.objectContaining({
         role: "narrator",
