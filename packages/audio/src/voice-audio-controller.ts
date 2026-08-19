@@ -10,10 +10,8 @@ import type {
   PlaybackPort,
   TranscriberPort,
 } from "./contracts.js";
-import {
-  ScriptedAudioError,
-  type ScriptedNarrationPort,
-} from "./scripted-audio.js";
+import { transcriptionFailureCode } from "./contracts.js";
+import type { ScriptedNarrationPort } from "./scripted-audio.js";
 
 export type VoiceAudioState =
   | "ready"
@@ -234,10 +232,7 @@ export class VoiceAudioController {
           code: "cancelled",
         });
       } else {
-        const code =
-          error instanceof ScriptedAudioError
-            ? error.code
-            : "transcription-failed";
+        const code = transcriptionFailureCode(error) ?? "transcription-failed";
         result = this.#turns.recordTranscriptionFailure({
           interactionId: active.interactionId,
           code,

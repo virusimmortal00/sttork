@@ -212,6 +212,41 @@ describe("VoiceAudioController", () => {
     expect(subject.controller.state).toBe("recoverable-error");
   });
 
+  it.each([
+    [{ code: "budget-exhausted" }, "budget-exhausted"],
+    [{ code: "sk-sensitive-value" }, "transcription-failed"],
+  ] as const)(
+    "records only allowlisted live transcription failures: %s",
+    async (failure, expectedCode) => {
+      const narration = new ScriptedNarrationPort();
+      const turns = new StubTurns(narration);
+      const controller = new VoiceAudioController({
+        turns,
+        capture: new ScriptedCapturePort([
+          { clipId: "failed-live-transcript", durationMs: 300 },
+        ]),
+        transcriber: {
+          transcribe: async () => {
+            throw failure;
+          },
+        },
+        narration,
+        playback: new ScriptedPlaybackPort(new VirtualAudioClock()),
+        nextInteractionId: () => "live-transcription-failure",
+        nextCaptureId: () => "live-capture-failure",
+        observedObjects: () => [],
+      });
+
+      await controller.startCapture();
+      const result = await controller.finishCapture();
+
+      expect(result.outcome).toBe("failed");
+      expect(turns.submitted).toHaveLength(0);
+      expect(turns.lifecycle).toContain(`transcription:${expectedCode}`);
+      expect(controller.state).toBe("recoverable-error");
+    },
+  );
+
   it("does not invent transcript confidence when a provider omits it", async () => {
     const subject = fixture([
       {

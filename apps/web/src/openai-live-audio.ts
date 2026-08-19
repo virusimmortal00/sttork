@@ -24,6 +24,7 @@ const DEFAULT_MAX_DURATION_MS = 15_000;
 const DEFAULT_DATA_TIMESLICE_MS = 250;
 const MAX_TRANSCRIPT_CHARACTERS = 2_000;
 const MAX_NARRATION_CHARACTERS = 4_000;
+const MAX_FAILURE_RESPONSE_BYTES = 1_024;
 
 const captureMediaTypes = [
   "audio/webm;codecs=opus",
@@ -35,6 +36,7 @@ const captureMediaTypes = [
 
 export type OpenAiLiveAudioErrorCode =
   | "aborted"
+  | "budget-exhausted"
   | "capture-busy"
   | "capture-empty"
   | "capture-mismatch"
@@ -44,6 +46,7 @@ export type OpenAiLiveAudioErrorCode =
   | "playback-busy"
   | "playback-failed"
   | "provider-rejected"
+  | "session-expired"
   | "transport-failed";
 
 export class OpenAiLiveAudioError extends Error {
@@ -1010,13 +1013,51 @@ async function safeFetch(
     );
   }
   if (!response.ok) {
-    await response.body?.cancel().catch(() => undefined);
+    const code = await readLiveFailureCode(response);
     throw new OpenAiLiveAudioError(
-      "provider-rejected",
+      code,
       `The live provider request was rejected with status ${response.status}.`,
     );
   }
   return response;
+}
+
+async function readLiveFailureCode(
+  response: Response,
+): Promise<OpenAiLiveAudioErrorCode> {
+  try {
+    const envelope = await readJsonObject(response, MAX_FAILURE_RESPONSE_BYTES);
+    const failure = envelope.error;
+    if (
+      typeof failure !== "object" ||
+      failure === null ||
+      Array.isArray(failure)
+    ) {
+      return "provider-rejected";
+    }
+    const code = Reflect.get(failure, "code");
+    switch (code) {
+      case "aborted":
+      case "budget-exhausted":
+      case "invalid-input":
+      case "malformed-response":
+      case "provider-rejected":
+      case "transport-failed":
+        return code;
+      case "forbidden":
+        return "session-expired";
+      case "request-too-large":
+        return "capture-too-large";
+      case "invalid-request":
+      case "unsupported-audio":
+        return "invalid-input";
+      default:
+        return "provider-rejected";
+    }
+  } catch {
+    await response.body?.cancel().catch(() => undefined);
+    return "provider-rejected";
+  }
 }
 
 async function readBoundedBody(

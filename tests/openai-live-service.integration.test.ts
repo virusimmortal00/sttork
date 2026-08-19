@@ -208,6 +208,31 @@ describe("OpenAI local live service", () => {
     );
   });
 
+  it("returns only the safe budget code when transcription reaches the request cap", async () => {
+    const provider = new FakeProvider();
+    provider.transcribe.mockRejectedValueOnce(
+      new ProviderAdapterError("budget-exhausted", "sensitive detail"),
+    );
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+
+    const response = await handle(
+      request(
+        "/api/live/openai/transcribe",
+        new Uint8Array([1, 2, 3]),
+        "audio/webm",
+      ),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.text()).toBe(
+      JSON.stringify({ error: { code: "budget-exhausted" } }),
+    );
+  });
+
   it("regenerates reviewed command knowledge and validates the guide response", async () => {
     const provider = new FakeProvider();
     const handle = createOpenAiLiveService({

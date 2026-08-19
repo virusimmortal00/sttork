@@ -11,6 +11,44 @@ export interface FinalTranscript {
   readonly confidence?: number;
 }
 
+export const transcriptionFailureCodes = Object.freeze([
+  "aborted",
+  "budget-exhausted",
+  "capture-empty",
+  "capture-too-large",
+  "invalid-input",
+  "malformed-response",
+  "no-speech",
+  "provider-rejected",
+  "session-expired",
+  "transport-failed",
+  "unknown-clip",
+] as const);
+
+export type TranscriptionFailureCode =
+  (typeof transcriptionFailureCodes)[number];
+
+const transcriptionFailureCodeSet = new Set<string>(transcriptionFailureCodes);
+
+/**
+ * Returns only provider-neutral, player-safe transcription failure codes.
+ * Adapter messages, response bodies, and arbitrary vendor codes stay outside
+ * the semantic event stream.
+ */
+export function transcriptionFailureCode(
+  error: unknown,
+): TranscriptionFailureCode | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  try {
+    const code = Reflect.get(error, "code");
+    return typeof code === "string" && transcriptionFailureCodeSet.has(code)
+      ? (code as TranscriptionFailureCode)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface CapturePort {
   start(captureId: string): Promise<void>;
   stop(captureId: string): Promise<CapturedAudioTurn>;

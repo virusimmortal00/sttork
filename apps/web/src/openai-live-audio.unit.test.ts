@@ -18,8 +18,9 @@ import {
 
 const sessionToken = "live-session-token-12345678901234567890";
 
-function jsonResponse(value: unknown): Response {
+function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
+    status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
@@ -358,6 +359,64 @@ describe("OpenAiLiveTranscriber", () => {
       ),
     ).rejects.toEqual(expect.objectContaining({ code: "provider-rejected" }));
     expect(store.size).toBe(0);
+  });
+
+  it("preserves an allowlisted BFF budget failure without reflecting response prose", async () => {
+    const store = new InMemoryCapturedAudioStore();
+    store.put(
+      "clip-budget",
+      new Blob([new Uint8Array([1]).buffer], { type: "audio/webm" }),
+    );
+    const transcriber = new OpenAiLiveTranscriber({
+      sessionToken,
+      store,
+      fetch: vi.fn(async () =>
+        jsonResponse(
+          {
+            error: {
+              code: "budget-exhausted",
+              message: "sensitive provider response must not escape",
+            },
+          },
+          429,
+        ),
+      ),
+    });
+
+    await expect(
+      transcriber.transcribe(
+        { clipId: "clip-budget", durationMs: 200 },
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        code: "budget-exhausted",
+        message: expect.not.stringContaining("sensitive provider response"),
+      }),
+    );
+    expect(store.size).toBe(0);
+  });
+
+  it("falls back when the BFF error code is not allowlisted", async () => {
+    const store = new InMemoryCapturedAudioStore();
+    store.put(
+      "clip-unknown-failure",
+      new Blob([new Uint8Array([1]).buffer], { type: "audio/webm" }),
+    );
+    const transcriber = new OpenAiLiveTranscriber({
+      sessionToken,
+      store,
+      fetch: vi.fn(async () =>
+        jsonResponse({ error: { code: "sk-sensitive-value" } }, 502),
+      ),
+    });
+
+    await expect(
+      transcriber.transcribe(
+        { clipId: "clip-unknown-failure", durationMs: 200 },
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expect.objectContaining({ code: "provider-rejected" }));
   });
 
   it("rejects a streamed response that crosses the browser-side cap", async () => {
