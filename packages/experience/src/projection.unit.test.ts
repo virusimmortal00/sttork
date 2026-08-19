@@ -292,6 +292,56 @@ describe("experience projection", () => {
 
   it.each([
     {
+      code: "playback-authorization-required",
+      expectedStatus: "Tap Repeat to enable audio",
+    },
+    {
+      code: "budget-exhausted",
+      expectedStatus: "Request limit reached",
+    },
+    { code: "transport-failed", expectedStatus: "Action needed" },
+  ])(
+    "projects playback failure $code with actionable safe status text",
+    ({ code, expectedStatus }) => {
+      let id = 0;
+      const sequence = new EventSequence({
+        sessionId: `playback-failure-${code}`,
+        now: () => "2026-08-19T19:05:00.000Z",
+        nextId: () => `playback-failure-event-${++id}`,
+      });
+      const ended = sequence.append({
+        type: "audio.playback.ended",
+        correlationId: "failed-playback",
+        causationId: "narration-source",
+        visibility: "accessible",
+        payload: {
+          narrationId: "failed-narration",
+          role: "narrator" as const,
+          outcome: "failed" as const,
+        },
+      });
+      const error = sequence.append({
+        type: "system.error",
+        correlationId: "failed-playback",
+        causationId: ended.id,
+        visibility: "accessible",
+        payload: {
+          stage: "narration" as const,
+          code,
+          recoverable: true,
+          engineCommitState: "confirmed" as const,
+        },
+      });
+
+      expect(projectExperience([ended, error])).toMatchObject({
+        displayState: "blocked",
+        statusText: expectedStatus,
+      });
+    },
+  );
+
+  it.each([
+    {
       eventType: "narration.cancelled" as const,
       expectedState: "ready" as const,
       expectedStatus: "Ready",

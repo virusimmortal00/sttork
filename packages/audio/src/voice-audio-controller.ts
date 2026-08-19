@@ -7,10 +7,11 @@ import type {
 
 import type {
   CapturePort,
+  PlaybackFailureCode,
   PlaybackPort,
   TranscriberPort,
 } from "./contracts.js";
-import { transcriptionFailureCode } from "./contracts.js";
+import { playbackFailureCode, transcriptionFailureCode } from "./contracts.js";
 import type { ScriptedNarrationPort } from "./scripted-audio.js";
 
 export type VoiceAudioState =
@@ -61,6 +62,7 @@ export interface VoiceTurnPort {
     readonly role: NarrationRole;
     readonly sourceEventId: string;
     readonly outcome: "complete" | "interrupted" | "failed";
+    readonly failureCode?: PlaybackFailureCode;
   }): unknown;
   recordPaused(interactionId: string): unknown;
   recordResumed(interactionId: string): unknown;
@@ -129,6 +131,10 @@ export class VoiceAudioController {
 
   public get hasRepeatablePlayback(): boolean {
     return this.#lastPlayed !== undefined;
+  }
+
+  public activatePlaybackFromUserGesture(): void {
+    this.#playback.activateFromUserGesture?.();
   }
 
   public async startCapture(): Promise<void> {
@@ -427,14 +433,18 @@ export class VoiceAudioController {
         outcome: "complete",
       });
       return "complete";
-    } catch {
+    } catch (error) {
       const outcome = controller.signal.aborted ? "interrupted" : "failed";
+      const failureCode = controller.signal.aborted
+        ? undefined
+        : (playbackFailureCode(error) ?? "playback-failed");
       this.#turns.recordPlaybackEnded({
         interactionId: request.correlationId,
         narrationId: request.narrationId,
         role: request.role,
         sourceEventId: request.sourceEventId,
         outcome,
+        ...(failureCode === undefined ? {} : { failureCode }),
       });
       if (!controller.signal.aborted) this.#setState("recoverable-error");
       return outcome;

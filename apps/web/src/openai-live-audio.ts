@@ -43,6 +43,7 @@ export type OpenAiLiveAudioErrorCode =
   | "capture-too-large"
   | "invalid-input"
   | "malformed-response"
+  | "playback-authorization-required"
   | "playback-busy"
   | "playback-failed"
   | "provider-rejected"
@@ -734,6 +735,7 @@ export class OpenAiLiveGuideModel implements GuideModel {
 }
 
 export interface LiveAudioElement {
+  src: string;
   play(): Promise<void>;
   pause(): void;
   addEventListener(
@@ -750,7 +752,7 @@ export interface LiveAudioElement {
 export interface OpenAiLivePlaybackPortOptions {
   readonly sessionToken: string;
   readonly fetch?: typeof fetch;
-  readonly createAudio?: (url: string) => LiveAudioElement;
+  readonly createAudio?: () => LiveAudioElement;
   readonly createObjectUrl?: (blob: Blob) => string;
   readonly revokeObjectUrl?: (url: string) => void;
   readonly maxRequestBytes?: number;
@@ -759,25 +761,48 @@ export interface OpenAiLivePlaybackPortOptions {
 
 interface ActivePlayback {
   readonly abort: AbortController;
-  audio: LiveAudioElement | undefined;
   objectUrl: string | undefined;
 }
+
+type PlaybackActivationState =
+  | { readonly phase: "idle" }
+  | {
+      readonly phase: "pending";
+      readonly promise: Promise<PlaybackActivationResult>;
+    }
+  | {
+      readonly phase: "settled";
+      readonly result: PlaybackActivationResult;
+    };
+
+type PlaybackActivationResult = "authorized" | "denied";
+
+// One unmuted, zero-amplitude 16-bit PCM sample. The browser consumes this
+// local blob only to authorize the persistent media element from a player
+// gesture; it is never provider input or a narration lifecycle event.
+const PLAYBACK_ACTIVATION_WAV = new Uint8Array([
+  0x52, 0x49, 0x46, 0x46, 0x26, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66,
+  0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x40, 0x1f,
+  0x00, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74,
+  0x61, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+]);
 
 export class OpenAiLivePlaybackPort implements PlaybackPort {
   readonly #sessionToken: string;
   readonly #fetch: typeof fetch;
-  readonly #createAudio: (url: string) => LiveAudioElement;
+  readonly #audio: LiveAudioElement;
   readonly #createObjectUrl: (blob: Blob) => string;
   readonly #revokeObjectUrl: (url: string) => void;
   readonly #maxRequestBytes: number;
   readonly #maxResponseBytes: number;
+  #activation: PlaybackActivationState = { phase: "idle" };
+  #activationObjectUrl: string | undefined;
   #active: ActivePlayback | undefined;
 
   public constructor(options: OpenAiLivePlaybackPortOptions) {
     this.#sessionToken = boundedSessionToken(options.sessionToken);
     this.#fetch = options.fetch ?? globalThis.fetch;
-    this.#createAudio =
-      options.createAudio ?? ((url) => new Audio(url) as LiveAudioElement);
+    this.#audio = options.createAudio?.() ?? (new Audio() as LiveAudioElement);
     this.#createObjectUrl =
       options.createObjectUrl ?? ((blob) => URL.createObjectURL(blob));
     this.#revokeObjectUrl =
@@ -794,6 +819,74 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       1,
       DEFAULT_MAX_SPEECH_BYTES,
     );
+  }
+
+  /**
+   * Must be invoked directly from an audio-related player gesture. The method
+   * intentionally returns before its play promise settles so the browser sees
+   * the media start in the activation call stack.
+   */
+  public activateFromUserGesture(): void {
+    if (
+      this.#active !== undefined ||
+      this.#activation.phase === "pending" ||
+      (this.#activation.phase === "settled" &&
+        this.#activation.result === "authorized")
+    ) {
+      return;
+    }
+
+    this.#discardActivationObjectUrl();
+    let objectUrl: string | undefined;
+    let playPromise: Promise<void>;
+    try {
+      objectUrl = this.#createObjectUrl(
+        new Blob([PLAYBACK_ACTIVATION_WAV.slice().buffer], {
+          type: "audio/wav",
+        }),
+      );
+      this.#activationObjectUrl = objectUrl;
+      this.#audio.src = objectUrl;
+      playPromise = this.#audio.play();
+    } catch {
+      if (objectUrl !== undefined) {
+        try {
+          this.#revokeObjectUrl(objectUrl);
+        } catch {
+          // Activation must remain non-throwing even if browser cleanup fails.
+        }
+      }
+      if (this.#activationObjectUrl === objectUrl) {
+        this.#activationObjectUrl = undefined;
+      }
+      this.#activation = { phase: "settled", result: "denied" };
+      return;
+    }
+
+    const activationPromise: Promise<PlaybackActivationResult> =
+      playPromise.then(
+        () => {
+          if (
+            this.#activation.phase === "pending" &&
+            this.#activation.promise === activationPromise
+          ) {
+            this.#activation = { phase: "settled", result: "authorized" };
+            this.#discardActivationObjectUrl();
+          }
+          return "authorized";
+        },
+        () => {
+          if (
+            this.#activation.phase === "pending" &&
+            this.#activation.promise === activationPromise
+          ) {
+            this.#activation = { phase: "settled", result: "denied" };
+            this.#discardActivationObjectUrl();
+          }
+          return "denied";
+        },
+      );
+    this.#activation = { phase: "pending", promise: activationPromise };
   }
 
   public async play(
@@ -830,7 +923,6 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
     );
     const active: ActivePlayback = {
       abort: new AbortController(),
-      audio: undefined,
       objectUrl: undefined,
     };
     this.#active = active;
@@ -839,6 +931,19 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
     if (signal.aborted) abort();
 
     try {
+      const activation = this.#activation;
+      const activationResult =
+        activation.phase === "pending"
+          ? await awaitWithAbort(activation.promise, active.abort.signal)
+          : activation.phase === "settled"
+            ? activation.result
+            : "denied";
+      if (activationResult !== "authorized") {
+        throw new OpenAiLiveAudioError(
+          "playback-authorization-required",
+          "Audio playback requires a player gesture.",
+        );
+      }
       const response = await safeFetch(
         this.#fetch,
         SPEECH_PATH,
@@ -861,9 +966,20 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
         new Blob([bytes.buffer], { type: mediaType }),
       );
       active.objectUrl = objectUrl;
-      const audio = this.#createAudio(objectUrl);
-      active.audio = audio;
-      await playUntilEnded(audio, active.abort.signal, lifecycle);
+      this.#audio.pause();
+      this.#audio.src = objectUrl;
+      this.#discardActivationObjectUrl();
+      try {
+        await playUntilEnded(this.#audio, active.abort.signal, lifecycle);
+      } catch (error) {
+        if (
+          error instanceof OpenAiLiveAudioError &&
+          error.code === "playback-authorization-required"
+        ) {
+          this.#activation = { phase: "idle" };
+        }
+        throw error;
+      }
     } finally {
       signal.removeEventListener("abort", abort);
       this.#disposePlayback(active);
@@ -881,11 +997,28 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
   }
 
   #disposePlayback(active: ActivePlayback): void {
-    active.audio?.pause();
-    active.audio = undefined;
     if (active.objectUrl !== undefined) {
+      this.#audio.pause();
       this.#revokeObjectUrl(active.objectUrl);
       active.objectUrl = undefined;
+    }
+  }
+
+  #discardActivationObjectUrl(): void {
+    const objectUrl = this.#activationObjectUrl;
+    if (objectUrl === undefined) return;
+    this.#activationObjectUrl = undefined;
+    try {
+      if (this.#audio.src === objectUrl) {
+        this.#audio.pause();
+      }
+    } catch {
+      // Revocation below still releases the local activation blob when possible.
+    }
+    try {
+      this.#revokeObjectUrl(objectUrl);
+    } catch {
+      // Gesture activation is non-throwing by contract.
     }
   }
 }
@@ -1148,6 +1281,55 @@ async function readJsonObject(
   return value as Record<string, unknown>;
 }
 
+async function awaitWithAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  return await new Promise<T>((resolve, reject) => {
+    const aborted = () => {
+      cleanup();
+      reject(
+        signal.reason ??
+          new OpenAiLiveAudioError(
+            "aborted",
+            "Narration playback was stopped.",
+          ),
+      );
+    };
+    const cleanup = () => signal.removeEventListener("abort", aborted);
+    signal.addEventListener("abort", aborted, { once: true });
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+function playbackFailure(error?: unknown): OpenAiLiveAudioError {
+  let name: unknown;
+  try {
+    name =
+      typeof error === "object" && error !== null
+        ? Reflect.get(error, "name")
+        : undefined;
+  } catch {
+    name = undefined;
+  }
+  return name === "NotAllowedError"
+    ? new OpenAiLiveAudioError(
+        "playback-authorization-required",
+        "Audio playback requires a player gesture.",
+      )
+    : new OpenAiLiveAudioError("playback-failed", "Narration playback failed.");
+}
+
 async function playUntilEnded(
   audio: LiveAudioElement,
   signal: AbortSignal,
@@ -1184,14 +1366,9 @@ async function playUntilEnded(
       }
       resolve();
     };
-    const failed = () => {
+    const failed = (error?: unknown) => {
       cleanup();
-      reject(
-        new OpenAiLiveAudioError(
-          "playback-failed",
-          "Narration playback failed.",
-        ),
-      );
+      reject(playbackFailure(error));
     };
     const aborted = () => {
       cleanup();
@@ -1211,6 +1388,10 @@ async function playUntilEnded(
       aborted();
       return;
     }
-    void audio.play().catch(failed);
+    try {
+      void audio.play().catch(failed);
+    } catch (error) {
+      failed(error);
+    }
   });
 }

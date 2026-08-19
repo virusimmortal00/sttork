@@ -346,8 +346,17 @@ Required assertions include:
 - completion, interruption, and synthesis/playback failure all expose the
   ordinary controls and retain the exact opening for accessible text and Repeat;
   completion/interruption project Ready while failure projects recoverable
-  `blocked` / `Action needed`; Repeat reuses the same source without another
-  `engine.output` or revision advance;
+  `blocked`; safe authorization and request-cap failures are actionable while an
+  unclassified failure remains `Action needed`; Repeat reuses the same source
+  without another `engine.output` or revision advance;
+- browser playback activation happens synchronously before any asynchronous
+  speech request, one media element is reused across utterances, local and
+  synthesized object URLs are revoked, denied playback can be re-primed from
+  Repeat, and local priming emits no provider request or semantic playback
+  event;
+- a narration retry visibly projects Processing while work is active, and a
+  recoverable audio failure does not reveal the transcript or move keyboard or
+  screen-reader focus;
 - incremental reduction and replay derive the same opening phase: revision-zero
   output is active until its correlated narrator cancellation, failure, or
   playback terminal, after which ordinary controls remain available;

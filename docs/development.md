@@ -172,9 +172,13 @@ gate.
 For the pending manual checkpoint, first activate `START STORY` without granting
 microphone permission. Confirm that the authenticated opening is narrated once
 at revision zero, that Stop is available during playback, and that the normal
-speaking control appears after a completed, interrupted, or failed opening. The
-failed case should remain `Action needed`, with speaking, text, and Repeat still
-usable. The initial path should consume one TTS request; Repeat should consume
+speaking control appears after a completed, interrupted, or failed opening. An
+unclassified failed case should remain `Action needed`, with speaking, text, and
+Repeat still usable. On Safari and other browsers that require explicit media
+authorization, the status should instead say `Tap Repeat to enable audio`;
+`Request limit reached` identifies the process-global smoke cap. Repeat must
+show Processing while it is synthesizing rather than retaining a stale blocked
+heading. The initial path should consume one TTS request; Repeat should consume
 another while reusing the same opening event. Then say an unambiguous single
 action such as “look” and confirm one revision plus audible exact engine
 narration. Say an ambiguous request such as “open it” and confirm that the guide

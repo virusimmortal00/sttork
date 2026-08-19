@@ -142,6 +142,17 @@ function addCommittedAction(
   return [action, ...actionLog].slice(0, EXPERIENCE_ACTION_LOG_LIMIT);
 }
 
+function recoverableErrorStatus(code: string): string {
+  switch (code) {
+    case "playback-authorization-required":
+      return "Tap Repeat to enable audio";
+    case "budget-exhausted":
+      return "Request limit reached";
+    default:
+      return "Action needed";
+  }
+}
+
 function projectCommittedAction(
   actionLog: readonly ActionLogItemProjection[],
   command: {
@@ -373,7 +384,7 @@ export function reduceExperienceProjection(
       }
       displayState = event.payload.recoverable ? "blocked" : "ended";
       statusText = event.payload.recoverable
-        ? "Action needed"
+        ? recoverableErrorStatus(event.payload.code)
         : "Session ended";
       transcript = [
         ...transcript,

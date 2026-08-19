@@ -80,7 +80,8 @@ capture and text submission remain gated until the opening playback completes,
 is interrupted, or fails; any of those terminal outcomes exposes the normal
 gameplay controls so a provider failure cannot trap the player. Completion or
 interruption returns the experience to ready. Failure keeps the recoverable
-`blocked` / `Action needed` status while leaving those controls usable.
+blocked status while leaving those controls usable; safe failure codes may make
+the status actionable without exposing provider response prose.
 
 ### 3.2 Session backend
 
@@ -396,7 +397,12 @@ system.error | system.recovered
 synthesis, download, decoding, and buffering. Those earlier phases remain
 processing and must not drive a speaking projection. Playback aborted or failed
 before that boundary has no started event and is recorded only through its
-terminal outcome.
+terminal outcome. A failed terminal is followed by a causally linked,
+provider-neutral `system.error` when the adapter has a player-safe failure code.
+The browser primes and reuses one media element from an explicit player gesture
+so an asynchronous synthesis fetch does not depend on stale transient
+activation. That local prime makes no provider request and emits no semantic
+playback lifecycle event.
 
 A successfully prepared opening sequence is `engine.output` (revision zero),
 `narration.requested`, `narration.ready`, and the applicable playback lifecycle;

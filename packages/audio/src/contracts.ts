@@ -49,6 +49,40 @@ export function transcriptionFailureCode(
   }
 }
 
+export const playbackFailureCodes = Object.freeze([
+  "budget-exhausted",
+  "invalid-input",
+  "malformed-response",
+  "playback-authorization-required",
+  "playback-failed",
+  "provider-rejected",
+  "session-expired",
+  "transport-failed",
+] as const);
+
+export type PlaybackFailureCode = (typeof playbackFailureCodes)[number];
+
+const playbackFailureCodeSet = new Set<string>(playbackFailureCodes);
+
+/**
+ * Returns only provider-neutral, player-safe playback failure codes. Adapter
+ * messages, response bodies, and arbitrary vendor codes stay outside the
+ * semantic event stream.
+ */
+export function playbackFailureCode(
+  error: unknown,
+): PlaybackFailureCode | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  try {
+    const code = Reflect.get(error, "code");
+    return typeof code === "string" && playbackFailureCodeSet.has(code)
+      ? (code as PlaybackFailureCode)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface CapturePort {
   start(captureId: string): Promise<void>;
   stop(captureId: string): Promise<CapturedAudioTurn>;
@@ -63,6 +97,7 @@ export interface TranscriberPort {
 }
 
 export interface PlaybackPort {
+  activateFromUserGesture?(): void;
   play(
     request: NarrationRequest,
     signal: AbortSignal,

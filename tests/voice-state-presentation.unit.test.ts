@@ -27,6 +27,24 @@ describe("voice state presentation", () => {
     ).toEqual({ state: "ready", statusText: "Ready" });
   });
 
+  it.each([
+    ["requesting-microphone" as const, "Requesting microphone"],
+    ["listening" as const, "Listening"],
+    ["processing" as const, "Processing"],
+    ["guide-speaking" as const, "Guide speaking"],
+    ["narrator-speaking" as const, "Narrator speaking"],
+  ])(
+    "lets active controller state %s override a stale blocked projection",
+    (state, statusText) => {
+      expect(
+        authoritativeVoiceStatePresentation(state, statusText, {
+          displayState: "blocked",
+          statusText: "Action needed",
+        }),
+      ).toEqual({ state, statusText });
+    },
+  );
+
   it("maps active controller states to stable visual activity states", () => {
     expect(activityStateForVoiceState("requesting-microphone")).toBe(
       "requesting",

@@ -2,7 +2,12 @@ import type { SemanticTurnResult } from "@zork-voice/session";
 import type { NarrationRequest } from "@zork-voice/session";
 import { describe, expect, it } from "vitest";
 
-import type { PlaybackLifecycle } from "./contracts.js";
+import {
+  playbackFailureCode,
+  playbackFailureCodes,
+  type PlaybackFailureCode,
+  type PlaybackLifecycle,
+} from "./contracts.js";
 import {
   ScriptedCapturePort,
   ScriptedNarrationPort,
@@ -20,6 +25,10 @@ import {
 
 class StubTurns implements VoiceTurnPort {
   public readonly lifecycle: string[] = [];
+  public readonly playbackEndings: Array<{
+    readonly outcome: "complete" | "interrupted" | "failed";
+    readonly failureCode?: PlaybackFailureCode;
+  }> = [];
   public readonly submitted: string[] = [];
   public readonly transcriptConfidences: Array<number | undefined> = [];
   public submitGate: Promise<void> | undefined;
@@ -89,8 +98,17 @@ class StubTurns implements VoiceTurnPort {
   public recordPlaybackStarted(input: { readonly role: string }): void {
     this.lifecycle.push(`playback-started:${input.role}`);
   }
-  public recordPlaybackEnded(input: { readonly outcome: string }): void {
+  public recordPlaybackEnded(input: {
+    readonly outcome: "complete" | "interrupted" | "failed";
+    readonly failureCode?: PlaybackFailureCode;
+  }): void {
     this.lifecycle.push(`playback-ended:${input.outcome}`);
+    this.playbackEndings.push({
+      outcome: input.outcome,
+      ...(input.failureCode === undefined
+        ? {}
+        : { failureCode: input.failureCode }),
+    });
   }
   public recordPaused(): void {
     this.lifecycle.push("paused");
@@ -123,6 +141,94 @@ function fixture(clips: readonly ScriptedClip[], narrationCount = 1) {
 }
 
 describe("VoiceAudioController", () => {
+  it("synchronously delegates playback activation when the port supports it", () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    let activations = 0;
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: {
+        activateFromUserGesture: () => {
+          activations += 1;
+        },
+        play: async () => undefined,
+        stop: async () => undefined,
+      },
+      nextInteractionId: () => "unused-interaction",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+
+    controller.activatePlaybackFromUserGesture();
+
+    expect(activations).toBe(1);
+    expect(controller.state).toBe("ready");
+    expect(() =>
+      fixture([]).controller.activatePlaybackFromUserGesture(),
+    ).not.toThrow();
+  });
+
+  it.each(playbackFailureCodes)(
+    "accepts the player-safe playback failure code %s",
+    (code) => {
+      expect(playbackFailureCode({ code })).toBe(code);
+    },
+  );
+
+  it("rejects arbitrary or throwing playback failure codes", () => {
+    expect(playbackFailureCode({ code: "sk-sensitive-value" })).toBeUndefined();
+    expect(
+      playbackFailureCode({
+        get code(): never {
+          throw new Error("unsafe getter");
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    {
+      failure: { code: "budget-exhausted" },
+      expectedCode: "budget-exhausted" as const,
+    },
+    {
+      failure: { code: "vendor-secret-code" },
+      expectedCode: "playback-failed" as const,
+    },
+  ])(
+    "records a safe playback failure for $expectedCode",
+    async ({ failure, expectedCode }) => {
+      const narration = new ScriptedNarrationPort();
+      const turns = new StubTurns(narration);
+      const controller = new VoiceAudioController({
+        turns,
+        capture: new ScriptedCapturePort([]),
+        transcriber: new ScriptedTranscriber([]),
+        narration,
+        playback: {
+          play: async () => {
+            throw failure;
+          },
+          stop: async () => undefined,
+        },
+        nextInteractionId: () => "playback-failure",
+        nextCaptureId: () => "unused-capture",
+        observedObjects: () => [],
+      });
+
+      await controller.submitText("look");
+
+      expect(controller.state).toBe("recoverable-error");
+      expect(turns.playbackEndings).toEqual([
+        { outcome: "failed", failureCode: expectedCode },
+      ]);
+      expect(turns.lifecycle).not.toContain("playback-started:narrator");
+    },
+  );
+
   it("plays a prepared story opening once and retains it for repeat", async () => {
     const subject = fixture([]);
     expect(subject.controller.hasRepeatablePlayback).toBe(false);

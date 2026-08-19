@@ -722,8 +722,13 @@ export class SemanticTurnCoordinator {
     readonly role: NarrationRole;
     readonly sourceEventId: string;
     readonly outcome: SemanticEventPayloads["audio.playback.ended"]["outcome"];
+    readonly failureCode?: string;
   }): SemanticEvent<"audio.playback.ended"> {
-    return this.#emit(
+    const failureCode =
+      input.failureCode === undefined
+        ? undefined
+        : this.#requireId(input.failureCode, "playback failure code");
+    const ended = this.#emit(
       [],
       "audio.playback.ended",
       input.interactionId,
@@ -735,6 +740,23 @@ export class SemanticTurnCoordinator {
         outcome: input.outcome,
       },
     );
+    if (input.outcome === "failed" && failureCode !== undefined) {
+      this.#emit(
+        [],
+        "system.error",
+        input.interactionId,
+        ended.id,
+        "accessible",
+        {
+          stage: "narration",
+          code: failureCode,
+          recoverable: true,
+          engineCommitState:
+            input.role === "narrator" ? "confirmed" : "not-submitted",
+        },
+      );
+    }
+    return ended;
   }
 
   public recordPaused(interactionId: string): SemanticEvent<"session.paused"> {

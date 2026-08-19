@@ -78,8 +78,11 @@ history. While the opening is being prepared or played, ordinary capture and
 text submission remain gated and Stop remains available. After playback
 completes, is interrupted, or fails, the primary control becomes the ordinary
 `Start speaking` control and the accessibility text path becomes available.
-Completion and interruption show Ready; failure preserves the recoverable
-`Action needed` status while those ordinary controls remain usable.
+Completion and interruption show Ready; failure preserves a recoverable blocked
+state while those ordinary controls remain usable. Known safe failures replace
+generic `Action needed` with an actionable status: browser playback
+authorization asks the player to tap Repeat, and the bounded developer profile
+reports when its request limit has been reached.
 
 ## Display-state projection
 
@@ -131,6 +134,16 @@ reports its first `playing` event for that utterance. That boundary emits
 enough. This keeps both the visible indicator and accessible live region aligned
 with the browser's closest observable approximation of audible playback.
 
+The browser playback adapter primes one persistent media element synchronously
+from an audio-related player gesture, then reuses that element for synthesized
+responses. Speech synthesis and download may outlive transient browser
+activation, so they must not be followed by first-time playback on a newly
+created element. Priming is local, silent, makes no provider request, emits no
+semantic playback event, and can be retried only from another explicit player
+gesture after authorization is denied. While Repeat or a new turn actively
+retries blocked narration, Processing and the activity indicator supersede the
+stale blocked projection.
+
 ## First-run flow
 
 The first run should be brief and playable without a visual tutorial:
@@ -144,8 +157,8 @@ The first run should be brief and playable without a visual tutorial:
 4. After opening playback completes, is interrupted with Stop, or fails, expose
    the ordinary speaking and accessible-text controls. Preserve the exact
    opening in the transcript/accessibility projection in every case. Keep a
-   failed opening visibly recoverable as `Action needed`; do not put it back
-   behind `START STORY`.
+   failed opening visibly recoverable with an actionable safe status where one
+   is known; do not put it back behind `START STORY`.
 5. Ask for microphone access immediately before the first capture, with a
    concise explanation and an equivalent text-input path.
 6. Teach “stop” and “help” by voice, establish the narrator/guide distinction,
@@ -333,9 +346,11 @@ interface ExperienceProjectionState {
 The revision-zero opening `engine.output` moves `storyStartPhase` from `ready`
 to `starting`. Only the correlated narrator preparation terminal or playback
 terminal moves it to `started`, so replay and live reduction expose the same
-control gate. A failed terminal projects `blocked` / `Action needed`; the
-`started` phase still exposes ordinary controls and Repeat. Completion,
-interruption, or preparation cancellation projects Ready.
+control gate. A failed terminal projects `blocked`; the `started` phase still
+exposes ordinary controls and Repeat. Safe authorization and request-cap codes
+produce actionable status text, while an unclassified failure remains
+`Action needed`. Completion, interruption, or preparation cancellation projects
+Ready.
 
 Canonical-to-experience mapping is explicit:
 
@@ -477,9 +492,10 @@ output.
 If opening narration fails or is interrupted, retain its revision-zero
 `engine.output`, expose the normal controls, and make Repeat a retry of that
 same narrator source. Interruption returns to Ready; failure remains `blocked`
-with `Action needed` while those controls stay usable. A retry may issue another
-synthesis request, but it must not republish the boot output, advance the
-engine, or re-enter the `START STORY` gate.
+with actionable safe status text where available, or generic `Action needed`,
+while those controls stay usable. A retry may issue another synthesis request,
+but it must not republish the boot output, advance the engine, or re-enter the
+`START STORY` gate.
 
 ## Preferences and persistence
 
@@ -527,7 +543,8 @@ The first vertical slice is ready when:
 2. `START STORY` narrates the exact authenticated revision-zero opening without
    requesting microphone permission, then yields the normal controls after a
    completed, interrupted, or failed playback. Failure retains the recoverable
-   `Action needed` status rather than falsely reporting Ready.
+   blocked status, using actionable safe text where available, rather than
+   falsely reporting Ready.
 3. Default play shows no transcript, player speech, or game prose; the only
    persistent text is bounded canonical-command history defined by ADR-0013.
 4. The player can hear which speech belongs to the original game and which

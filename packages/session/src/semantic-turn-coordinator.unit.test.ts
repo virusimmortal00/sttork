@@ -1030,6 +1030,71 @@ describe("SemanticTurnCoordinator", () => {
     expect(engine.revision).toBe(0);
   });
 
+  it.each([
+    { role: "narrator" as const, engineCommitState: "confirmed" as const },
+    { role: "guide" as const, engineCommitState: "not-submitted" as const },
+  ])(
+    "publishes a safe $role playback failure after its terminal audio event",
+    ({ role, engineCommitState }) => {
+      const published: SemanticEvent[] = [];
+      const subject = coordinator(
+        new FakeEngine(),
+        new FakeNarrator(),
+        undefined,
+        (event) => published.push(event),
+      );
+
+      const ended = subject.recordPlaybackEnded({
+        interactionId: `${role}-playback-failure`,
+        narrationId: `${role}-narration`,
+        role,
+        sourceEventId: `${role}-source`,
+        outcome: "failed",
+        failureCode: "budget-exhausted",
+      });
+
+      expect(ended.type).toBe("audio.playback.ended");
+      expect(published.map((event) => event.type)).toEqual([
+        "audio.playback.ended",
+        "system.error",
+      ]);
+      expect(published[1]).toMatchObject({
+        type: "system.error",
+        correlationId: `${role}-playback-failure`,
+        causationId: ended.id,
+        payload: {
+          stage: "narration",
+          code: "budget-exhausted",
+          recoverable: true,
+          engineCommitState,
+        },
+      });
+    },
+  );
+
+  it("does not invent a system error for non-failed playback", () => {
+    const published: SemanticEvent[] = [];
+    const subject = coordinator(
+      new FakeEngine(),
+      new FakeNarrator(),
+      undefined,
+      (event) => published.push(event),
+    );
+
+    subject.recordPlaybackEnded({
+      interactionId: "complete-playback",
+      narrationId: "complete-narration",
+      role: "narrator",
+      sourceEventId: "complete-source",
+      outcome: "complete",
+      failureCode: "budget-exhausted",
+    });
+
+    expect(published.map((event) => event.type)).toEqual([
+      "audio.playback.ended",
+    ]);
+  });
+
   it("rejects oversized semantic input before allocating an event or calling guide", async () => {
     const engine = new FakeEngine();
     const guide = FakeGuideModel.returning({

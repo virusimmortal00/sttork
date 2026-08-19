@@ -24,6 +24,14 @@ available to the optional transcript/debug projections. The real microphone
 browser checkpoint is still pending and this shell is not production provider
 support.
 
+The live playback adapter synchronously primes one persistent browser audio
+element from `START STORY`, speaking, text-submit, and Repeat gestures before
+any speech fetch. It reuses that element for later responses and revokes every
+local or synthesized object URL. A denied browser play request is recoverable
+through Repeat and remains distinct from the process request limit; neither
+failure exposes provider response text or moves focus into the optional
+transcript.
+
 For another phone, tablet, or computer, configure an exact HTTPS browser origin
 before serving:
 

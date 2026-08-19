@@ -17,7 +17,8 @@ narrates the authenticated boot output as exact `engine.output` at revision zero
 before microphone permission or any player turn. Opening completion,
 interruption, or failure all yield the normal controls; Repeat retains that same
 narrator source without republishing it or advancing the engine. Failure keeps
-the recoverable `Action needed` status rather than reporting Ready.
+the recoverable blocked status, with actionable safe text where available,
+rather than reporting Ready.
 
 This is an integration checkpoint, not a beta or provider-support claim. The
 smoke may use explicit developer configuration and an opt-in, budget-limited
@@ -346,7 +347,10 @@ interpreter, provider, or product is release-qualified.
   narration consumes one TTS request, and any terminal playback outcome exposes
   the normal controls with the exact opening retained for accessibility and
   Repeat. A failed terminal remains visibly blocked and recoverable while those
-  controls stay usable.
+  controls stay usable. Browser playback now primes and reuses one media element
+  from explicit audio-related gestures; safe failures distinguish playback
+  authorization and the request cap, and active retries replace a stale blocked
+  heading with Processing.
 - A 2026-08-19 private-HTTPS in-app browser smoke exercised the live text path
   without microphone permission. A social greeting produced one grounded
   clarification with revision zero; one movement request produced exactly one

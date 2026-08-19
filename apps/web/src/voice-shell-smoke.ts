@@ -307,11 +307,6 @@ async function run(): Promise<void> {
         storyStartPresentation,
       );
       pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
-      if (state === "recoverable-error") {
-        transcriptPanel.hidden = false;
-        transcriptButton.setAttribute("aria-expanded", "true");
-        textInput.focus();
-      }
     },
     onTurn: () => {
       turns += 1;
@@ -370,11 +365,6 @@ async function run(): Promise<void> {
       storyStartPresentation,
     );
     pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
-    if (state === "recoverable-error") {
-      transcriptPanel.hidden = false;
-      transcriptButton.setAttribute("aria-expanded", "true");
-      textInput.focus();
-    }
   }
 
   function presentOpeningRetryState(): void {
@@ -532,7 +522,10 @@ async function run(): Promise<void> {
     });
   }
 
-  captureButton.addEventListener("click", () => runControl(primaryAction));
+  captureButton.addEventListener("click", () => {
+    controller.activatePlaybackFromUserGesture();
+    runControl(primaryAction);
+  });
   stopButton.addEventListener("click", () => {
     runControl(stopActive);
   });
@@ -544,6 +537,7 @@ async function run(): Promise<void> {
     });
   });
   repeatButton.addEventListener("click", () => {
+    controller.activatePlaybackFromUserGesture();
     runControl(repeatLastNarration);
   });
   transcriptButton.addEventListener("click", () => {
@@ -565,6 +559,7 @@ async function run(): Promise<void> {
       captureButton.focus();
       return;
     }
+    controller.activatePlaybackFromUserGesture();
     const text = textInput.value;
     textInput.value = "";
     runControl(async () => {
@@ -579,7 +574,10 @@ async function run(): Promise<void> {
       event.target === document.body
     ) {
       event.preventDefault();
-      if (storyStartPhase === "started") runControl(toggleCapture);
+      if (storyStartPhase === "started") {
+        controller.activatePlaybackFromUserGesture();
+        runControl(toggleCapture);
+      }
     }
     if (event.code === "Escape") runControl(stopActive);
   });

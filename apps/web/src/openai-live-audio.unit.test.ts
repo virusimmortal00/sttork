@@ -69,7 +69,8 @@ class DelayedStopRecorder extends FakeRecorder {
 }
 
 class FakeAudioElement implements LiveAudioElement {
-  public readonly play = vi.fn(async () => undefined);
+  public src = "";
+  public readonly play = vi.fn(async (): Promise<void> => undefined);
   public readonly pause = vi.fn();
   readonly #listeners = new Map<
     "playing" | "ended" | "error",
@@ -525,7 +526,8 @@ describe("OpenAiLivePlaybackPort", () => {
         });
       },
     ) as unknown as typeof fetch;
-    const audios: FakeAudioElement[] = [];
+    const audio = new FakeAudioElement();
+    const createAudio = vi.fn(() => audio);
     const createdBlobs: Blob[] = [];
     const revoked: string[] = [];
     const startedRoles: string[] = [];
@@ -537,24 +539,21 @@ describe("OpenAiLivePlaybackPort", () => {
         return `blob:voice-${createdBlobs.length}`;
       },
       revokeObjectUrl: (url) => revoked.push(url),
-      createAudio: () => {
-        const audio = new FakeAudioElement();
-        audios.push(audio);
-        return audio;
-      },
+      createAudio,
     });
+    playback.activateFromUserGesture();
 
     const guide = playback.play(
       narration("guide", "Guide response."),
       new AbortController().signal,
       { onStarted: () => startedRoles.push("guide") },
     );
-    await vi.waitFor(() => expect(audios[0]?.play).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
     expect(startedRoles).toEqual([]);
-    audios[0]?.start();
-    audios[0]?.start();
+    audio.start();
+    audio.start();
     expect(startedRoles).toEqual(["guide"]);
-    audios[0]?.end();
+    audio.end();
     await guide;
 
     const narrator = playback.play(
@@ -562,27 +561,80 @@ describe("OpenAiLivePlaybackPort", () => {
       new AbortController().signal,
       { onStarted: () => startedRoles.push("narrator") },
     );
-    await vi.waitFor(() => expect(audios[1]?.play).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(3));
     expect(startedRoles).toEqual(["guide"]);
-    audios[1]?.start();
-    audios[1]?.end();
+    audio.start();
+    audio.end();
     await narrator;
     expect(startedRoles).toEqual(["guide", "narrator"]);
+    expect(createAudio).toHaveBeenCalledOnce();
 
     expect(bodies).toEqual([
       { text: "Guide response.", role: "guide" },
       { text: "Exact line one.\nExact line two.", role: "narrator" },
     ]);
     expect(createdBlobs.map((blob) => [blob.size, blob.type])).toEqual([
+      [46, "audio/wav"],
       [3, "audio/mpeg"],
       [3, "audio/mpeg"],
     ]);
-    expect(revoked).toEqual(["blob:voice-1", "blob:voice-2"]);
+    expect(
+      Array.from(
+        new Uint8Array(await createdBlobs[0]!.arrayBuffer()).slice(-2),
+      ),
+    ).toEqual([0, 0]);
+    expect(revoked).toEqual(["blob:voice-1", "blob:voice-2", "blob:voice-3"]);
   });
 
-  it("aborts active playback, pauses audio, and revokes its object URL", async () => {
+  it("primes synchronously and waits for authorization before spending a speech request", async () => {
+    let authorize!: () => void;
+    const authorization = new Promise<void>((resolve) => {
+      authorize = resolve;
+    });
     const audio = new FakeAudioElement();
-    const revoked = vi.fn();
+    audio.play.mockImplementationOnce(async () => authorization);
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        }),
+    );
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createObjectUrl: (blob) => `blob:${blob.type}:${blob.size}`,
+      revokeObjectUrl: vi.fn(),
+      createAudio: () => audio,
+    });
+
+    playback.activateFromUserGesture();
+    expect(audio.play).toHaveBeenCalledOnce();
+
+    const playing = playback.play(
+      narration("narrator"),
+      new AbortController().signal,
+      { onStarted: vi.fn() },
+    );
+    await Promise.resolve();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    authorize();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
+    audio.start();
+    audio.end();
+    await expect(playing).resolves.toBeUndefined();
+  });
+
+  it("classifies denied playback and allows the next gesture to re-prime the same element", async () => {
+    const audio = new FakeAudioElement();
+    audio.play
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce({ name: "NotAllowedError" })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
+    const createAudio = vi.fn(() => audio);
+    let objectUrl = 0;
     const playback = new OpenAiLivePlaybackPort({
       sessionToken,
       fetch: vi.fn(
@@ -591,10 +643,94 @@ describe("OpenAiLivePlaybackPort", () => {
             headers: { "content-type": "audio/mpeg" },
           }),
       ),
-      createObjectUrl: () => "blob:interrupt",
+      createObjectUrl: () => `blob:authorization-${++objectUrl}`,
+      revokeObjectUrl: vi.fn(),
+      createAudio,
+    });
+    const firstStarted = vi.fn();
+
+    playback.activateFromUserGesture();
+    await expect(
+      playback.play(narration("narrator"), new AbortController().signal, {
+        onStarted: firstStarted,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({ code: "playback-authorization-required" }),
+    );
+    expect(firstStarted).not.toHaveBeenCalled();
+
+    playback.activateFromUserGesture();
+    expect(audio.play).toHaveBeenCalledTimes(3);
+    const retried = playback.play(
+      narration("narrator"),
+      new AbortController().signal,
+      { onStarted: vi.fn() },
+    );
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(4));
+    audio.start();
+    audio.end();
+    await expect(retried).resolves.toBeUndefined();
+    expect(createAudio).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed without throwing from a gesture activation setup error", async () => {
+    const fetchMock = vi.fn();
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createObjectUrl: () => {
+        throw new Error("object URLs unavailable");
+      },
+      revokeObjectUrl: vi.fn(),
+      createAudio: () => new FakeAudioElement(),
+    });
+
+    expect(() => playback.activateFromUserGesture()).not.toThrow();
+    await expect(
+      playback.play(narration("guide"), new AbortController().signal, {
+        onStarted: vi.fn(),
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({ code: "playback-authorization-required" }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when the media element rejects activation synchronously", async () => {
+    const audio = new FakeAudioElement();
+    audio.play.mockImplementationOnce(() => {
+      throw new Error("media session unavailable");
+    });
+    const revoked = vi.fn();
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: vi.fn(),
+      createObjectUrl: () => "blob:sync-activation-failure",
       revokeObjectUrl: revoked,
       createAudio: () => audio,
     });
+
+    expect(() => playback.activateFromUserGesture()).not.toThrow();
+    expect(revoked).toHaveBeenCalledWith("blob:sync-activation-failure");
+  });
+
+  it("aborts active playback, pauses audio, and revokes its object URL", async () => {
+    const audio = new FakeAudioElement();
+    const revoked = vi.fn();
+    let objectUrl = 0;
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: vi.fn(
+        async () =>
+          new Response(new Uint8Array([1]), {
+            headers: { "content-type": "audio/mpeg" },
+          }),
+      ),
+      createObjectUrl: () => `blob:interrupt-${++objectUrl}`,
+      revokeObjectUrl: revoked,
+      createAudio: () => audio,
+    });
+    playback.activateFromUserGesture();
     const onStarted = vi.fn();
     const playing = playback.play(
       narration("narrator"),
@@ -602,19 +738,22 @@ describe("OpenAiLivePlaybackPort", () => {
       { onStarted },
     );
     const rejected = expect(playing).rejects.toBeInstanceOf(Error);
-    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
 
     await playback.stop();
     await rejected;
 
     expect(audio.pause).toHaveBeenCalled();
     expect(onStarted).not.toHaveBeenCalled();
-    expect(revoked).toHaveBeenCalledOnce();
-    expect(revoked).toHaveBeenCalledWith("blob:interrupt");
+    expect(revoked).toHaveBeenCalledTimes(2);
+    expect(revoked).toHaveBeenNthCalledWith(1, "blob:interrupt-1");
+    expect(revoked).toHaveBeenNthCalledWith(2, "blob:interrupt-2");
   });
 
-  it("rejects oversized speech before allocating an object URL", async () => {
-    const createObjectUrl = vi.fn(() => "blob:oversized");
+  it("rejects oversized speech before allocating a speech object URL", async () => {
+    const createObjectUrl = vi.fn(
+      (blob: Blob) => `blob:oversized-${blob.size}`,
+    );
     const playback = new OpenAiLivePlaybackPort({
       sessionToken,
       maxResponseBytes: 2,
@@ -628,6 +767,7 @@ describe("OpenAiLivePlaybackPort", () => {
       revokeObjectUrl: vi.fn(),
       createAudio: () => new FakeAudioElement(),
     });
+    playback.activateFromUserGesture();
     const onStarted = vi.fn();
 
     await expect(
@@ -635,7 +775,10 @@ describe("OpenAiLivePlaybackPort", () => {
         onStarted,
       }),
     ).rejects.toEqual(expect.objectContaining({ code: "malformed-response" }));
-    expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(createObjectUrl).toHaveBeenCalledOnce();
+    expect(createObjectUrl.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ size: 46, type: "audio/wav" }),
+    );
     expect(onStarted).not.toHaveBeenCalled();
   });
 });

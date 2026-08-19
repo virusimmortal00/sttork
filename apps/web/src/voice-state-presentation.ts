@@ -37,7 +37,13 @@ export function authoritativeVoiceStatePresentation(
   statusText: string,
   projection: CanonicalStatusProjection,
 ): VoiceStatePresentation {
-  return projection.displayState === "blocked"
+  const activeOperation =
+    state === "requesting-microphone" ||
+    state === "listening" ||
+    state === "processing" ||
+    state === "guide-speaking" ||
+    state === "narrator-speaking";
+  return projection.displayState === "blocked" && !activeOperation
     ? { state: "blocked", statusText: projection.statusText }
     : { state, statusText };
 }
