@@ -230,14 +230,17 @@ describe("OpenAiChainedProvider", () => {
       new AbortController().signal,
     );
     const narrator = await provider.synthesize(
-      "Exact game prose.",
+      "Exact game prose.\n\n> ",
       "narrator",
       new AbortController().signal,
     );
 
     expect(bodies).toEqual([
       expect.objectContaining({ voice: "nova", input: "Which door?" }),
-      expect.objectContaining({ voice: "onyx", input: "Exact game prose." }),
+      expect.objectContaining({
+        voice: "onyx",
+        input: "Exact game prose.\n\n> ",
+      }),
     ]);
     expect([...guide.bytes]).toEqual([9, 8, 7]);
     expect([...narrator.bytes]).toEqual([9, 8, 7]);
@@ -245,6 +248,23 @@ describe("OpenAiChainedProvider", () => {
       capability: "narration",
       inputCharacters: 11,
     });
+  });
+
+  it("rejects C1 controls while preserving narration whitespace", async () => {
+    const fetchStub = vi.fn<typeof fetch>();
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: fetchStub,
+    });
+
+    await expect(
+      provider.synthesize(
+        "unsafe\u0085prose",
+        "narrator",
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expect.objectContaining({ code: "invalid-input" }));
+    expect(fetchStub).not.toHaveBeenCalled();
   });
 
   it("fails closed on malformed output and never exposes the key", async () => {

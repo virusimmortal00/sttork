@@ -153,6 +153,11 @@ Canonical repository commands are:
 - `pnpm dork:worker:build` emits the ignored Slice 1 browser-Worker smoke graph;
   `pnpm dork:worker:serve` serves it on loopback under restrictive CSP for a
   manual browser run. Neither command accepts Dork or produces a release bundle.
+- `pnpm openai:live:build` emits the ignored Slice 5 TypeScript and
+  browser/Worker smoke graphs; `pnpm openai:live:serve` serves the opt-in,
+  request-capped profile on loopback. Serving is local, but browser interaction
+  can make billable provider calls; neither command promotes the provider or
+  enters the hermetic source gate.
 - `pnpm check` is the hermetic source gate: formatting, linting, typechecking,
   every non-live test, fixture verification, provenance, licenses, and secrets.
 - `pnpm build` emits the current TypeScript build; `pnpm run ci` runs `check`
@@ -164,10 +169,10 @@ Canonical repository commands are:
   not part of the hermetic source gate. The GitHub verify job runs the full
   audit after `pnpm run ci`.
 
-There is no provider-live, automated browser-test, or release command until its
-real implementation and non-empty tests land. Do not invent competing or
-successful placeholder scripts. See `docs/development.md` for setup and command
-details.
+There is no automated provider-live test, automated browser-test, or release
+command until its real implementation and non-empty tests land. Do not invent
+competing or successful placeholder scripts. See `docs/development.md` for setup
+and command details.
 
 ## External calls and test fixtures
 

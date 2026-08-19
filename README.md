@@ -90,8 +90,12 @@ Initial Voice Slice 4 now adds the visually minimal deterministic browser audio
 shell: scripted push-to-talk, typed audio lifecycle, narrator/guide playback,
 Stop, repeat, pause/resume, and optional attributed transcript/debug
 projections. A real module Worker completes the end-to-end path under
-restrictive CSP without paid calls. Production microphone/provider adapters and
-the initial live voice smoke remain Slice 5 work.
+restrictive CSP without paid calls. A bounded, opt-in local chained-OpenAI
+harness now adds in-memory push-to-talk capture, a server-only key, Luna guide
+decisions, the authenticated Zork I story, and role-separated speech playback.
+Production-grade microphone/provider support and a recorded successful spoken
+browser turn remain Slice 5 work; the harness alone does not meet that
+checkpoint.
 
 ## Development
 

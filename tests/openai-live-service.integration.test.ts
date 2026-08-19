@@ -220,6 +220,51 @@ describe("OpenAI local live service", () => {
     );
   });
 
+  it("preserves exact multiline engine prose at the speech boundary", async () => {
+    const provider = new FakeProvider();
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+    const exact = "West of House\n\nYou are standing beside a house.\t> ";
+
+    const response = await handle(
+      request(
+        "/api/live/openai/speech",
+        JSON.stringify({ text: exact, role: "narrator" }),
+        "application/json",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(provider.synthesize).toHaveBeenCalledWith(
+      exact,
+      "narrator",
+      expect.any(AbortSignal),
+    );
+  });
+
+  it("rejects C1 controls before the narration provider boundary", async () => {
+    const provider = new FakeProvider();
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+
+    const response = await handle(
+      request(
+        "/api/live/openai/speech",
+        JSON.stringify({ text: "unsafe\u0085prose", role: "narrator" }),
+        "application/json",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(provider.synthesize).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized bodies without reading or forwarding them", async () => {
     const provider = new FakeProvider();
     const handle = createOpenAiLiveService({

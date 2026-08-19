@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "declaration": false,
+    "declarationMap": false,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "noEmit": false,
+    "outDir": "../../.ci/openai-live-shell",
+    "rootDir": "../..",
+    "sourceMap": true,
+    "types": []
+  },
+  "files": ["src/openai-live-shell.ts"],
+  "include": []
+}

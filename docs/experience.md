@@ -197,18 +197,18 @@ unless an observation command is necessary and the player has agreed to it.
 These controls are part of the application, not Zork parser commands. Common
 variants should be recognized before the general guide decision where practical.
 
-| Player intent                         | Required behavior                                                                                |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| “Stop” / “quiet”                      | Stop current and queued speech immediately; do not change game state.                            |
-| “Repeat that”                         | Replay the most recently interrupted or completed guide/narrator utterance, preserving its role. |
-| “Repeat the room”                     | Replay the latest engine observation or room description.                                        |
-| “Pause”                               | Stop capture and playback, preserve the session, and enter paused state.                         |
-| “Resume”                              | Return to ready without replaying content unless requested.                                      |
-| “Slower” / “faster”                   | Adjust subsequent speech in bounded increments and confirm with a short sample or cue.           |
-| “What did you hear?”                  | Speak the latest transcript and interpretation without executing it again.                       |
-| “Help” / “what can I say?”            | Explain contextual examples grounded in observed state.                                          |
-| “Show transcript” / “hide transcript” | Toggle the visible transcript without changing gameplay.                                         |
-| “Debug on” / “debug off”              | Toggle only when debug features are enabled for the build/user.                                  |
+| Player intent                         | Required behavior                                                                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| “Stop” / “quiet”                      | Stop unsubmitted capture, safely cancellable provider work, and current/queued speech; never reverse an accepted engine command. |
+| “Repeat that”                         | Replay the most recently interrupted or completed guide/narrator utterance, preserving its role.                                 |
+| “Repeat the room”                     | Replay the latest engine observation or room description.                                                                        |
+| “Pause”                               | Stop capture and playback, preserve the session, and enter paused state.                                                         |
+| “Resume”                              | Return to ready without replaying content unless requested.                                                                      |
+| “Slower” / “faster”                   | Adjust subsequent speech in bounded increments and confirm with a short sample or cue.                                           |
+| “What did you hear?”                  | Speak the latest transcript and interpretation without executing it again.                                                       |
+| “Help” / “what can I say?”            | Explain contextual examples grounded in observed state.                                                                          |
+| “Show transcript” / “hide transcript” | Toggle the visible transcript without changing gameplay.                                                                         |
+| “Debug on” / “debug off”              | Toggle only when debug features are enabled for the build/user.                                                                  |
 
 Destructive or state-changing requests such as restart, restore, overwrite save,
 discard, attack, or quit follow the guide's clarification policy rather than
@@ -354,8 +354,11 @@ key. Late provider responses for an older interaction are discarded. Speech
 queue entries reference their source event, so a restore, retry, or interruption
 can invalidate stale audio without deleting the event history.
 
-“Stop” targets playback only. It does not cancel or reverse an already executed
-game command. The guide should explain this distinction if it matters.
+“Stop” immediately ends unsubmitted capture and playback and cancels provider
+work only while cancellation is safe. It does not cancel, reverse, or conceal an
+engine command that was already accepted; the confirmed result is reported
+before another action. The guide should explain this commit-boundary distinction
+if it matters.
 
 ## Recovery behavior
 

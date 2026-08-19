@@ -1,11 +1,6 @@
 import {
-  ScriptedCapturePort,
   ScriptedNarrationPort,
-  ScriptedPlaybackPort,
-  ScriptedTranscriber,
-  VirtualAudioClock,
   VoiceAudioController,
-  type ScriptedClip,
   type VoiceAudioState,
 } from "../../../packages/audio/src/index.js";
 import type { SemanticEvent } from "../../../packages/contracts/src/index.js";
@@ -15,7 +10,6 @@ import {
   reduceExperienceProjection,
   type ExperienceProjectionState,
 } from "../../../packages/experience/src/index.js";
-import { FakeGuideModel } from "../../../packages/guide-core/src/index.js";
 import { SemanticTurnCoordinator } from "../../../packages/session/src/index.js";
 import {
   BrowserDorkWorkerFactory,
@@ -24,36 +18,24 @@ import {
 import { DORK_WORKER_BINDING } from "../../../spikes/dork-worker/dork-worker-binding.js";
 import { DorkWorkerEngine } from "../../../spikes/dork-worker/dork-worker-engine.js";
 
-const STORY_ID = "minimal-zmachine-story";
+import {
+  BrowserMicrophoneCapturePort,
+  InMemoryCapturedAudioStore,
+  OpenAiLiveGuideModel,
+  OpenAiLivePlaybackPort,
+  OpenAiLiveTranscriber,
+} from "./openai-live-audio.js";
+
+const STORY_ID = "zork1-release-119";
 const STORY_SHA256 =
-  "67d3a47a48227988a29b2f4111da4cf5cd0efec4a8873d717c9e610984fb7389";
-const STORY_URL = "/fixtures/stories/minimal/artifact/minimal.z3";
+  "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79";
+const STORY_URL = "/vendor/zork1/zork1.z3";
 
-const clips: readonly ScriptedClip[] = [
-  {
-    clipId: "north",
-    durationMs: 720,
-    transcript: { text: "please head north", confidence: 0.99 },
-  },
-  {
-    clipId: "ambiguous",
-    durationMs: 560,
-    transcript: { text: "open it", confidence: 0.96 },
-  },
-  {
-    clipId: "help",
-    durationMs: 610,
-    transcript: { text: "what can I do?", confidence: 0.98 },
-  },
-  { clipId: "silence", durationMs: 500 },
-];
-
-interface SmokeEvidence {
+interface LiveSmokeEvidence {
   status: "starting" | "ready" | "failed";
   turns: number;
   finalRevision: number;
   eventTypes: readonly string[];
-  playback: readonly { readonly role: string; readonly text: string }[];
   transcriptHidden: boolean;
   debugHidden: boolean;
   workerEnvironment?: {
@@ -61,12 +43,12 @@ interface SmokeEvidence {
     readonly documentAbsent: boolean;
     readonly windowAbsent: boolean;
   };
-  error?: string;
+  errorCode?: string;
 }
 
 declare global {
   interface Window {
-    __VOICE_SHELL_SMOKE__?: SmokeEvidence;
+    __OPENAI_LIVE_SMOKE__?: LiveSmokeEvidence;
   }
 }
 
@@ -74,6 +56,21 @@ function required<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (element === null) throw new Error(`Missing element #${id}`);
   return element as T;
+}
+
+function sessionToken(): string {
+  const token = document
+    .querySelector<HTMLMetaElement>('meta[name="zork-voice-live-session"]')
+    ?.content.trim();
+  if (
+    token === undefined ||
+    token.length < 32 ||
+    token.length > 160 ||
+    !/^[A-Za-z0-9_-]+$/u.test(token)
+  ) {
+    throw new Error("Live session initialization failed.");
+  }
+  return token;
 }
 
 async function sha256(bytes: Uint8Array): Promise<string> {
@@ -84,6 +81,7 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 async function run(): Promise<void> {
+  const token = sessionToken();
   const status = required<HTMLElement>("status");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
@@ -97,8 +95,8 @@ async function run(): Promise<void> {
   const textForm = required<HTMLFormElement>("text-form");
   const textInput = required<HTMLInputElement>("text-input");
 
-  function publishEvidence(evidence: SmokeEvidence): void {
-    window.__VOICE_SHELL_SMOKE__ = evidence;
+  function publishEvidence(evidence: LiveSmokeEvidence): void {
+    window.__OPENAI_LIVE_SMOKE__ = evidence;
     document.body.dataset.smokeEvidence = JSON.stringify(evidence);
   }
 
@@ -117,7 +115,7 @@ async function run(): Promise<void> {
       workerCount += 1;
       return new Worker("/worker/spikes/dork-worker/browser-worker-entry.js", {
         type: "module",
-        name: `voice-shell-dork-${workerCount}`,
+        name: `openai-live-dork-${workerCount}`,
       }) as unknown as DorkBrowserWorkerLike;
     },
     nextInitializationId: () => `initialize-${++initialization}`,
@@ -139,8 +137,14 @@ async function run(): Promise<void> {
   let interactionId = 0;
   let captureId = 0;
   const narration = new ScriptedNarrationPort();
-  const clock = new VirtualAudioClock();
-  const playback = new ScriptedPlaybackPort(clock);
+  const capturedAudio = new InMemoryCapturedAudioStore();
+  const capture = new BrowserMicrophoneCapturePort({ store: capturedAudio });
+  const transcriber = new OpenAiLiveTranscriber({
+    store: capturedAudio,
+    sessionToken: token,
+  });
+  const guide = new OpenAiLiveGuideModel({ sessionToken: token });
+  const playback = new OpenAiLivePlaybackPort({ sessionToken: token });
 
   function renderProjection(): void {
     status.textContent = projection.statusText;
@@ -168,38 +172,13 @@ async function run(): Promise<void> {
     renderProjection();
   }
 
-  const guide = new FakeGuideModel((input) => {
-    const utterance = input.playerUtterance.toLocaleLowerCase("en-US");
-    if (utterance.includes("what can")) {
-      return {
-        kind: "explain",
-        response: "provider prose is replaced",
-        basis: "command-help",
-        sourceIds: ["grammar.look", "grammar.direction.north"],
-      };
-    }
-    if (utterance.includes("open it")) {
-      return {
-        kind: "clarify",
-        question: "What would you like me to open?",
-        ambiguity: "The pronoun has no unique observed referent.",
-      };
-    }
-    return {
-      kind: "execute",
-      command: "north",
-      intentSummary: "Move north",
-      confidence: 0.99,
-    };
-  });
-
   const coordinator = new SemanticTurnCoordinator({
     engine,
     guide,
     narrator: narration,
     events: new EventSequence({
-      sessionId: "voice-shell-session",
-      now: () => new Date(1_787_081_400_000 + eventId).toISOString(),
+      sessionId: "openai-live-session",
+      now: () => new Date(Date.now()).toISOString(),
       nextId: () => `event-${++eventId}`,
     }),
     nextRequestId: () => `request-${++requestId}`,
@@ -209,24 +188,25 @@ async function run(): Promise<void> {
 
   const controller = new VoiceAudioController({
     turns: coordinator,
-    capture: new ScriptedCapturePort(clips),
-    transcriber: new ScriptedTranscriber(clips),
+    capture,
+    transcriber,
     narration,
     playback,
     nextInteractionId: () => `interaction-${++interactionId}`,
     nextCaptureId: () => `capture-${++captureId}`,
-    observedObjects: () => ["token"],
+    // These nouns are explicit in the authenticated opening output of the
+    // bundled Release 119 story. No hidden map or puzzle state is exposed.
+    observedObjects: () => ["mailbox", "house", "door"],
     onState: (state: VoiceAudioState) => {
       captureButton.textContent =
         state === "listening" ? "Finish speaking" : "Start speaking";
       captureButton.setAttribute("aria-pressed", String(state === "listening"));
-      const busy =
+      captureButton.disabled =
         state === "requesting-microphone" ||
         state === "processing" ||
         state === "guide-speaking" ||
         state === "narrator-speaking" ||
         state === "paused";
-      captureButton.disabled = busy;
       pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
       if (state === "ready") status.textContent = "Ready";
       if (state === "requesting-microphone") {
@@ -234,6 +214,8 @@ async function run(): Promise<void> {
       }
       if (state === "listening") status.textContent = "Listening";
       if (state === "processing") status.textContent = "Processing";
+      if (state === "guide-speaking") status.textContent = "Guide speaking";
+      if (state === "narrator-speaking") status.textContent = "Narrating";
       if (state === "recoverable-error") {
         status.textContent = "Try again or use text input";
         transcriptPanel.hidden = false;
@@ -246,27 +228,25 @@ async function run(): Promise<void> {
     },
   });
 
-  function updateEvidence(): void {
-    void engine.inspectPublicState().then((state) => {
-      publishEvidence({
-        status: "ready",
-        turns,
-        finalRevision: state.revision,
-        eventTypes: canonicalEvents.map((event) => event.type),
-        playback: playback.records.map(({ role, text }) => ({ role, text })),
-        transcriptHidden: transcriptPanel.hidden !== false,
-        debugHidden: debugPanel.hidden !== false,
-        ...(factory.lastEnvironment === undefined
-          ? {}
-          : { workerEnvironment: factory.lastEnvironment }),
-      });
+  async function updateEvidence(): Promise<void> {
+    const state = await engine.inspectPublicState();
+    publishEvidence({
+      status: "ready",
+      turns,
+      finalRevision: state.revision,
+      eventTypes: canonicalEvents.map((event) => event.type),
+      transcriptHidden: transcriptPanel.hidden !== false,
+      debugHidden: debugPanel.hidden !== false,
+      ...(factory.lastEnvironment === undefined
+        ? {}
+        : { workerEnvironment: factory.lastEnvironment }),
     });
   }
 
   async function toggleCapture(): Promise<void> {
     if (controller.state === "listening") {
       await controller.finishCapture();
-      updateEvidence();
+      await updateEvidence();
     } else if (
       controller.state === "ready" ||
       controller.state === "recoverable-error"
@@ -275,36 +255,53 @@ async function run(): Promise<void> {
     }
   }
 
-  captureButton.addEventListener("click", () => void toggleCapture());
-  stopButton.addEventListener("click", () => {
-    void controller.stop().then(updateEvidence);
-  });
-  pauseButton.addEventListener("click", () => {
-    void (
-      controller.state === "paused" ? controller.resume() : controller.pause()
-    ).then(updateEvidence);
-  });
-  repeatButton.addEventListener("click", () => {
-    void controller.repeat().then(updateEvidence);
-  });
+  function runControl(operation: () => Promise<unknown>): void {
+    void operation().catch(() => {
+      status.textContent = "Try again";
+    });
+  }
+
+  captureButton.addEventListener("click", () => runControl(toggleCapture));
+  stopButton.addEventListener("click", () =>
+    runControl(async () => {
+      await controller.stop();
+      await updateEvidence();
+    }),
+  );
+  pauseButton.addEventListener("click", () =>
+    runControl(async () => {
+      if (controller.state === "paused") await controller.resume();
+      else await controller.pause();
+      await updateEvidence();
+    }),
+  );
+  repeatButton.addEventListener("click", () =>
+    runControl(async () => {
+      await controller.repeat();
+      await updateEvidence();
+    }),
+  );
   transcriptButton.addEventListener("click", () => {
     transcriptPanel.hidden = !transcriptPanel.hidden;
     transcriptButton.setAttribute(
       "aria-expanded",
       String(!transcriptPanel.hidden),
     );
-    updateEvidence();
+    runControl(updateEvidence);
   });
   debugButton.addEventListener("click", () => {
     debugPanel.hidden = !debugPanel.hidden;
     debugButton.setAttribute("aria-expanded", String(!debugPanel.hidden));
-    updateEvidence();
+    runControl(updateEvidence);
   });
   textForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const text = textInput.value;
     textInput.value = "";
-    void controller.submitText(text).then(updateEvidence);
+    runControl(async () => {
+      await controller.submitText(text);
+      await updateEvidence();
+    });
   });
   document.addEventListener("keydown", (event) => {
     if (
@@ -313,42 +310,29 @@ async function run(): Promise<void> {
       event.target === document.body
     ) {
       event.preventDefault();
-      void toggleCapture();
+      runControl(toggleCapture);
     }
-    if (event.code === "Escape") void controller.stop();
+    if (event.code === "Escape") runControl(() => controller.stop());
   });
 
   projection = { ...projection, displayState: "ready", statusText: "Ready" };
   renderProjection();
   captureButton.disabled = false;
-  publishEvidence({
-    status: "ready",
-    turns: 0,
-    finalRevision: 0,
-    eventTypes: [],
-    playback: [],
-    transcriptHidden: true,
-    debugHidden: true,
-    ...(factory.lastEnvironment === undefined
-      ? {}
-      : { workerEnvironment: factory.lastEnvironment }),
-  });
+  await updateEvidence();
 }
 
-void run().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : "Unknown failure";
+void run().catch(() => {
   const status = document.getElementById("status");
   if (status !== null) status.textContent = "Unable to start";
-  const evidence: SmokeEvidence = {
+  const evidence: LiveSmokeEvidence = {
     status: "failed",
     turns: 0,
     finalRevision: 0,
     eventTypes: [],
-    playback: [],
     transcriptHidden: true,
     debugHidden: true,
-    error: message,
+    errorCode: "startup-failed",
   };
-  window.__VOICE_SHELL_SMOKE__ = evidence;
+  window.__OPENAI_LIVE_SMOKE__ = evidence;
   document.body.dataset.smokeEvidence = JSON.stringify(evidence);
 });

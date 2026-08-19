@@ -19,13 +19,16 @@ import {
 class StubTurns implements VoiceTurnPort {
   public readonly lifecycle: string[] = [];
   public readonly submitted: string[] = [];
+  public readonly transcriptConfidences: Array<number | undefined> = [];
   public constructor(private readonly narration: ScriptedNarrationPort) {}
 
   public async submitTurn(input: {
     readonly interactionId: string;
     readonly transcript: string;
+    readonly transcriptConfidence?: number;
   }): Promise<SemanticTurnResult> {
     this.submitted.push(input.transcript);
+    this.transcriptConfidences.push(input.transcriptConfidence);
     await this.narration.prepare(
       {
         narrationId: `narration-${input.interactionId}`,
@@ -152,7 +155,22 @@ describe("VoiceAudioController", () => {
     expect(subject.turns.submitted).toHaveLength(0);
     expect(subject.turns.lifecycle).toContain("transcription:no-speech");
     expect(subject.playback.records).toHaveLength(0);
-    expect(subject.controller.state).toBe("ready");
+    expect(subject.controller.state).toBe("recoverable-error");
+  });
+
+  it("does not invent transcript confidence when a provider omits it", async () => {
+    const subject = fixture([
+      {
+        clipId: "provider-without-confidence",
+        durationMs: 400,
+        transcript: { text: "go north" },
+      },
+    ]);
+
+    await subject.controller.startCapture();
+    await subject.controller.finishCapture();
+
+    expect(subject.turns.transcriptConfidences).toEqual([undefined]);
   });
 
   it("cancels active capture on pause and resumes without submitting", async () => {
@@ -177,6 +195,134 @@ describe("VoiceAudioController", () => {
     expect(subject.turns.lifecycle).toContain("resumed");
   });
 
+  it("stops an active microphone capture without submitting it", async () => {
+    const subject = fixture([
+      {
+        clipId: "stopped",
+        durationMs: 300,
+        transcript: { text: "go north", confidence: 0.99 },
+      },
+    ]);
+
+    await subject.controller.startCapture();
+    await subject.controller.stop();
+
+    expect(subject.controller.state).toBe("ready");
+    expect(subject.turns.submitted).toHaveLength(0);
+    expect(subject.turns.lifecycle).toEqual([
+      "capture-started",
+      "capture-ended:cancelled",
+    ]);
+  });
+
+  it("reports a failed microphone cancellation without claiming success", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const controller = new VoiceAudioController({
+      turns,
+      capture: {
+        start: async () => undefined,
+        stop: async () => ({ clipId: "unused", durationMs: 0 }),
+        cancel: async () => {
+          throw new Error("recorder would not cancel");
+        },
+      },
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: new ScriptedPlaybackPort(new VirtualAudioClock()),
+      nextInteractionId: () => "cancel-failure",
+      nextCaptureId: () => "capture-cancel-failure",
+      observedObjects: () => [],
+    });
+
+    await controller.startCapture();
+    await controller.stop();
+
+    expect(controller.state).toBe("recoverable-error");
+    expect(turns.lifecycle).toEqual([
+      "capture-started",
+      "audio:capture-cancel-failed",
+      "capture-ended:failed",
+    ]);
+  });
+
+  it("cancels pending microphone permission without a late capture", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    let grantPermission!: () => void;
+    const permission = new Promise<void>((resolve) => {
+      grantPermission = resolve;
+    });
+    const cancelled: string[] = [];
+    const controller = new VoiceAudioController({
+      turns,
+      capture: {
+        start: async () => permission,
+        stop: async () => ({ clipId: "unused", durationMs: 0 }),
+        cancel: async (captureId) => {
+          cancelled.push(captureId);
+        },
+      },
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: new ScriptedPlaybackPort(new VirtualAudioClock()),
+      nextInteractionId: () => "permission-pending",
+      nextCaptureId: () => "capture-pending",
+      observedObjects: () => [],
+    });
+
+    const starting = controller.startCapture();
+    expect(controller.state).toBe("requesting-microphone");
+    await controller.stop();
+    expect(controller.state).toBe("ready");
+
+    grantPermission();
+    await starting;
+
+    expect(cancelled).toEqual(["capture-pending", "capture-pending"]);
+    expect(turns.lifecycle).toEqual([]);
+    expect(turns.submitted).toHaveLength(0);
+    expect(controller.state).toBe("ready");
+  });
+
+  it("cancels while the recorder stop boundary is still pending", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    let rejectStop!: (error: unknown) => void;
+    const stopped = new Promise<never>((_resolve, reject) => {
+      rejectStop = reject;
+    });
+    const controller = new VoiceAudioController({
+      turns,
+      capture: {
+        start: async () => undefined,
+        stop: async () => stopped,
+        cancel: async () => rejectStop(new Error("capture cancelled")),
+      },
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: new ScriptedPlaybackPort(new VirtualAudioClock()),
+      nextInteractionId: () => "delayed-stop",
+      nextCaptureId: () => "capture-delayed-stop",
+      observedObjects: () => [],
+    });
+
+    await controller.startCapture();
+    const finishing = controller.finishCapture();
+    await Promise.resolve();
+    await controller.stop();
+    const result = await finishing;
+
+    expect(result.outcome).toBe("failed");
+    expect(turns.submitted).toHaveLength(0);
+    expect(turns.lifecycle).toEqual([
+      "capture-started",
+      "capture-ended:cancelled",
+      "transcription:cancelled",
+    ]);
+    expect(controller.state).toBe("ready");
+  });
+
   it("reports microphone denial without beginning a turn", async () => {
     const narration = new ScriptedNarrationPort();
     const turns = new StubTurns(narration);
@@ -199,9 +345,13 @@ describe("VoiceAudioController", () => {
 
     await controller.startCapture();
 
-    expect(controller.state).toBe("ready");
+    expect(controller.state).toBe("recoverable-error");
     expect(turns.submitted).toHaveLength(0);
     expect(turns.lifecycle).toEqual(["audio:microphone-unavailable"]);
+
+    await controller.submitText("look");
+    expect(controller.state).toBe("ready");
+    expect(turns.submitted).toEqual(["look"]);
   });
 
   it("records player interruption while narration is in flight", async () => {
@@ -248,5 +398,64 @@ describe("VoiceAudioController", () => {
 
     expect(turns.lifecycle).toContain("playback-ended:interrupted");
     expect(controller.state).toBe("ready");
+  });
+
+  it("repeats the current narration after its first playback is interrupted", async () => {
+    let playbackStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      playbackStarted = resolve;
+    });
+    const requests: NarrationRequest[] = [];
+    const playback = {
+      play: async (request: NarrationRequest, signal: AbortSignal) => {
+        requests.push({ ...request });
+        if (requests.length > 1) return;
+        playbackStarted();
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      },
+      stop: async () => undefined,
+    };
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const clips: ScriptedClip[] = [
+      {
+        clipId: "repeat-interrupted",
+        durationMs: 640,
+        transcript: { text: "go north", confidence: 0.99 },
+      },
+    ];
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort(clips),
+      transcriber: new ScriptedTranscriber(clips),
+      narration,
+      playback,
+      nextInteractionId: () => "repeat-interrupted",
+      nextCaptureId: () => "capture-repeat-interrupted",
+      observedObjects: () => [],
+    });
+
+    await controller.startCapture();
+    const finishing = controller.finishCapture();
+    await started;
+    await controller.stop();
+    await finishing;
+    await controller.repeat();
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatchObject({
+      role: requests[0]?.role,
+      text: requests[0]?.text,
+    });
+    expect(turns.lifecycle).toEqual(
+      expect.arrayContaining([
+        "playback-ended:interrupted",
+        "playback-ended:complete",
+      ]),
+    );
   });
 });

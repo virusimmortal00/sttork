@@ -68,7 +68,10 @@ minimal bounded guide, a semantic turn orchestrator, a deterministic browser
 audio shell, and one budget-limited live provider profile. Slice 4 produces the
 fake/recorded-audio end-to-end checkpoint; slice 5 produces the initial live
 developer voice smoke. These checkpoints do not replace M0-M7 exits or accept
-Dork as the production runtime.
+Dork as the production runtime. The bounded chained-OpenAI Slice 5 harness
+landed on 2026-08-19, but its checkpoint remains open until a real microphone
+browser run is recorded. This isolated integration work does not by itself
+advance or complete M4 or M5.
 
 ## M0 — Licensing, decisions, and repository foundation
 

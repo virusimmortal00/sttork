@@ -8,7 +8,7 @@ export interface CapturedAudioTurn {
 
 export interface FinalTranscript {
   readonly text: string;
-  readonly confidence: number;
+  readonly confidence?: number;
 }
 
 export interface CapturePort {

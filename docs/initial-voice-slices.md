@@ -262,6 +262,11 @@ end-to-end voice loop suitable for reliable local development and CI.
 
 ## Slice 5 — One budget-limited live provider profile
 
+Implementation checkpoint: the bounded chained-OpenAI harness landed on
+2026-08-19. The slice checkpoint remains open pending recorded real-microphone
+browser evidence under the served CSP; this implementation does not constitute
+OpenAI Realtime support or progress M4/M5 by itself.
+
 ### Deliverables
 
 - Configure one current, officially supported provider profile for the live
@@ -299,3 +304,30 @@ hardening, provider failover, and Hugging Face graduation remain in M4-M7.
 **Checkpoint after slice 5:** the project has an initial live developer voice
 test. It is evidence that the architecture connects end to end, not that the
 interpreter, provider, or product is release-qualified.
+
+### Landed implementation evidence
+
+- The browser path connects bounded `MediaRecorder` push-to-talk capture to a
+  one-shot in-memory audio store, the same-origin BFF, `gpt-4o-mini-transcribe`,
+  a strict `gpt-5.6-luna` Responses decision, provider-neutral guide policy and
+  the semantic coordinator, the authenticated Zork I Dork Worker, exact
+  multiline engine prose, and role-specific `tts-1` playback.
+- The long-lived provider key remains in the loopback server. Browser code
+  receives only a random process-lifetime session token. Same-origin checks,
+  restrictive CSP, microphone Permissions Policy, `no-store`, bounded request
+  and response bodies, cancellation, and one-shot audio disposal are enforced.
+- One provider instance enforces a global 12-request ceiling. The ordinary
+  hermetic gate contains provider, BFF, browser-adapter, audio-controller, and
+  local-harness regressions and makes no provider call. The ignored browser and
+  Worker graph builds without credentials.
+
+### Evidence still required
+
+- Record a real browser microphone turn for one unambiguous intent, one engine
+  revision, and audible exact narration without relying on visible prose.
+- Record a spoken ambiguous intent that produces clarification and no engine
+  mutation, plus interruption behavior and injected-provider-failure recovery
+  from the last confirmed checkpoint.
+- Preserve browser version, CSP/console result, request-count evidence, and a
+  redaction check showing that neither the key nor raw audio entered persisted
+  diagnostics. Until those checks pass, the Slice 5 checkpoint remains open.

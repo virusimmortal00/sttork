@@ -105,8 +105,17 @@ export function reduceExperienceProjection(
       statusText = "Listening";
       break;
     case "audio.capture.ended":
-      displayState = "processing";
-      statusText = "Processing";
+      if (event.payload.outcome === "submitted") {
+        displayState = "processing";
+        statusText = "Processing";
+      } else if (event.payload.outcome === "failed") {
+        displayState = "blocked";
+        statusText = "Action needed";
+      } else {
+        displayState = "ready";
+        statusText =
+          event.payload.outcome === "silence" ? "No speech detected" : "Ready";
+      }
       break;
     case "session.paused":
       displayState = "paused";

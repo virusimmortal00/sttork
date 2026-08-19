@@ -29,6 +29,8 @@
     "dork:worker:serve": "node scripts/serve-dork-worker-smoke.mjs",
     "voice:shell:build": "node scripts/build-voice-shell-browser.mjs",
     "voice:shell:serve": "node scripts/serve-voice-shell-smoke.mjs",
+    "openai:live:build": "node scripts/build-openai-live-browser.mjs",
+    "openai:live:serve": "node scripts/serve-openai-live-smoke.mjs",
     "check:provenance": "node scripts/check-provenance.mjs",
     "check:licenses": "node scripts/check-licenses.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",

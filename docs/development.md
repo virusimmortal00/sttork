@@ -49,6 +49,8 @@ dependency to the owning workspace and commit the resulting lockfile change.
 | `pnpm dork:worker:serve`                    | Serve the built smoke on loopback with restrictive CSP      | no      |
 | `pnpm voice:shell:build`                    | Build the deterministic browser audio shell and Worker      | no      |
 | `pnpm voice:shell:serve`                    | Serve that shell on loopback with restrictive CSP           | no      |
+| `pnpm openai:live:build`                    | Build the opt-in OpenAI live shell, server, and Worker      | no      |
+| `pnpm openai:live:serve`                    | Serve the budget-limited live shell on loopback             | yes†    |
 | `pnpm story:build -- --compiler PATH`       | Rebuild twice and write the deterministic story artifact    | no\*    |
 | `pnpm story:build:check -- --compiler PATH` | Rebuild twice and compare without writing                   | no\*    |
 | `pnpm check:provenance`                     | Validate upstream records and admitted files                | no      |
@@ -88,13 +90,45 @@ query. The explicit `run` is required: pnpm 11 owns a separate built-in
 separately runs the networked full dependency audit. The production-only audit
 remains available for deployment-focused diagnosis.
 
+The Slice 5 OpenAI harness is opt-in developer evidence. First run
+`pnpm openai:live:build`, then `pnpm openai:live:serve`, and open the printed
+loopback URL. The server accepts `OPENAI_API_KEY` from its process environment
+or from an ignored, regular, current-user-owned, nonempty mode-0600
+`.env.local`; it never injects that key into browser code. The browser receives
+only a random session token that expires when the local server stops.
+Push-to-talk audio is bounded, kept only in memory, consumed once by
+transcription, and not logged or placed in test fixtures. The serve script uses
+port 4175 by default; an optional positional port may be `0` (allocate one) or
+an integer from 1024 through 65535.
+
+The 2026-08-19 smoke profile uses `gpt-4o-mini-transcribe`, `gpt-5.6-luna`, and
+`tts-1`, with one global maximum of 12 provider requests for the server process.
+A normal spoken turn uses three requests; Repeat uses another speech request.
+This is a request ceiling, not a dollar-denominated spend cap. Browser actions
+can incur API charges, so stop the server when the smoke is complete. This
+harness is not provider promotion, production authentication, or a substitute
+for the hermetic source gate.
+
+For the pending manual checkpoint, say an unambiguous single action such as
+“look” and confirm one revision plus audible exact engine narration. Then say an
+ambiguous request such as “open it” and confirm that the guide asks for
+clarification without advancing the engine. Exercise Stop during capture or
+playback, and inspect the optional transcript/debug surfaces only to confirm
+attribution, Worker isolation, and absence of sensitive audio or credentials.
+Record the browser version and console/CSP result. The harness implementation
+and its hermetic tests are present, but Slice 5 is not complete until this real
+microphone evidence is recorded.
+
 \* The story build commands are local after the exact Inform 6.44 compiler is
 available. Obtaining its pinned source revision requires network access; the
 compiler path is explicit and the build scripts never download tools.
 
-There is no live-provider or release command yet. Those commands will be added
-only alongside real implementations and non-empty tests; the repository never
-uses a successful placeholder command to imply a milestone gate exists.
+† Serving the shell itself is local. Browser actions make bounded live provider
+requests and can incur API charges.
+
+There is no automated live-provider test or release command yet. The manual
+OpenAI live harness is backed by non-empty hermetic adapter/server tests; it is
+not a successful placeholder and is excluded from ordinary provider calls.
 
 The minimal story pipeline is accepted by ADR-0007 and proves a deterministic,
 legal fixture. `dork:verify` authenticates the ADR-0009 candidate inputs but

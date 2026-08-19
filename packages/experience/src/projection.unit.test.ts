@@ -133,4 +133,34 @@ describe("experience projection", () => {
       "must be reduced in sequence order",
     );
   });
+
+  it("returns to ready when an active capture is cancelled", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "cancelled-capture",
+      now: () => "2026-08-19T06:42:00.000Z",
+      nextId: () => `cancelled-event-${++id}`,
+    });
+    const projection = projectExperience([
+      sequence.append({
+        type: "audio.capture.started",
+        correlationId: "cancelled-turn",
+        visibility: "accessible",
+        payload: { captureId: "capture", mode: "push-to-talk" as const },
+      }),
+      sequence.append({
+        type: "audio.capture.ended",
+        correlationId: "cancelled-turn",
+        visibility: "accessible",
+        payload: {
+          captureId: "capture",
+          durationMs: 0,
+          outcome: "cancelled" as const,
+        },
+      }),
+    ]);
+
+    expect(projection.displayState).toBe("ready");
+    expect(projection.statusText).toBe("Ready");
+  });
 });

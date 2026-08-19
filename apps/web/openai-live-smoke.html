@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="zork-voice-live-session"
+      content="__ZORK_VOICE_SESSION_TOKEN__"
+    />
+    <title>Zork Voice live developer smoke</title>
+    <link rel="stylesheet" href="/voice-shell.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Zork Voice · live developer smoke</p>
+      <h1 id="status" aria-live="polite">Starting</h1>
+      <p class="cue" aria-hidden="true">Press V or use the speaking control.</p>
+      <button id="capture" type="button" aria-pressed="false" disabled>
+        Start speaking
+      </button>
+      <nav aria-label="Voice session controls">
+        <button id="stop" type="button">Stop</button>
+        <button id="pause" type="button">Pause</button>
+        <button id="repeat" type="button">Repeat</button>
+        <button id="toggle-transcript" type="button" aria-expanded="false">
+          Transcript
+        </button>
+        <button id="toggle-debug" type="button" aria-expanded="false">
+          Debug
+        </button>
+      </nav>
+      <section id="transcript-panel" aria-label="Accessible transcript" hidden>
+        <ol id="transcript-list"></ol>
+        <form id="text-form">
+          <label for="text-input">Accessible text input</label>
+          <input id="text-input" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+      <pre id="debug-panel" aria-label="Developer event evidence" hidden></pre>
+    </main>
+    <script type="module" src="/app/apps/web/src/openai-live-shell.js"></script>
+  </body>
+</html>

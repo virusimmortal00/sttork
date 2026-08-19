@@ -246,6 +246,39 @@ function boundedString(value: unknown, name: string, maximum: number): string {
   return value;
 }
 
+function boundedNarrationText(
+  value: unknown,
+  name: string,
+  maximum: number,
+): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    hasUnsafeNarrationControl(value)
+  ) {
+    throw new ProviderAdapterError(
+      "invalid-input",
+      `${name} must be bounded text with safe narration whitespace.`,
+    );
+  }
+  return value;
+}
+
+function hasUnsafeNarrationControl(value: string): boolean {
+  for (const character of value) {
+    if (
+      character !== "\t" &&
+      character !== "\n" &&
+      character !== "\r" &&
+      /\p{Cc}/u.test(character)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function safeInteger(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && (value as number) >= 0
     ? (value as number)
@@ -512,7 +545,7 @@ export class OpenAiChainedProvider implements GuideModel {
     role: "guide" | "narrator",
     signal: AbortSignal,
   ): Promise<ProviderSpeech> {
-    const boundedText = boundedString(
+    const boundedText = boundedNarrationText(
       text,
       "narration text",
       this.#profile.maxNarrationCharacters,

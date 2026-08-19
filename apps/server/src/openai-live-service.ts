@@ -100,6 +100,32 @@ function boundedString(value: unknown, maximum: number): string {
   return value;
 }
 
+function boundedNarrationText(value: unknown, maximum: number): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    hasUnsafeNarrationControl(value)
+  ) {
+    throw new TypeError("invalid-narration-text");
+  }
+  return value;
+}
+
+function hasUnsafeNarrationControl(value: string): boolean {
+  for (const character of value) {
+    if (
+      character !== "\t" &&
+      character !== "\n" &&
+      character !== "\r" &&
+      /\p{Cc}/u.test(character)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function observedObjects(value: unknown): readonly string[] {
   if (!Array.isArray(value) || value.length > 64) {
     throw new TypeError("invalid-observed-objects");
@@ -204,7 +230,7 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
 
       if (pathname === "/api/live/openai/speech") {
         const input = record(await boundedJson(request));
-        const text = boundedString(input.text, 4_000);
+        const text = boundedNarrationText(input.text, 4_000);
         if (input.role !== "guide" && input.role !== "narrator") {
           throw new TypeError("invalid-role");
         }
