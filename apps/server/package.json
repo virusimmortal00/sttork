@@ -4,5 +4,11 @@
   "private": true,
   "description": "Session BFF for provider authorization and ephemeral credentials.",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/command-knowledge": "workspace:*",
+    "@zork-voice/guide-core": "workspace:*",
+    "@zork-voice/providers": "workspace:*"
+  }
 }

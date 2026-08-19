@@ -1,5 +1,3 @@
-import type { GuideDecision } from "@zork-voice/contracts";
-
 export interface ProviderUsage {
   readonly provider: "openai";
   readonly capability: "transcription" | "guide" | "narration";
@@ -24,7 +22,7 @@ export interface ProviderSpeech {
 }
 
 export interface GuideDecisionWithUsage {
-  readonly decision: GuideDecision;
+  readonly decision: unknown;
   readonly usage: ProviderUsage;
 }
 

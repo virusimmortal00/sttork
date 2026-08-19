@@ -20,6 +20,12 @@ importers:
       '@zork-voice/events':
         specifier: workspace:*
         version: link:packages/events
+      '@zork-voice/providers':
+        specifier: workspace:*
+        version: link:packages/providers
+      '@zork-voice/server':
+        specifier: workspace:*
+        version: link:apps/server
       '@zork-voice/test-support':
         specifier: workspace:*
         version: link:packages/test-support
@@ -45,7 +51,17 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@types/node@26.2.0)(vite@8.2.1(@types/node@26.2.0))
 
-  apps/server: {}
+  apps/server:
+    dependencies:
+      '@zork-voice/command-knowledge':
+        specifier: workspace:*
+        version: link:../../packages/command-knowledge
+      '@zork-voice/guide-core':
+        specifier: workspace:*
+        version: link:../../packages/guide-core
+      '@zork-voice/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
 
   apps/web:
     dependencies:

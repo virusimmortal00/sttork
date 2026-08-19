@@ -42,6 +42,8 @@
     "@types/node": "26.2.0",
     "@zork-voice/contracts": "workspace:*",
     "@zork-voice/events": "workspace:*",
+    "@zork-voice/providers": "workspace:*",
+    "@zork-voice/server": "workspace:*",
     "@zork-voice/test-support": "workspace:*",
     "ajv": "8.18.0",
     "eslint": "10.8.1",

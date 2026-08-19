@@ -1,4 +1,3 @@
-import type { GuideDecision } from "@zork-voice/contracts";
 import type {
   GuideModel,
   InitialGuideModelInput,
@@ -326,9 +325,9 @@ export class OpenAiChainedProvider implements GuideModel {
       }),
     });
     const value: unknown = await this.#json(response);
-    let decision: GuideDecision;
+    let decision: unknown;
     try {
-      decision = JSON.parse(outputText(value)) as GuideDecision;
+      decision = JSON.parse(outputText(value)) as unknown;
     } catch (error) {
       if (error instanceof ProviderAdapterError) throw error;
       throw new ProviderAdapterError(
