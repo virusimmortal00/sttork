@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  activityIndicatorIsVisible,
   activityStateForVoiceState,
   applyCommandCuePresentation,
   applyVoiceStatePresentation,
@@ -19,6 +20,22 @@ describe("voice state presentation", () => {
     expect(activityStateForVoiceState("narrator-speaking")).toBe("speaking");
     expect(activityStateForVoiceState("paused")).toBe("paused");
     expect(activityStateForVoiceState("recoverable-error")).toBe("blocked");
+  });
+
+  it("shows decorative activity only while work is happening", () => {
+    expect(activityIndicatorIsVisible("booting")).toBe(true);
+    expect(activityIndicatorIsVisible("requesting-microphone")).toBe(true);
+    expect(activityIndicatorIsVisible("listening")).toBe(true);
+    expect(activityIndicatorIsVisible("processing")).toBe(true);
+    expect(activityIndicatorIsVisible("reconnecting")).toBe(true);
+    expect(activityIndicatorIsVisible("guide-speaking")).toBe(true);
+    expect(activityIndicatorIsVisible("narrator-speaking")).toBe(true);
+
+    expect(activityIndicatorIsVisible("ready")).toBe(false);
+    expect(activityIndicatorIsVisible("paused")).toBe(false);
+    expect(activityIndicatorIsVisible("recoverable-error")).toBe(false);
+    expect(activityIndicatorIsVisible("blocked")).toBe(false);
+    expect(activityIndicatorIsVisible("ended")).toBe(false);
   });
 
   it("keeps accessible status text stable and respects degraded ready text", () => {
@@ -46,7 +63,18 @@ describe("voice state presentation", () => {
         currentText = value;
       },
     };
-    const activityIndicator = { dataset: { state: "processing" } };
+    let hiddenWrites = 0;
+    let currentHidden = false;
+    const activityIndicator = {
+      dataset: { state: "processing" },
+      get hidden(): boolean {
+        return currentHidden;
+      },
+      set hidden(value: boolean) {
+        hiddenWrites += 1;
+        currentHidden = value;
+      },
+    };
 
     applyVoiceStatePresentation("processing", "Processing", {
       status,
@@ -54,7 +82,35 @@ describe("voice state presentation", () => {
     });
 
     expect(textWrites).toBe(0);
+    expect(hiddenWrites).toBe(0);
     expect(activityIndicator.dataset.state).toBe("processing");
+
+    applyVoiceStatePresentation("ready", "Ready", {
+      status,
+      activityIndicator,
+    });
+    expect(currentText).toBe("Ready");
+    expect(textWrites).toBe(1);
+    expect(activityIndicator.dataset.state).toBe("idle");
+    expect(currentHidden).toBe(true);
+    expect(hiddenWrites).toBe(1);
+
+    applyVoiceStatePresentation("ready", "Ready", {
+      status,
+      activityIndicator,
+    });
+    expect(textWrites).toBe(1);
+    expect(hiddenWrites).toBe(1);
+
+    applyVoiceStatePresentation("processing", "Processing", {
+      status,
+      activityIndicator,
+    });
+    expect(currentText).toBe("Processing");
+    expect(textWrites).toBe(2);
+    expect(activityIndicator.dataset.state).toBe("processing");
+    expect(currentHidden).toBe(false);
+    expect(hiddenWrites).toBe(2);
   });
 
   it("shows only the canonical command and avoids duplicate live-region writes", () => {

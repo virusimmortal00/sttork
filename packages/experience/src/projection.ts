@@ -37,10 +37,22 @@ export interface CommandCueProjection {
   readonly throughSequence: number;
 }
 
+export const EXPERIENCE_ACTION_LOG_LIMIT = 8;
+
+export interface ActionLogItemProjection {
+  readonly requestId: string;
+  readonly correlationId: string;
+  readonly command: string;
+  readonly phase: "committed";
+  readonly sourceEventIds: readonly string[];
+  readonly throughSequence: number;
+}
+
 export interface ExperienceProjectionState {
   readonly displayState: ExperienceDisplayState;
   readonly statusText: string;
   readonly activeCommand?: CommandCueProjection;
+  readonly actionLog: readonly ActionLogItemProjection[];
   readonly throughSequence: number;
   readonly sourceEventIds: readonly string[];
   readonly transcript: readonly TranscriptItemProjection[];
@@ -56,11 +68,63 @@ export function initialExperienceProjection(): ExperienceProjectionState {
   return {
     displayState: "booting",
     statusText: "Starting",
+    actionLog: [],
     throughSequence: 0,
     sourceEventIds: [],
     transcript: [],
     debug: [],
   };
+}
+
+function matchesAction(
+  item: ActionLogItemProjection,
+  command: {
+    readonly requestId: string;
+    readonly correlationId: string;
+    readonly command: string;
+  },
+): boolean {
+  return (
+    item.requestId === command.requestId &&
+    item.correlationId === command.correlationId &&
+    item.command === command.command
+  );
+}
+
+function addCommittedAction(
+  actionLog: readonly ActionLogItemProjection[],
+  action: ActionLogItemProjection,
+): readonly ActionLogItemProjection[] {
+  return [action, ...actionLog].slice(0, EXPERIENCE_ACTION_LOG_LIMIT);
+}
+
+function projectCommittedAction(
+  actionLog: readonly ActionLogItemProjection[],
+  command: {
+    readonly requestId: string;
+    readonly correlationId: string;
+    readonly command: string;
+  },
+  event: SemanticEvent,
+): readonly ActionLogItemProjection[] {
+  const index = actionLog.findIndex((item) => matchesAction(item, command));
+  if (index === -1) {
+    return addCommittedAction(actionLog, {
+      ...command,
+      phase: "committed",
+      sourceEventIds: [event.id],
+      throughSequence: event.sequence,
+    });
+  }
+  return actionLog.map((item, itemIndex) =>
+    itemIndex === index
+      ? {
+          ...item,
+          sourceEventIds: [...item.sourceEventIds, event.id],
+          throughSequence: event.sequence,
+        }
+      : item,
+  );
 }
 
 function transcriptItem(
@@ -110,6 +174,7 @@ export function reduceExperienceProjection(
   let displayState = previous.displayState;
   let statusText = previous.statusText;
   let activeCommand = previous.activeCommand;
+  let actionLog = previous.actionLog;
   let transcript = previous.transcript;
 
   switch (event.type) {
@@ -190,6 +255,15 @@ export function reduceExperienceProjection(
       ];
       break;
     case "engine.command.committed":
+      actionLog = projectCommittedAction(
+        actionLog,
+        {
+          requestId: event.payload.requestId,
+          correlationId: event.correlationId,
+          command: event.payload.command,
+        },
+        event,
+      );
       if (activeCommand === undefined) {
         activeCommand = {
           requestId: event.payload.requestId,
@@ -330,6 +404,7 @@ export function reduceExperienceProjection(
     displayState,
     statusText,
     ...(activeCommand === undefined ? {} : { activeCommand }),
+    actionLog,
     throughSequence: event.sequence,
     sourceEventIds: [...previous.sourceEventIds, event.id],
     transcript,

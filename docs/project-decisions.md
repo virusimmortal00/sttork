@@ -13,12 +13,13 @@ The ordinary play loop is voice input and spoken output. The default visual
 surface contains only essential status and controls. It is not a terminal with
 voice bolted on.
 
-[ADR-0011](adr/0011-transient-command-and-activity-status.md) treats a single
-event-derived `Command: …` cue as essential trust status. It is transient, comes
-only from the canonical engine-request boundary, and clears through semantic
-events rather than becoming persistent prose. Decorative activity may animate
-active states, but stable status text remains authoritative and reduced motion
-disables animation.
+[ADR-0013](adr/0013-persistent-command-history-and-active-only-indicator.md)
+supersedes ADR-0011's transient cue. The default screen may retain a bounded,
+newest-first history of canonical commands as essential trust status. An active
+request comes only from the engine-request boundary; only matching committed
+commands enter muted history. Decorative activity appears only while work is
+active. Stable status text remains authoritative and reduced motion disables
+animation.
 
 Visible transcript and text input remain supported accessibility capabilities.
 Detailed raw state, tool calls, provider timing, and cost data belong in an

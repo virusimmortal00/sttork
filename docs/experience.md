@@ -46,9 +46,8 @@ The default screen contains no transcript and no game prose. It has:
 - a near-black, low-detail background;
 - one central state indicator with a non-color-only change for idle, listening,
   processing, guide speech, narrator speech, paused, and error states;
-- one transient canonical command cue when a validated command reaches the
-  engine-request boundary; it is status, not persistent transcript or game
-  prose;
+- one bounded, newest-first list of recent canonical commands; the active
+  request is emphasized and confirmed prior commands remain slightly muted;
 - a compact microphone control that is reachable by touch and keyboard;
 - a discoverable settings/transcript control that may recede when inactive;
 - an accessible status region, even when no text is visually rendered.
@@ -58,11 +57,18 @@ recede. No important state is communicated by color or animation alone.
 Reduced-motion mode replaces pulsing and waveform effects with discrete state
 changes.
 
-The command cue is governed by
-[ADR-0011](adr/0011-transient-command-and-activity-status.md). It displays only
-the exact command from `engine.command.requested`, stays visible while the
-engine response and narrator audio are prepared, and clears through matching
-semantic lifecycle events. Provider proposals never render in this surface.
+The command history is governed by
+[ADR-0013](adr/0013-persistent-command-history-and-active-only-indicator.md). It
+displays only exact canonical commands. The active request comes from
+`engine.command.requested`; only a matching `engine.command.committed` enters
+the bounded muted history. Rejected, not-submitted, and uncertain requests do
+not appear as completed actions. Provider proposals never render in this
+surface.
+
+The decorative activity indicator is absent while the player is simply ready,
+paused, blocked, or finished. It appears only during startup, microphone
+permission, listening, processing/reconnecting, or audible playback. Stable
+status text communicates every state independently of motion.
 
 ## Display-state projection
 
@@ -266,13 +272,13 @@ type StatusProjection = ExperienceProjection<
   }
 >;
 
-type CommandCueProjection = ExperienceProjection<
-  "command-cue",
+type ActionLogItemProjection = ExperienceProjection<
+  "action-log-item",
   {
     requestId: string;
     correlationId: string;
     command: string;
-    phase: "requested" | "committed";
+    phase: "committed";
   }
 >;
 
@@ -289,15 +295,15 @@ type TranscriptItemProjection = ExperienceProjection<
 
 Canonical-to-experience mapping is explicit:
 
-| Canonical event families                                                     | Experience projections                                                                                              |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `session.*`, `provider.*`, `system.*`                                        | Session status, connection recovery, and accessible notices                                                         |
-| `audio.capture.*`, `audio.playback.*`                                        | Listening/speaking state, control state, and interruption feedback                                                  |
-| `transcript.final`                                                           | Player transcript item and guide input; partial transcripts remain ephemeral unless diagnostic retention is enabled |
-| `guide.decision.*`, `guide.clarification`, `guide.explanation`, `guide.hint` | Guide role item, pending clarification, and debug decision detail                                                   |
-| `engine.command.*`, `engine.output`                                          | Transient command cue, command item, exact game item, narrator request, and engine-turn debug detail                |
-| `narration.*`                                                                | Audio queue and delivery state for an existing guide or engine source event                                         |
-| `save.*`                                                                     | Checkpoint/recovery status and debug metadata                                                                       |
+| Canonical event families                                                     | Experience projections                                                                                                 |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `session.*`, `provider.*`, `system.*`                                        | Session status, connection recovery, and accessible notices                                                            |
+| `audio.capture.*`, `audio.playback.*`                                        | Listening/speaking state, control state, and interruption feedback                                                     |
+| `transcript.final`                                                           | Player transcript item and guide input; partial transcripts remain ephemeral unless diagnostic retention is enabled    |
+| `guide.decision.*`, `guide.clarification`, `guide.explanation`, `guide.hint` | Guide role item, pending clarification, and debug decision detail                                                      |
+| `engine.command.*`, `engine.output`                                          | Active command cue, bounded committed-command history, exact game item, narrator request, and engine-turn debug detail |
+| `narration.*`                                                                | Audio queue and delivery state for an existing guide or engine source event                                            |
+| `save.*`                                                                     | Checkpoint/recovery status and debug metadata                                                                          |
 
 Projection reducers are pure and replayable. They may hide information but may
 not change canonical text, reorder source events, or infer game facts from
@@ -466,7 +472,7 @@ The first vertical slice is ready when:
 1. A first-time player can start and complete the slice without reading the
    screen.
 2. Default play shows no transcript, player speech, or game prose; the only
-   command text is the bounded, transient canonical status defined by ADR-0011.
+   persistent text is bounded canonical-command history defined by ADR-0013.
 3. The player can hear which speech belongs to the original game and which
    belongs to the guide.
 4. Direct, ambiguous, informational, and hint-seeking utterances follow the

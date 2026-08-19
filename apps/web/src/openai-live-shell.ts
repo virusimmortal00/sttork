@@ -30,6 +30,7 @@ import {
   OpenAiLivePlaybackPort,
   OpenAiLiveTranscriber,
 } from "./openai-live-audio.js";
+import { applyActionLogPresentation } from "./action-log-presentation.js";
 import {
   applyCommandCuePresentation,
   applyVoiceStatePresentation,
@@ -292,6 +293,7 @@ async function run(): Promise<void> {
   const status = required<HTMLElement>("status");
   const activityIndicator = required<HTMLElement>("activity-indicator");
   const commandCue = required<HTMLOutputElement>("command-cue");
+  const actionLog = required<HTMLOListElement>("action-log");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
   const pauseButton = required<HTMLButtonElement>("pause");
@@ -414,6 +416,11 @@ async function run(): Promise<void> {
       voicePresentation,
     );
     applyCommandCuePresentation(projection.activeCommand, commandCue);
+    applyActionLogPresentation(
+      projection.actionLog,
+      projection.activeCommand,
+      actionLog,
+    );
     transcriptList.replaceChildren(
       ...projection.transcript.map((item) => {
         const row = document.createElement("li");
@@ -617,6 +624,7 @@ function publishStartupFailure(): void {
   const activityIndicator = document.getElementById("activity-indicator");
   if (activityIndicator !== null) {
     activityIndicator.dataset.state = "blocked";
+    activityIndicator.hidden = true;
   }
   const transcriptPanel = document.getElementById("transcript-panel");
   const debugPanel = document.getElementById("debug-panel");

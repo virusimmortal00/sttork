@@ -24,6 +24,7 @@ import {
 import { DORK_WORKER_BINDING } from "../../../spikes/dork-worker/dork-worker-binding.js";
 import { DorkWorkerEngine } from "../../../spikes/dork-worker/dork-worker-engine.js";
 
+import { applyActionLogPresentation } from "./action-log-presentation.js";
 import {
   applyCommandCuePresentation,
   applyVoiceStatePresentation,
@@ -94,6 +95,7 @@ async function run(): Promise<void> {
   const status = required<HTMLElement>("status");
   const activityIndicator = required<HTMLElement>("activity-indicator");
   const commandCue = required<HTMLOutputElement>("command-cue");
+  const actionLog = required<HTMLOListElement>("action-log");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
   const pauseButton = required<HTMLButtonElement>("pause");
@@ -162,6 +164,11 @@ async function run(): Promise<void> {
       voicePresentation,
     );
     applyCommandCuePresentation(projection.activeCommand, commandCue);
+    applyActionLogPresentation(
+      projection.actionLog,
+      projection.activeCommand,
+      actionLog,
+    );
     transcriptList.replaceChildren(
       ...projection.transcript.map((item) => {
         const row = document.createElement("li");
@@ -358,6 +365,7 @@ void run().catch((error: unknown) => {
   const activityIndicator = document.getElementById("activity-indicator");
   if (activityIndicator !== null) {
     activityIndicator.dataset.state = "blocked";
+    activityIndicator.hidden = true;
   }
   const evidence: SmokeEvidence = {
     status: "failed",

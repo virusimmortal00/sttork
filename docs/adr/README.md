@@ -37,9 +37,11 @@ decision with a new ADR and link both records.
 - [ADR-0010: Pin the workspace to Node 26 Current](0010-node-26-current-toolchain.md)
   — accepted; supersedes ADR-0008.
 - [ADR-0011: Show transient canonical command and activity status](0011-transient-command-and-activity-status.md)
-  — accepted.
+  — superseded by ADR-0013.
 - [ADR-0012: Resolve natural language through structured command intents](0012-structured-semantic-command-intents.md)
   — accepted; the first rollout is limited to certified global observations.
+- [ADR-0013: Keep a bounded command history and hide idle activity](0013-persistent-command-history-and-active-only-indicator.md)
+  — accepted; supersedes ADR-0011.
 
 ## Template
 

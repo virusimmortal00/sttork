@@ -18,6 +18,7 @@ export interface VoiceStatePresentationElements {
   readonly status: { textContent: string | null };
   readonly activityIndicator: {
     readonly dataset: { state?: string };
+    hidden: boolean | string;
   };
 }
 
@@ -76,6 +77,23 @@ export function statusTextForVoiceAudioState(
   }
 }
 
+export function activityIndicatorIsVisible(
+  state: VoiceAudioState | ExperienceDisplayState,
+): boolean {
+  switch (activityStateForVoiceState(state)) {
+    case "starting":
+    case "requesting":
+    case "listening":
+    case "processing":
+    case "speaking":
+      return true;
+    case "idle":
+    case "paused":
+    case "blocked":
+      return false;
+  }
+}
+
 export function applyVoiceStatePresentation(
   state: VoiceAudioState | ExperienceDisplayState,
   statusText: string,
@@ -87,6 +105,10 @@ export function applyVoiceStatePresentation(
   const activityState = activityStateForVoiceState(state);
   if (elements.activityIndicator.dataset.state !== activityState) {
     elements.activityIndicator.dataset.state = activityState;
+  }
+  const hidden = !activityIndicatorIsVisible(state);
+  if (elements.activityIndicator.hidden !== hidden) {
+    elements.activityIndicator.hidden = hidden;
   }
 }
 

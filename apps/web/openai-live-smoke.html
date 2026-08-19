@@ -25,11 +25,19 @@
         </div>
         <output
           id="command-cue"
-          class="command-cue"
+          class="command-cue visually-hidden"
           aria-live="polite"
           aria-atomic="true"
         ></output>
       </div>
+      <ol
+        id="action-log"
+        class="action-log"
+        role="list"
+        aria-label="Recent game commands"
+        tabindex="0"
+        hidden
+      ></ol>
       <p class="cue" aria-hidden="true">Press V or use the speaking control.</p>
       <button id="capture" type="button" aria-pressed="false" disabled>
         Start speaking

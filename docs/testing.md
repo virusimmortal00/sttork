@@ -13,9 +13,10 @@ Testing must protect five boundaries:
 1. The game engine is the only authority that may change game state.
 2. The Dungeon Guide may interpret, clarify, explain, recall, and offer
    consented hints, but it may only act through declared tools.
-3. The default experience works without reading visible text. Its transient
-   canonical-command and activity status are redundant trust cues; transcript
-   and debug views remain complete, optional renderers of the same event stream.
+3. The default experience works without reading visible text. Its bounded
+   canonical-command history and active-work indicator are redundant trust cues;
+   transcript and debug views remain complete, optional renderers of the same
+   event stream.
 4. OpenRouter, OpenAI, and any later-qualified Hugging Face implementation obey
    the same provider contracts.
 5. A provider failure, model change, or ambiguous utterance must never silently

@@ -1,6 +1,7 @@
 # ADR-0011: Show transient canonical command and activity status
 
-- Status: accepted
+- Status: superseded by
+  [ADR-0013](0013-persistent-command-history-and-active-only-indicator.md)
 - Date: 2026-08-19
 - Owners: maintainers
 

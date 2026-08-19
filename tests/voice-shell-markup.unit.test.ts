@@ -21,7 +21,24 @@ describe("voice shell accessibility markup", () => {
       expect(html).toMatch(
         /id="command-cue"[\s\S]*?aria-live="polite"[\s\S]*?aria-atomic="true"/u,
       );
+      expect(html).toMatch(
+        /id="action-log"[\s\S]*?role="list"[\s\S]*?aria-label="Recent game commands"[\s\S]*?tabindex="0"[\s\S]*?hidden/u,
+      );
+      expect(html).not.toMatch(/id="action-log"[^>]*aria-live=/u);
     }
+  });
+
+  it("keeps recent commands in a compact scrolling visual hierarchy", async () => {
+    const css = await readFile(
+      new URL("apps/web/voice-shell.css", repositoryRoot),
+      "utf8",
+    );
+    expect(css).toMatch(/\.action-log \{[\s\S]*?max-height:/u);
+    expect(css).toMatch(/\.action-log \{[\s\S]*?overflow-y: auto;/u);
+    expect(css).toMatch(/\.action-log__item \{[^}]*color: #aeb8b0;/u);
+    expect(css).toMatch(/\.action-log__item\[data-state="requested"\] \{/u);
+    expect(css).not.toMatch(/\.action-log__item \{[^}]*opacity:/u);
+    expect(css).toMatch(/\.action-log:focus-visible \{/u);
   });
 
   it("disables every decorative animation for reduced motion", async () => {

@@ -3,6 +3,7 @@ import { EventSequence } from "@zork-voice/events";
 import { describe, expect, it } from "vitest";
 
 import {
+  EXPERIENCE_ACTION_LOG_LIMIT,
   initialExperienceProjection,
   projectExperience,
   reduceExperienceProjection,
@@ -110,6 +111,16 @@ describe("experience projection", () => {
     expect(projection.displayState).toBe("ready");
     expect(projection.statusText).toBe("Ready");
     expect(projection.activeCommand).toBeUndefined();
+    expect(projection.actionLog).toEqual([
+      {
+        requestId: "request",
+        correlationId: "turn",
+        command: "north",
+        phase: "committed",
+        sourceEventIds: ["event-5"],
+        throughSequence: 5,
+      },
+    ]);
     expect(projection.throughSequence).toBe(9);
     expect(
       projection.transcript.map(({ role, text, command, delivery }) => ({
@@ -208,6 +219,7 @@ describe("experience projection", () => {
       sourceEventIds: [requested.id],
       throughSequence: requested.sequence,
     });
+    expect(projection.actionLog).toEqual([]);
 
     const committed = sequence.append({
       type: "engine.command.committed",
@@ -631,5 +643,206 @@ describe("experience projection", () => {
       command: "north",
       phase: "committed",
     });
+    expect(projection.actionLog).toMatchObject([
+      {
+        requestId: "recovery-request",
+        command: "north",
+        phase: "committed",
+        sourceEventIds: ["recovery-event-4"],
+      },
+    ]);
+
+    projection = reduceExperienceProjection(
+      projection,
+      sequence.append({
+        type: "engine.command.committed",
+        correlationId: "recovery-turn",
+        causationId: recovered.id,
+        visibility: "debug",
+        payload: {
+          requestId: "recovery-request",
+          previousRevision: 0,
+          revision: 1,
+          command: "north",
+          boundary: "input-requested" as const,
+        },
+      }),
+    );
+    expect(projection.actionLog).toHaveLength(1);
+    expect(projection.actionLog[0]?.sourceEventIds).toEqual([
+      "recovery-event-4",
+      "recovery-event-5",
+    ]);
+  });
+
+  it("keeps a newest-first bounded command history after transient cues clear", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "action-log",
+      now: () => "2026-08-19T20:00:00.000Z",
+      nextId: () => `action-event-${++id}`,
+    });
+    const events: SemanticEvent[] = [];
+    for (let index = 1; index <= EXPERIENCE_ACTION_LOG_LIMIT + 2; index += 1) {
+      const correlationId = `action-turn-${index}`;
+      const requestId = `action-request-${index}`;
+      const command = `examine object ${index}`;
+      const requested = sequence.append({
+        type: "engine.command.requested",
+        correlationId,
+        visibility: "debug",
+        payload: { requestId, expectedRevision: index - 1, command },
+      });
+      events.push(
+        requested,
+        sequence.append({
+          type: "engine.command.committed",
+          correlationId,
+          causationId: requested.id,
+          visibility: "debug",
+          payload: {
+            requestId,
+            previousRevision: index - 1,
+            revision: index,
+            command,
+            boundary: "input-requested" as const,
+          },
+        }),
+      );
+    }
+
+    const projection = projectExperience(events);
+    expect(projection.actionLog).toHaveLength(EXPERIENCE_ACTION_LOG_LIMIT);
+    expect(projection.actionLog.map(({ command }) => command)).toEqual(
+      Array.from(
+        { length: EXPERIENCE_ACTION_LOG_LIMIT },
+        (_, offset) =>
+          `examine object ${EXPERIENCE_ACTION_LOG_LIMIT + 2 - offset}`,
+      ),
+    );
+
+    const nextCapture = sequence.append({
+      type: "audio.capture.started",
+      correlationId: "later-turn",
+      visibility: "accessible",
+      payload: { captureId: "later-capture", mode: "push-to-talk" as const },
+    });
+    const afterCueClear = reduceExperienceProjection(projection, nextCapture);
+    expect(afterCueClear.activeCommand).toBeUndefined();
+    expect(afterCueClear.actionLog).toEqual(projection.actionLog);
+
+    const paused = reduceExperienceProjection(
+      afterCueClear,
+      sequence.append({
+        type: "session.paused",
+        correlationId: "later-turn",
+        visibility: "accessible",
+        payload: { reason: "player-request" as const },
+      }),
+    );
+    const afterNarrationFailure = reduceExperienceProjection(
+      paused,
+      sequence.append({
+        type: "narration.failed",
+        correlationId: "later-turn",
+        visibility: "accessible",
+        payload: {
+          narrationId: "failed-narration",
+          role: "narrator" as const,
+          recoverable: true as const,
+        },
+      }),
+    );
+    expect(paused.actionLog).toEqual(projection.actionLog);
+    expect(afterNarrationFailure.actionLog).toEqual(projection.actionLog);
+  });
+
+  it("does not persist rejected or uncertain attempts as completed actions", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "action-outcomes",
+      now: () => "2026-08-19T20:15:00.000Z",
+      nextId: () => `outcome-event-${++id}`,
+    });
+    const events: SemanticEvent[] = [];
+    const rejectedRequest = sequence.append({
+      type: "engine.command.requested",
+      correlationId: "rejected-turn",
+      visibility: "debug",
+      payload: {
+        requestId: "rejected-request",
+        expectedRevision: 0,
+        command: "open mailbox",
+      },
+    });
+    events.push(
+      rejectedRequest,
+      sequence.append({
+        type: "engine.command.rejected",
+        correlationId: "rejected-turn",
+        causationId: rejectedRequest.id,
+        visibility: "accessible",
+        payload: {
+          requestId: "rejected-request",
+          revision: 0,
+          command: "open mailbox",
+          reason: "stale_revision",
+        },
+      }),
+    );
+    const uncertainRequest = sequence.append({
+      type: "engine.command.requested",
+      correlationId: "uncertain-turn",
+      visibility: "debug",
+      payload: {
+        requestId: "uncertain-request",
+        expectedRevision: 0,
+        command: "north",
+      },
+    });
+    events.push(
+      uncertainRequest,
+      sequence.append({
+        type: "system.error",
+        correlationId: "uncertain-turn",
+        causationId: uncertainRequest.id,
+        visibility: "accessible",
+        payload: {
+          stage: "engine" as const,
+          code: "engine-outcome-uncertain",
+          recoverable: true,
+          engineCommitState: "unknown" as const,
+        },
+      }),
+    );
+    const cancelledRequest = sequence.append({
+      type: "engine.command.requested",
+      correlationId: "cancelled-turn",
+      visibility: "debug",
+      payload: {
+        requestId: "cancelled-request",
+        expectedRevision: 0,
+        command: "take leaflet",
+      },
+    });
+    events.push(
+      cancelledRequest,
+      sequence.append({
+        type: "system.error",
+        correlationId: "cancelled-turn",
+        causationId: cancelledRequest.id,
+        visibility: "accessible",
+        payload: {
+          stage: "engine" as const,
+          code: "cancelled-before-engine-submit",
+          recoverable: true,
+          engineCommitState: "not-submitted" as const,
+        },
+      }),
+    );
+    const projection = projectExperience(events);
+
+    expect(projection.actionLog).toEqual([]);
+    expect(projection.activeCommand).toBeUndefined();
   });
 });
