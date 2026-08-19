@@ -326,19 +326,31 @@ for (const { prefix, record } of loadedRecords) {
 async function filesBelow(directory) {
   const absoluteDirectory = resolve(root, directory);
   const results = [];
+  let entries;
   try {
-    for (const entry of await readdir(absoluteDirectory)) {
-      const absolute = resolve(absoluteDirectory, entry);
-      const info = await lstat(absolute);
-      const path = relative(root, absolute);
-      if (info.isDirectory()) {
-        if (!ignoredArtifactDirectories.has(entry)) {
-          results.push(...(await filesBelow(path)));
-        }
-      } else results.push(path);
-    }
+    entries = await readdir(absoluteDirectory);
   } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
+    if (error?.code === "ENOENT") return results;
+    throw error;
+  }
+
+  for (const entry of entries) {
+    const absolute = resolve(absoluteDirectory, entry);
+    let info;
+    try {
+      info = await lstat(absolute);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      throw error;
+    }
+    const path = relative(root, absolute);
+    if (info.isDirectory()) {
+      if (!ignoredArtifactDirectories.has(entry)) {
+        results.push(...(await filesBelow(path)));
+      }
+    } else {
+      results.push(path);
+    }
   }
   return results;
 }
