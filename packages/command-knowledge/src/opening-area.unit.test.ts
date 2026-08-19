@@ -13,6 +13,7 @@ describe("opening-area command knowledge", () => {
 
   it.each([
     ["north", "please head north", "north"],
+    ["look", "What do I see around me?", "look"],
     ["x mailbox", "inspect the mailbox", "examine mailbox"],
     ["get brass token", "pick up the brass token", "take brass token"],
   ])("grounds %s in the utterance as %s", (command, utterance, expected) => {
@@ -30,6 +31,16 @@ describe("opening-area command knowledge", () => {
       ok: false,
       code: "not-grounded-in-utterance",
     });
+    expect(
+      groundOpeningCommand("north", "What do I see around me?", knowledge),
+    ).toEqual({ ok: false, code: "not-grounded-in-utterance" });
+    expect(
+      groundOpeningCommand(
+        "what do i see",
+        "what do i see around me",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "unsupported-grammar" });
   });
 
   it("builds help only from parser grammar and observed object names", () => {

@@ -30,6 +30,28 @@ describe("initial bounded Dungeon Guide", () => {
     });
   });
 
+  it("grounds a natural observation question as one look command", async () => {
+    const result = await decideInitialGuideTurn(
+      FakeGuideModel.returning({
+        kind: "execute",
+        command: "look",
+        intentSummary: "Observe the current surroundings",
+        confidence: 0.99,
+      }),
+      {
+        ...baseInput,
+        playerUtterance: "What do I see around me?",
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "execute",
+      command: "look",
+      groundingSourceId: "grammar.look",
+    });
+  });
+
   it.each([
     {
       name: "low transcript confidence",
@@ -58,6 +80,19 @@ describe("initial bounded Dungeon Guide", () => {
         kind: "execute",
         command: "north",
         intentSummary: "Start the plan",
+        confidence: 0.99,
+      } as const,
+    },
+    {
+      name: "multi-step natural observation",
+      input: {
+        ...baseInput,
+        playerUtterance: "What do I see around me, then go north?",
+      },
+      decision: {
+        kind: "execute",
+        command: "look",
+        intentSummary: "Observe before moving north",
         confidence: 0.99,
       } as const,
     },

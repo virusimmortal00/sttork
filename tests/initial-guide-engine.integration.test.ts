@@ -75,6 +75,22 @@ describe("initial guide to authoritative engine boundary", () => {
     );
     expect(take?.output).toContain("Taken");
     expect(paraphrased.inspectPublicState().revision).toBe(1);
+
+    const observing = await createSession();
+    const look = await applyIfExecutable(
+      observing,
+      FakeGuideModel.returning({
+        kind: "execute",
+        command: "look",
+        intentSummary: "Observe the current surroundings",
+        confidence: 0.99,
+      }),
+      "What do I see around me?",
+    );
+    expect(look?.output).toBe(
+      "South Room\nA plain room with an exit north.\nA brass token rests on the floor.\n\n> ",
+    );
+    expect(observing.inspectPublicState().revision).toBe(1);
   });
 
   it.each([

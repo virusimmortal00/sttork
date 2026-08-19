@@ -3,7 +3,7 @@ import {
   type CanonicalCommand,
 } from "../../contracts/src/index.js";
 
-export const OPENING_AREA_KNOWLEDGE_VERSION = 1;
+export const OPENING_AREA_KNOWLEDGE_VERSION = 2;
 export const MAX_OBSERVED_OBJECTS = 32;
 export const MAX_OBSERVED_OBJECT_LENGTH = 80;
 
@@ -57,7 +57,7 @@ const RULES: readonly OpeningCommandRule[] = [
   {
     id: "grammar.look",
     verb: "look",
-    aliases: ["look", "look around"],
+    aliases: ["look", "look around", "what do i see around me"],
     objectRequired: false,
     grammar: "look",
   },

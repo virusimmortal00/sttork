@@ -261,6 +261,8 @@ describe("SemanticTurnCoordinator", () => {
     expect(result.events.map((event) => event.type)).not.toContain(
       "engine.command.requested",
     );
+    expect(narrator.requests).toHaveLength(1);
+    expect(narrator.requests[0]?.role).toBe("guide");
     expect(engine.revision).toBe(0);
   });
 
