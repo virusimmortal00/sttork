@@ -1,5 +1,6 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { resolve, relative } from "node:path";
+import { spawnSync } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
 const ignoredDirectories = new Set([
@@ -19,6 +20,15 @@ const patterns = [
 ];
 const failures = [];
 
+function isGitIgnored(path) {
+  return (
+    spawnSync("git", ["check-ignore", "--quiet", "--", path], {
+      cwd: root,
+      stdio: "ignore",
+    }).status === 0
+  );
+}
+
 async function walk(directory) {
   for (const entry of await readdir(directory)) {
     if (ignoredDirectories.has(entry)) continue;
@@ -31,6 +41,7 @@ async function walk(directory) {
     const path = relative(root, absolute);
     if (ignoredFiles.has(path) || info.size > 2_000_000) continue;
     if (/^\.env(?:\.|$)/u.test(entry) && entry !== ".env.example") {
+      if (isGitIgnored(path)) continue;
       failures.push(`credential file must not be committed: ${path}`);
       continue;
     }

@@ -4,5 +4,13 @@
   "private": true,
   "description": "Normalized provider adapters and capability profiles.",
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@zork-voice/contracts": "workspace:*",
+    "@zork-voice/guide-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@zork-voice/command-knowledge": "workspace:*"
+  }
 }

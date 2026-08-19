@@ -116,7 +116,18 @@ importers:
 
   packages/persistence: {}
 
-  packages/providers: {}
+  packages/providers:
+    dependencies:
+      '@zork-voice/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@zork-voice/guide-core':
+        specifier: workspace:*
+        version: link:../guide-core
+    devDependencies:
+      '@zork-voice/command-knowledge':
+        specifier: workspace:*
+        version: link:../command-knowledge
 
   packages/session:
     dependencies:

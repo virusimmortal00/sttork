@@ -1,7 +1,7 @@
 # Provider and upstream research snapshot
 
 Status: informative, not a runtime contract  
-Last verified: 2026-08-17
+Last verified: 2026-08-18
 
 This document records the external facts that informed the initial strategy.
 Provider catalogs, prices, authentication flows, and model status change. Each
@@ -58,6 +58,25 @@ per million tokens and audio input/output at $10/$20 per million audio tokens.
 Those figures are a planning snapshot, not a budget constant. Model status and
 pricing must be read from current official documentation during M5 and captured
 with the benchmark date.
+
+For the narrower initial developer voice smoke, the official voice-agent guide
+also supports a chained architecture when an application needs transcripts,
+predictable control, and structured workflows. The experimental chained profile
+therefore evaluates these explicit server-side capabilities without changing the
+settled OpenRouter-first or optional-Realtime delivery milestones:
+
+- transcription: `gpt-4o-mini-transcribe`;
+- schema-constrained initial guide: pinned `gpt-4o-mini-2024-07-18`;
+- narration: `tts-1`, avoiding the now-deprecated GPT-4o mini TTS model.
+
+The profile is dated configuration for a budget-limited smoke, not a promoted
+default. It has no automatic fallback, makes no provider request in hermetic
+tests, and keeps the deployment API key on the server. Current OpenAI model
+catalog and pricing must be rechecked before every live run.
+
+- [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
+- [GPT-4o mini model and pinned snapshot](https://developers.openai.com/api/docs/models/gpt-4o-mini)
+- [Current model catalog](https://developers.openai.com/api/docs/models)
 
 Use the current supported mini-class model that passes the shared evaluations;
 do not select a deprecated snapshot merely because historical pricing appears
