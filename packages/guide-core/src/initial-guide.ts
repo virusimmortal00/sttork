@@ -1,6 +1,7 @@
 import {
   createOpeningCommandKnowledge,
   groundOpeningCommand,
+  groundObservedObjectContentQuestion,
   openingCommandHelp,
   type OpeningCommandKnowledge,
 } from "../../command-knowledge/src/index.js";
@@ -82,6 +83,17 @@ function containsNegation(utterance: string): boolean {
   return /\b(?:do not|don't|dont|never|not)\b/iu.test(utterance);
 }
 
+function transcriptConfidenceRequiresClarification(
+  transcriptConfidence: number | undefined,
+): boolean {
+  return (
+    transcriptConfidence !== undefined &&
+    (!Number.isFinite(transcriptConfidence) ||
+      transcriptConfidence < INITIAL_TRANSCRIPT_CONFIDENCE ||
+      transcriptConfidence > 1)
+  );
+}
+
 export async function decideInitialGuideTurn(
   model: GuideModel,
   input: InitialGuideInput,
@@ -116,6 +128,49 @@ export async function decideInitialGuideTurn(
       },
     };
   }
+
+  signal.throwIfAborted();
+
+  if (transcriptConfidenceRequiresClarification(input.transcriptConfidence)) {
+    return clarification(
+      "Could you say which single action you want me to try?",
+      "The interpretation confidence is too low to safely execute.",
+    );
+  }
+
+  if (appearsMultiStep(input.playerUtterance)) {
+    return clarification(
+      "Which one action should I try first?",
+      "The request contains more than one possible game turn.",
+    );
+  }
+
+  if (containsNegation(input.playerUtterance)) {
+    return clarification(
+      "What single action would you like me to perform instead?",
+      "The utterance contains a negation, so executing the proposed command would be unsafe.",
+    );
+  }
+
+  const directContentQuestion = groundObservedObjectContentQuestion(
+    input.playerUtterance,
+    knowledge,
+  );
+  if (directContentQuestion.ok) {
+    const decision = {
+      kind: "execute" as const,
+      command: directContentQuestion.command,
+      intentSummary: "Examine the observed object for visible content.",
+      confidence: 1,
+    };
+    return {
+      kind: "execute",
+      command: directContentQuestion.command,
+      decision,
+      groundingSourceId: directContentQuestion.ruleId,
+    };
+  }
+
   let unknownDecision: unknown;
   try {
     unknownDecision = await model.decide({ ...input, knowledge }, signal);
@@ -197,33 +252,17 @@ export async function decideInitialGuideTurn(
     };
   }
 
-  if (
-    (input.transcriptConfidence !== undefined &&
-      (!Number.isFinite(input.transcriptConfidence) ||
-        input.transcriptConfidence < INITIAL_TRANSCRIPT_CONFIDENCE ||
-        input.transcriptConfidence > 1)) ||
-    decision.confidence < INITIAL_EXECUTE_CONFIDENCE
-  ) {
+  if (decision.confidence < INITIAL_EXECUTE_CONFIDENCE) {
     return clarification(
       "Could you say which single action you want me to try?",
       "The interpretation confidence is too low to safely execute.",
     );
   }
 
-  if (
-    appearsMultiStep(input.playerUtterance) ||
-    decision.remainingGoal !== undefined
-  ) {
+  if (decision.remainingGoal !== undefined) {
     return clarification(
       "Which one action should I try first?",
       "The request contains more than one possible game turn.",
-    );
-  }
-
-  if (containsNegation(input.playerUtterance)) {
-    return clarification(
-      "What single action would you like me to perform instead?",
-      "The utterance contains a negation, so executing the proposed command would be unsafe.",
     );
   }
 

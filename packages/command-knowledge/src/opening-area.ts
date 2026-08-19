@@ -3,7 +3,7 @@ import {
   type CanonicalCommand,
 } from "../../contracts/src/index.js";
 
-export const OPENING_AREA_KNOWLEDGE_VERSION = 2;
+export const OPENING_AREA_KNOWLEDGE_VERSION = 3;
 export const MAX_OBSERVED_OBJECTS = 32;
 export const MAX_OBSERVED_OBJECT_LENGTH = 80;
 
@@ -124,6 +124,10 @@ function includesPhrase(value: string, phrase: string): boolean {
   return ` ${value} `.includes(` ${phrase} `);
 }
 
+function appearsMultiStep(value: string): boolean {
+  return /[;\n]|\b(?:and then|then|after that|followed by)\b/iu.test(value);
+}
+
 export function createOpeningCommandKnowledge(input: {
   readonly observedObjects: readonly string[];
 }): OpeningCommandKnowledge {
@@ -226,6 +230,32 @@ export function groundOpeningCommand(
     ok: true,
     command: canonicalizeCommand(`${parsed.rule.verb} ${parsed.object}`),
     ruleId: parsed.rule.id,
+  };
+}
+
+export function groundObservedObjectContentQuestion(
+  playerUtterance: string,
+  knowledge: OpeningCommandKnowledge,
+): CommandGroundingResult {
+  if (appearsMultiStep(playerUtterance)) {
+    return { ok: false, code: "not-grounded-in-utterance" };
+  }
+
+  const match = /^what does (?:the )?(.+) say$/u.exec(
+    normalizeWords(playerUtterance),
+  );
+  const object = match?.[1];
+  if (object === undefined || object.length === 0) {
+    return { ok: false, code: "not-grounded-in-utterance" };
+  }
+  if (!knowledge.observedObjects.includes(object)) {
+    return { ok: false, code: "unobserved-object" };
+  }
+
+  return {
+    ok: true,
+    command: canonicalizeCommand(`examine ${object}`),
+    ruleId: "grammar.examine",
   };
 }
 

@@ -343,6 +343,13 @@ The engine response is final. A parser error is not rewritten as success. The
 guide may explain the error, present up to three grounded alternatives, or ask
 what the player meant.
 
+For the bounded opening-area profile, a content question in the exact reviewed
+shape “what does [the] `<observed object>` say?” is an observation request. It
+normalizes to `examine <object>`, not `read <object>`, because the Release 119
+READ action may implicitly take the object. The object must already be present
+in event-derived observed memory, and additional actions or unreviewed question
+shapes do not receive this normalization.
+
 ## Clarification policy
 
 Clarify when any of these conditions holds:
@@ -368,6 +375,9 @@ game state.
 - Every fact includes source event IDs.
 - Exact engine statements are stored as `explicit`; model-derived summaries are
   stored as `inferred`.
+- The bounded opening-area projector learns reviewed object names only from
+  exact canonical engine output. Player or guide prose cannot add an observed
+  object, and repeated output is idempotent.
 - Contradictory later observations supersede rather than erase earlier facts.
 - Inventory and location claims should be re-confirmed from recent engine output
   before a consequential command.

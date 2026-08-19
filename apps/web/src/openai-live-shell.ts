@@ -3,6 +3,11 @@ import {
   VoiceAudioController,
   type VoiceAudioState,
 } from "../../../packages/audio/src/index.js";
+import {
+  createOpeningObjectProjection,
+  projectOpeningObjectsFromEngineOutput,
+  projectOpeningObjectsFromEvent,
+} from "../../../packages/command-knowledge/src/index.js";
 import type { SemanticEvent } from "../../../packages/contracts/src/index.js";
 import { EventSequence } from "../../../packages/events/src/index.js";
 import {
@@ -360,6 +365,10 @@ async function run(): Promise<void> {
     nextMessageId: () => `message-${++message}`,
   });
   await engine.boot({ storyId: STORY_ID, artifactSha256: STORY_SHA256 });
+  let observedObjectProjection = projectOpeningObjectsFromEngineOutput(
+    createOpeningObjectProjection(),
+    (await engine.inspectPublicState()).lastOutput,
+  );
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
   const canonicalEvents: SemanticEvent[] = [];
@@ -400,6 +409,10 @@ async function run(): Promise<void> {
   }
 
   function publish(event: SemanticEvent): void {
+    observedObjectProjection = projectOpeningObjectsFromEvent(
+      observedObjectProjection,
+      event,
+    );
     canonicalEvents.push(event);
     projection = reduceExperienceProjection(projection, event);
     renderProjection();
@@ -427,9 +440,7 @@ async function run(): Promise<void> {
     playback,
     nextInteractionId: () => `interaction-${++interactionId}`,
     nextCaptureId: () => `capture-${++captureId}`,
-    // These nouns are explicit in the authenticated opening output of the
-    // bundled Release 119 story. No hidden map or puzzle state is exposed.
-    observedObjects: () => ["mailbox", "house", "door"],
+    observedObjects: () => observedObjectProjection.observedObjects,
     onState: (state: VoiceAudioState) => {
       captureButton.textContent =
         state === "listening" ? "Finish speaking" : "Start speaking";

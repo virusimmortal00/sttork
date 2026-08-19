@@ -52,6 +52,68 @@ describe("initial bounded Dungeon Guide", () => {
     });
   });
 
+  it("routes an exact observed-object content question without calling the provider", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error(
+        "the deterministic content question reached the provider",
+      );
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What does the brass token say?",
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "execute",
+      command: "examine brass token",
+      groundingSourceId: "grammar.examine",
+      decision: {
+        kind: "execute",
+        command: "examine brass token",
+        confidence: 1,
+      },
+    });
+    expect(model.calls).toBe(0);
+  });
+
+  it.each([
+    {
+      name: "low-confidence content question",
+      input: {
+        ...baseInput,
+        playerUtterance: "What does the brass token say?",
+        transcriptConfidence: 0.4,
+      },
+    },
+    {
+      name: "negated content question",
+      input: {
+        ...baseInput,
+        playerUtterance: "Do not answer what does the brass token say.",
+      },
+    },
+    {
+      name: "multi-step content question",
+      input: {
+        ...baseInput,
+        playerUtterance: "What does the brass token say, then go north?",
+      },
+    },
+  ])("clarifies a $name before calling the provider", async ({ input }) => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("unsafe content question reached the provider");
+    });
+
+    expect(await decideInitialGuideTurn(model, input, signal)).toMatchObject({
+      kind: "clarify",
+    });
+    expect(model.calls).toBe(0);
+  });
+
   it.each([
     {
       name: "low transcript confidence",
