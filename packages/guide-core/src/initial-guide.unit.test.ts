@@ -30,27 +30,30 @@ describe("initial bounded Dungeon Guide", () => {
     });
   });
 
-  it("grounds a natural observation question as one look command", async () => {
-    const result = await decideInitialGuideTurn(
-      FakeGuideModel.returning({
+  it.each(["What do I see around me?", "What do I see in front of me?"])(
+    "grounds the natural observation question %s as one look command",
+    async (playerUtterance) => {
+      const result = await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          command: "look",
+          intentSummary: "Observe the current surroundings",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance,
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
         kind: "execute",
         command: "look",
-        intentSummary: "Observe the current surroundings",
-        confidence: 0.99,
-      }),
-      {
-        ...baseInput,
-        playerUtterance: "What do I see around me?",
-      },
-      signal,
-    );
-
-    expect(result).toMatchObject({
-      kind: "execute",
-      command: "look",
-      groundingSourceId: "grammar.look",
-    });
-  });
+        groundingSourceId: "grammar.look",
+      });
+    },
+  );
 
   it("routes an exact observed-object content question without calling the provider", async () => {
     const model = new FakeGuideModel(() => {
@@ -236,6 +239,19 @@ describe("initial bounded Dungeon Guide", () => {
       input: {
         ...baseInput,
         playerUtterance: "What do I see around me, then go north?",
+      },
+      decision: {
+        kind: "execute",
+        command: "look",
+        intentSummary: "Observe before moving north",
+        confidence: 0.99,
+      } as const,
+    },
+    {
+      name: "multi-step front-facing observation",
+      input: {
+        ...baseInput,
+        playerUtterance: "What do I see in front of me, then go north?",
       },
       decision: {
         kind: "execute",

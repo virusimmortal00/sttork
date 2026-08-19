@@ -506,8 +506,9 @@ details appear only in debug mode unless the player needs them to reconnect.
 The guide contract is not complete until automated fixtures cover at least:
 
 1. A direct intent such as “open the mailbox” executes one grounded command.
-2. A natural request such as “look around for anything useful” or “what do I see
-   around me?” maps to observation without fabricated findings.
+2. A natural request such as “look around for anything useful,” “what do I see
+   around me?,” or “what do I see in front of me?” maps to observation without
+   fabricated findings.
 3. An ambiguous object reference produces a clarification and no engine turn.
 4. A multi-step request observes each engine response and stops after an
    unexpected result.

@@ -127,6 +127,78 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(narration).toHaveLength(1);
   });
 
+  it("commits a front-facing observation as one Zork I look turn", async () => {
+    let messageId = 0;
+    const engine = new DorkWorkerEngine({
+      factory: new RuntimeFactory(),
+      storyBytes: new Uint8Array(await readFile(zorkStoryUrl)),
+      binding: DORK_WORKER_BINDING,
+      nextMessageId: () => `front-look-message-${++messageId}`,
+    });
+    await engine.boot({
+      storyId: ZORK_STORY_ID,
+      artifactSha256: ZORK_STORY_SHA256,
+    });
+
+    const published: SemanticEvent[] = [];
+    const narration: NarrationRequest[] = [];
+    let eventId = 0;
+    const subject = new SemanticTurnCoordinator({
+      engine,
+      guide: FakeGuideModel.returning({
+        kind: "execute",
+        command: "look",
+        intentSummary: "Observe the current surroundings",
+        confidence: 0.99,
+      }),
+      narrator: {
+        prepare: (request) => {
+          narration.push(request);
+          return Promise.resolve();
+        },
+      },
+      events: new EventSequence({
+        sessionId: "zork-front-look-session",
+        now: () => "2026-08-19T18:45:00.000Z",
+        nextId: () => `front-look-event-${++eventId}`,
+      }),
+      nextRequestId: () => "front-look-engine-request-1",
+      nextNarrationId: () => "front-look-narration-1",
+      publish: (event) => published.push(event),
+    });
+
+    const result = await subject.submitTurn(
+      {
+        interactionId: "front-look-interaction",
+        transcript: "What do I see in front of me?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        status: "committed",
+        revision: 1,
+        command: "look",
+        output: expect.stringContaining("West of House"),
+      },
+    });
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual(["look"]);
+    expect(narration).toEqual([
+      expect.objectContaining({
+        role: "narrator",
+        text: result.engineResult?.output,
+      }),
+    ]);
+  });
+
   it("reads the observed Zork I leaflet without implicitly taking it", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({

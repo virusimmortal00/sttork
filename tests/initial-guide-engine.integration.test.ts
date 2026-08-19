@@ -85,7 +85,7 @@ describe("initial guide to authoritative engine boundary", () => {
         intentSummary: "Observe the current surroundings",
         confidence: 0.99,
       }),
-      "What do I see around me?",
+      "What do I see in front of me?",
     );
     expect(look?.output).toBe(
       "South Room\nA plain room with an exit north.\nA brass token rests on the floor.\n\n> ",
@@ -120,6 +120,16 @@ describe("initial guide to authoritative engine boundary", () => {
         kind: "execute",
         command: "take sword",
         intentSummary: "Take an unobserved object",
+        confidence: 0.99,
+      }),
+    },
+    {
+      name: "wrong command for a front-facing observation",
+      utterance: "What do I see in front of me?",
+      model: FakeGuideModel.returning({
+        kind: "execute",
+        command: "north",
+        intentSummary: "Move north",
         confidence: 0.99,
       }),
     },

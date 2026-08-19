@@ -18,6 +18,7 @@ describe("opening-area command knowledge", () => {
   it.each([
     ["north", "please head north", "north"],
     ["look", "What do I see around me?", "look"],
+    ["look", "What do I see in front of me?", "look"],
     ["x mailbox", "inspect the mailbox", "examine mailbox"],
     ["get brass token", "pick up the brass token", "take brass token"],
   ])("grounds %s in the utterance as %s", (command, utterance, expected) => {
@@ -37,6 +38,9 @@ describe("opening-area command knowledge", () => {
     });
     expect(
       groundOpeningCommand("north", "What do I see around me?", knowledge),
+    ).toEqual({ ok: false, code: "not-grounded-in-utterance" });
+    expect(
+      groundOpeningCommand("north", "What do I see in front of me?", knowledge),
     ).toEqual({ ok: false, code: "not-grounded-in-utterance" });
     expect(
       groundOpeningCommand(
@@ -158,7 +162,7 @@ describe("opening-area command knowledge", () => {
     expect(Object.isFrozen(knowledge.rules)).toBe(true);
     expect(Object.isFrozen(knowledge.observedObjects)).toBe(true);
     expect(knowledge.version).toBe(OPENING_AREA_KNOWLEDGE_VERSION);
-    expect(knowledge.version).toBe(3);
+    expect(knowledge.version).toBe(4);
   });
 
   it("rejects oversized observed context before constructing model input", () => {
