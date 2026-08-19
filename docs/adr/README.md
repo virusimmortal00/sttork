@@ -36,6 +36,8 @@ decision with a new ADR and link both records.
   — proposed; acceptance depends on the reset M0 evidence ledger.
 - [ADR-0010: Pin the workspace to Node 26 Current](0010-node-26-current-toolchain.md)
   — accepted; supersedes ADR-0008.
+- [ADR-0011: Show transient canonical command and activity status](0011-transient-command-and-activity-status.md)
+  — accepted.
 
 ## Template
 

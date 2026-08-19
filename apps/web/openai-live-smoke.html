@@ -11,9 +11,25 @@
     <link rel="stylesheet" href="/voice-shell.css" />
   </head>
   <body>
-    <main>
+    <main id="voice-shell">
       <p class="eyebrow">Zork Voice · live developer smoke</p>
-      <h1 id="status" aria-live="polite">Starting</h1>
+      <h1 id="status" aria-live="polite" aria-atomic="true">Starting</h1>
+      <div class="status-feedback">
+        <div
+          id="activity-indicator"
+          class="activity-indicator"
+          data-state="starting"
+          aria-hidden="true"
+        >
+          <span></span><span></span><span></span>
+        </div>
+        <output
+          id="command-cue"
+          class="command-cue"
+          aria-live="polite"
+          aria-atomic="true"
+        ></output>
+      </div>
       <p class="cue" aria-hidden="true">Press V or use the speaking control.</p>
       <button id="capture" type="button" aria-pressed="false" disabled>
         Start speaking

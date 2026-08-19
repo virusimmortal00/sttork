@@ -24,6 +24,13 @@ import {
 import { DORK_WORKER_BINDING } from "../../../spikes/dork-worker/dork-worker-binding.js";
 import { DorkWorkerEngine } from "../../../spikes/dork-worker/dork-worker-engine.js";
 
+import {
+  applyCommandCuePresentation,
+  applyVoiceStatePresentation,
+  statusTextForVoiceAudioState,
+  type VoiceStatePresentationElements,
+} from "./voice-state-presentation.js";
+
 const STORY_ID = "minimal-zmachine-story";
 const STORY_SHA256 =
   "67d3a47a48227988a29b2f4111da4cf5cd0efec4a8873d717c9e610984fb7389";
@@ -85,6 +92,8 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 
 async function run(): Promise<void> {
   const status = required<HTMLElement>("status");
+  const activityIndicator = required<HTMLElement>("activity-indicator");
+  const commandCue = required<HTMLOutputElement>("command-cue");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
   const pauseButton = required<HTMLButtonElement>("pause");
@@ -96,6 +105,10 @@ async function run(): Promise<void> {
   const debugPanel = required<HTMLElement>("debug-panel");
   const textForm = required<HTMLFormElement>("text-form");
   const textInput = required<HTMLInputElement>("text-input");
+  const voicePresentation: VoiceStatePresentationElements = {
+    status,
+    activityIndicator,
+  };
 
   function publishEvidence(evidence: SmokeEvidence): void {
     window.__VOICE_SHELL_SMOKE__ = evidence;
@@ -143,7 +156,12 @@ async function run(): Promise<void> {
   const playback = new ScriptedPlaybackPort(clock);
 
   function renderProjection(): void {
-    status.textContent = projection.statusText;
+    applyVoiceStatePresentation(
+      projection.displayState,
+      projection.statusText,
+      voicePresentation,
+    );
+    applyCommandCuePresentation(projection.activeCommand, commandCue);
     transcriptList.replaceChildren(
       ...projection.transcript.map((item) => {
         const row = document.createElement("li");
@@ -217,6 +235,11 @@ async function run(): Promise<void> {
     nextCaptureId: () => `capture-${++captureId}`,
     observedObjects: () => ["token"],
     onState: (state: VoiceAudioState) => {
+      applyVoiceStatePresentation(
+        state,
+        statusTextForVoiceAudioState(state, "Ready"),
+        voicePresentation,
+      );
       captureButton.textContent =
         state === "listening" ? "Finish speaking" : "Start speaking";
       captureButton.setAttribute("aria-pressed", String(state === "listening"));
@@ -228,14 +251,7 @@ async function run(): Promise<void> {
         state === "paused";
       captureButton.disabled = busy;
       pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
-      if (state === "ready") status.textContent = "Ready";
-      if (state === "requesting-microphone") {
-        status.textContent = "Requesting microphone";
-      }
-      if (state === "listening") status.textContent = "Listening";
-      if (state === "processing") status.textContent = "Processing";
       if (state === "recoverable-error") {
-        status.textContent = "Try again or use text input";
         transcriptPanel.hidden = false;
         transcriptButton.setAttribute("aria-expanded", "true");
         textInput.focus();
@@ -339,6 +355,10 @@ void run().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : "Unknown failure";
   const status = document.getElementById("status");
   if (status !== null) status.textContent = "Unable to start";
+  const activityIndicator = document.getElementById("activity-indicator");
+  if (activityIndicator !== null) {
+    activityIndicator.dataset.state = "blocked";
+  }
   const evidence: SmokeEvidence = {
     status: "failed",
     turns: 0,

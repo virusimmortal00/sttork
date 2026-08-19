@@ -30,6 +30,12 @@ import {
   OpenAiLivePlaybackPort,
   OpenAiLiveTranscriber,
 } from "./openai-live-audio.js";
+import {
+  applyCommandCuePresentation,
+  applyVoiceStatePresentation,
+  statusTextForVoiceAudioState,
+  type VoiceStatePresentationElements,
+} from "./voice-state-presentation.js";
 
 const STORY_ID = "zork1-release-119";
 const STORY_SHA256 =
@@ -284,6 +290,8 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 
 async function run(): Promise<void> {
   const status = required<HTMLElement>("status");
+  const activityIndicator = required<HTMLElement>("activity-indicator");
+  const commandCue = required<HTMLOutputElement>("command-cue");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
   const pauseButton = required<HTMLButtonElement>("pause");
@@ -312,6 +320,10 @@ async function run(): Promise<void> {
     textInput,
     allControls,
   };
+  const voicePresentation: VoiceStatePresentationElements = {
+    status,
+    activityIndicator,
+  };
   const preflight = liveBrowserPreflight();
 
   function publishEvidence(evidence: LiveSmokeEvidence): void {
@@ -321,6 +333,11 @@ async function run(): Promise<void> {
 
   if (!preflight.storyAuthenticationAvailable) {
     applyLivePreflightPresentation(preflight, presentation);
+    applyVoiceStatePresentation(
+      "blocked",
+      preflight.statusText,
+      voicePresentation,
+    );
     publishEvidence({
       status: "failed",
       secureContext: preflight.secureContext,
@@ -389,7 +406,14 @@ async function run(): Promise<void> {
   const playback = new OpenAiLivePlaybackPort({ sessionToken: token });
 
   function renderProjection(): void {
-    status.textContent = projection.statusText;
+    applyVoiceStatePresentation(
+      projection.displayState,
+      projection.displayState === "ready"
+        ? preflight.statusText
+        : projection.statusText,
+      voicePresentation,
+    );
+    applyCommandCuePresentation(projection.activeCommand, commandCue);
     transcriptList.replaceChildren(
       ...projection.transcript.map((item) => {
         const row = document.createElement("li");
@@ -442,6 +466,11 @@ async function run(): Promise<void> {
     nextCaptureId: () => `capture-${++captureId}`,
     observedObjects: () => observedObjectProjection.observedObjects,
     onState: (state: VoiceAudioState) => {
+      applyVoiceStatePresentation(
+        state,
+        statusTextForVoiceAudioState(state, preflight.statusText),
+        voicePresentation,
+      );
       captureButton.textContent =
         state === "listening" ? "Finish speaking" : "Start speaking";
       captureButton.setAttribute("aria-pressed", String(state === "listening"));
@@ -453,16 +482,7 @@ async function run(): Promise<void> {
         state === "narrator-speaking" ||
         state === "paused";
       pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
-      if (state === "ready") status.textContent = preflight.statusText;
-      if (state === "requesting-microphone") {
-        status.textContent = "Requesting microphone";
-      }
-      if (state === "listening") status.textContent = "Listening";
-      if (state === "processing") status.textContent = "Processing";
-      if (state === "guide-speaking") status.textContent = "Guide speaking";
-      if (state === "narrator-speaking") status.textContent = "Narrating";
       if (state === "recoverable-error") {
-        status.textContent = "Try again or use text input";
         transcriptPanel.hidden = false;
         transcriptButton.setAttribute("aria-expanded", "true");
         textInput.focus();
@@ -514,7 +534,7 @@ async function run(): Promise<void> {
 
   function runControl(operation: () => Promise<unknown>): void {
     void operation().catch(() => {
-      status.textContent = "Try again";
+      applyVoiceStatePresentation("blocked", "Try again", voicePresentation);
     });
   }
 
@@ -594,6 +614,10 @@ function publishStartupFailure(): void {
     >("button, input, select, textarea"),
   );
   applyFatalLiveStartupPresentation("Unable to start", status, controls);
+  const activityIndicator = document.getElementById("activity-indicator");
+  if (activityIndicator !== null) {
+    activityIndicator.dataset.state = "blocked";
+  }
   const transcriptPanel = document.getElementById("transcript-panel");
   const debugPanel = document.getElementById("debug-panel");
   const evidence: LiveSmokeEvidence = {

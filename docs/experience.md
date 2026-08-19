@@ -46,6 +46,9 @@ The default screen contains no transcript and no game prose. It has:
 - a near-black, low-detail background;
 - one central state indicator with a non-color-only change for idle, listening,
   processing, guide speech, narrator speech, paused, and error states;
+- one transient canonical command cue when a validated command reaches the
+  engine-request boundary; it is status, not persistent transcript or game
+  prose;
 - a compact microphone control that is reachable by touch and keyboard;
 - a discoverable settings/transcript control that may recede when inactive;
 - an accessible status region, even when no text is visually rendered.
@@ -54,6 +57,12 @@ Controls appear on focus, pointer movement, tap, or a relevant error, then
 recede. No important state is communicated by color or animation alone.
 Reduced-motion mode replaces pulsing and waveform effects with discrete state
 changes.
+
+The command cue is governed by
+[ADR-0011](adr/0011-transient-command-and-activity-status.md). It displays only
+the exact command from `engine.command.requested`, stays visible while the
+engine response and narrator audio are prepared, and clears through matching
+semantic lifecycle events. Provider proposals never render in this surface.
 
 ## Display-state projection
 
@@ -257,6 +266,16 @@ type StatusProjection = ExperienceProjection<
   }
 >;
 
+type CommandCueProjection = ExperienceProjection<
+  "command-cue",
+  {
+    requestId: string;
+    correlationId: string;
+    command: string;
+    phase: "requested" | "committed";
+  }
+>;
+
 type TranscriptItemProjection = ExperienceProjection<
   "transcript-item",
   {
@@ -276,7 +295,7 @@ Canonical-to-experience mapping is explicit:
 | `audio.capture.*`, `audio.playback.*`                                        | Listening/speaking state, control state, and interruption feedback                                                  |
 | `transcript.final`                                                           | Player transcript item and guide input; partial transcripts remain ephemeral unless diagnostic retention is enabled |
 | `guide.decision.*`, `guide.clarification`, `guide.explanation`, `guide.hint` | Guide role item, pending clarification, and debug decision detail                                                   |
-| `engine.command.*`, `engine.output`                                          | Command item, exact game item, narrator request, and engine-turn debug detail                                       |
+| `engine.command.*`, `engine.output`                                          | Transient command cue, command item, exact game item, narrator request, and engine-turn debug detail                |
 | `narration.*`                                                                | Audio queue and delivery state for an existing guide or engine source event                                         |
 | `save.*`                                                                     | Checkpoint/recovery status and debug metadata                                                                       |
 
@@ -320,6 +339,8 @@ speech. It does not bypass the guide or become a separate save format.
 - Do not require hold gestures; tap-to-talk is always available.
 - Do not communicate role or state through color, motion, stereo position, or
   sound alone.
+- Keep activity animation decorative and hidden from the accessibility tree;
+  update the stable status live region only on a real state change.
 - Support visible captions, high contrast, large text, reduced motion, mono
   audio, and independently adjustable speech rates.
 - Preserve focus when controls recede and return focus predictably when
@@ -444,7 +465,8 @@ The first vertical slice is ready when:
 
 1. A first-time player can start and complete the slice without reading the
    screen.
-2. Default play shows no transcript, player speech, command, or game prose.
+2. Default play shows no transcript, player speech, or game prose; the only
+   command text is the bounded, transient canonical status defined by ADR-0011.
 3. The player can hear which speech belongs to the original game and which
    belongs to the guide.
 4. Direct, ambiguous, informational, and hint-seeking utterances follow the

@@ -17,10 +17,10 @@ spoiler-controlled hints. It may not invent rooms, objects, outcomes, inventory,
 score, or state changes.
 
 The primary interface is audio. The default screen is deliberately quiet: a
-small status indicator and essential controls, with no persistent prose. A
-visible transcript/caption view is a first-class accessibility and debugging
-surface over the same event stream. It is not a separate implementation of the
-game.
+small status indicator, a transient canonical command confirmation, and
+essential controls, with no persistent prose. A visible transcript/caption view
+is a first-class accessibility and debugging surface over the same event stream.
+It is not a separate implementation of the game.
 
 ## Product principles
 

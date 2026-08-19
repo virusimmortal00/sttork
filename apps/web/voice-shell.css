@@ -17,6 +17,112 @@ main {
   text-align: center;
 }
 
+.status-feedback {
+  min-height: 4.5rem;
+  display: grid;
+  place-content: center;
+  gap: 0.75rem;
+}
+
+.activity-indicator {
+  min-height: 0.75rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.activity-indicator span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: #d7e4da;
+  opacity: 0.35;
+}
+
+.activity-indicator[data-state="starting"] span,
+.activity-indicator[data-state="requesting"] span,
+.activity-indicator[data-state="processing"] span {
+  animation: activity-chase 1.15s ease-in-out infinite;
+}
+
+.activity-indicator[data-state="listening"] span {
+  animation: activity-pulse 0.95s ease-in-out infinite;
+}
+
+.activity-indicator[data-state="speaking"] span {
+  animation: activity-speak 0.7s ease-in-out infinite;
+}
+
+.activity-indicator span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.activity-indicator span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+.activity-indicator[data-state="paused"] span {
+  border-radius: 2px;
+  opacity: 0.6;
+}
+
+.activity-indicator[data-state="blocked"] span {
+  opacity: 0.8;
+}
+
+.command-cue {
+  min-height: 1.25rem;
+  color: #d7e4da;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.command-cue:empty {
+  visibility: hidden;
+}
+
+@keyframes activity-chase {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+    transform: translateY(-0.28rem);
+  }
+}
+
+@keyframes activity-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes activity-speak {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scaleY(0.65);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scaleY(1.45);
+  }
+}
+
 .eyebrow,
 .cue {
   color: #aeb8b0;
@@ -60,5 +166,11 @@ pre {
   *::after {
     scroll-behavior: auto !important;
     transition: none !important;
+    animation: none !important;
+  }
+
+  .activity-indicator span {
+    opacity: 0.75;
+    transform: none;
   }
 }

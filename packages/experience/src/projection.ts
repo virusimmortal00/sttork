@@ -26,9 +26,21 @@ export interface TranscriptItemProjection {
   readonly delivery: TranscriptDelivery;
 }
 
+export interface CommandCueProjection {
+  readonly requestId: string;
+  readonly correlationId: string;
+  readonly command: string;
+  readonly phase: "requested" | "committed";
+  readonly outputEventId?: string;
+  readonly narrationId?: string;
+  readonly sourceEventIds: readonly string[];
+  readonly throughSequence: number;
+}
+
 export interface ExperienceProjectionState {
   readonly displayState: ExperienceDisplayState;
   readonly statusText: string;
+  readonly activeCommand?: CommandCueProjection;
   readonly throughSequence: number;
   readonly sourceEventIds: readonly string[];
   readonly transcript: readonly TranscriptItemProjection[];
@@ -97,12 +109,14 @@ export function reduceExperienceProjection(
   }
   let displayState = previous.displayState;
   let statusText = previous.statusText;
+  let activeCommand = previous.activeCommand;
   let transcript = previous.transcript;
 
   switch (event.type) {
     case "audio.capture.started":
       displayState = "listening";
       statusText = "Listening";
+      activeCommand = undefined;
       break;
     case "audio.capture.ended":
       if (event.payload.outcome === "submitted") {
@@ -120,12 +134,19 @@ export function reduceExperienceProjection(
     case "session.paused":
       displayState = "paused";
       statusText = "Paused";
+      activeCommand = undefined;
       break;
     case "session.resumed":
       displayState = "ready";
       statusText = "Ready";
       break;
     case "transcript.final":
+      if (
+        activeCommand !== undefined &&
+        activeCommand.correlationId !== event.correlationId
+      ) {
+        activeCommand = undefined;
+      }
       transcript = [
         ...transcript,
         transcriptItem(event, "player", event.payload.text),
@@ -150,6 +171,14 @@ export function reduceExperienceProjection(
       ];
       break;
     case "engine.command.requested":
+      activeCommand = {
+        requestId: event.payload.requestId,
+        correlationId: event.correlationId,
+        command: event.payload.command,
+        phase: "requested",
+        sourceEventIds: [event.id],
+        throughSequence: event.sequence,
+      };
       transcript = [
         ...transcript,
         transcriptItem(
@@ -160,13 +189,59 @@ export function reduceExperienceProjection(
         ),
       ];
       break;
+    case "engine.command.committed":
+      if (activeCommand === undefined) {
+        activeCommand = {
+          requestId: event.payload.requestId,
+          correlationId: event.correlationId,
+          command: event.payload.command,
+          phase: "committed",
+          sourceEventIds: [event.id],
+          throughSequence: event.sequence,
+        };
+      } else if (
+        activeCommand.requestId === event.payload.requestId &&
+        activeCommand.correlationId === event.correlationId &&
+        activeCommand.command === event.payload.command
+      ) {
+        activeCommand = {
+          ...activeCommand,
+          phase: "committed",
+          sourceEventIds: [...activeCommand.sourceEventIds, event.id],
+          throughSequence: event.sequence,
+        };
+      }
+      break;
+    case "engine.command.rejected":
+      if (
+        activeCommand?.requestId === event.payload.requestId &&
+        activeCommand.correlationId === event.correlationId &&
+        activeCommand.command === event.payload.command
+      ) {
+        activeCommand = undefined;
+      }
+      break;
     case "engine.output":
+      if (
+        activeCommand?.phase === "committed" &&
+        activeCommand.correlationId === event.correlationId
+      ) {
+        activeCommand = { ...activeCommand, outputEventId: event.id };
+      }
       transcript = [
         ...transcript,
         transcriptItem(event, "game", event.payload.exactText),
       ];
       break;
     case "system.error":
+      if (
+        activeCommand !== undefined &&
+        (!event.payload.recoverable ||
+          (activeCommand.correlationId === event.correlationId &&
+            event.payload.engineCommitState !== "confirmed"))
+      ) {
+        activeCommand = undefined;
+      }
       displayState = event.payload.recoverable ? "blocked" : "ended";
       statusText = event.payload.recoverable
         ? "Action needed"
@@ -176,7 +251,27 @@ export function reduceExperienceProjection(
         transcriptItem(event, "system", `Error: ${event.payload.code}`),
       ];
       break;
+    case "narration.cancelled":
+    case "narration.failed":
+      if (
+        activeCommand?.correlationId === event.correlationId &&
+        event.payload.role === "narrator" &&
+        activeCommand.narrationId === event.payload.narrationId
+      ) {
+        activeCommand = undefined;
+      }
+      break;
     case "narration.requested":
+      if (
+        activeCommand?.correlationId === event.correlationId &&
+        event.payload.role === "narrator" &&
+        activeCommand.outputEventId === event.payload.sourceEventId
+      ) {
+        activeCommand = {
+          ...activeCommand,
+          narrationId: event.payload.narrationId,
+        };
+      }
       transcript = updateDelivery(
         transcript,
         event.payload.sourceEventId,
@@ -217,6 +312,14 @@ export function reduceExperienceProjection(
           event,
         );
       }
+      if (
+        activeCommand?.correlationId === event.correlationId &&
+        event.payload.role === "narrator" &&
+        activeCommand.outputEventId === event.causationId &&
+        activeCommand.narrationId === event.payload.narrationId
+      ) {
+        activeCommand = undefined;
+      }
       break;
     }
     default:
@@ -226,6 +329,7 @@ export function reduceExperienceProjection(
   return {
     displayState,
     statusText,
+    ...(activeCommand === undefined ? {} : { activeCommand }),
     throughSequence: event.sequence,
     sourceEventIds: [...previous.sourceEventIds, event.id],
     transcript,
