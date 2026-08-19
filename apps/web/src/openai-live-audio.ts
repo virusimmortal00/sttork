@@ -2,6 +2,7 @@ import type {
   CapturePort,
   CapturedAudioTurn,
   FinalTranscript,
+  PlaybackLifecycle,
   PlaybackPort,
   TranscriberPort,
 } from "../../../packages/audio/src/index.js";
@@ -733,11 +734,14 @@ export interface LiveAudioElement {
   play(): Promise<void>;
   pause(): void;
   addEventListener(
-    type: "ended" | "error",
+    type: "playing" | "ended" | "error",
     listener: () => void,
     options?: { readonly once?: boolean },
   ): void;
-  removeEventListener(type: "ended" | "error", listener: () => void): void;
+  removeEventListener(
+    type: "playing" | "ended" | "error",
+    listener: () => void,
+  ): void;
 }
 
 export interface OpenAiLivePlaybackPortOptions {
@@ -792,6 +796,7 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
   public async play(
     request: NarrationRequest,
     signal: AbortSignal,
+    lifecycle: PlaybackLifecycle,
   ): Promise<void> {
     if (this.#active !== undefined) {
       throw new OpenAiLiveAudioError(
@@ -855,7 +860,7 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       active.objectUrl = objectUrl;
       const audio = this.#createAudio(objectUrl);
       active.audio = audio;
-      await playUntilEnded(audio, active.abort.signal);
+      await playUntilEnded(audio, active.abort.signal, lifecycle);
     } finally {
       signal.removeEventListener("abort", abort);
       this.#disposePlayback(active);
@@ -1105,15 +1110,37 @@ async function readJsonObject(
 async function playUntilEnded(
   audio: LiveAudioElement,
   signal: AbortSignal,
+  lifecycle: PlaybackLifecycle,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
+    let started = false;
     const cleanup = () => {
+      audio.removeEventListener("playing", playing);
       audio.removeEventListener("ended", ended);
       audio.removeEventListener("error", failed);
       signal.removeEventListener("abort", aborted);
     };
+    const playing = () => {
+      if (started) return;
+      started = true;
+      try {
+        lifecycle.onStarted();
+      } catch (error) {
+        cleanup();
+        reject(error);
+      }
+    };
     const ended = () => {
       cleanup();
+      if (!started) {
+        reject(
+          new OpenAiLiveAudioError(
+            "playback-failed",
+            "Narration ended before audible playback began.",
+          ),
+        );
+        return;
+      }
       resolve();
     };
     const failed = () => {
@@ -1135,6 +1162,7 @@ async function playUntilEnded(
           ),
       );
     };
+    audio.addEventListener("playing", playing, { once: true });
     audio.addEventListener("ended", ended, { once: true });
     audio.addEventListener("error", failed, { once: true });
     signal.addEventListener("abort", aborted, { once: true });

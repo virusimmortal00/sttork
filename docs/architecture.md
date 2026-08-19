@@ -364,6 +364,12 @@ provider.connected | provider.degraded | provider.disconnected
 system.error | system.recovered
 ```
 
+`audio.playback.started` is emitted at the first browser `playing` event, after
+synthesis, download, decoding, and buffering. Those earlier phases remain
+processing and must not drive a speaking projection. Playback aborted or failed
+before that boundary has no started event and is recorded only through its
+terminal outcome.
+
 Partial transcripts are ephemeral UI state unless diagnostic recording is
 explicitly enabled. Events containing prose have a retention classification; the
 cloud receives none by default in the local-save milestone.

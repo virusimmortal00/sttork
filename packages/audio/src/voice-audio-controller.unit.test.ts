@@ -2,6 +2,7 @@ import type { SemanticTurnResult } from "@zork-voice/session";
 import type { NarrationRequest } from "@zork-voice/session";
 import { describe, expect, it } from "vitest";
 
+import type { PlaybackLifecycle } from "./contracts.js";
 import {
   ScriptedCapturePort,
   ScriptedNarrationPort,
@@ -20,7 +21,10 @@ class StubTurns implements VoiceTurnPort {
   public readonly lifecycle: string[] = [];
   public readonly submitted: string[] = [];
   public readonly transcriptConfidences: Array<number | undefined> = [];
-  public constructor(private readonly narration: ScriptedNarrationPort) {}
+  public constructor(
+    private readonly narration: ScriptedNarrationPort,
+    private readonly narrationCount = 1,
+  ) {}
 
   public async submitTurn(input: {
     readonly interactionId: string;
@@ -29,16 +33,18 @@ class StubTurns implements VoiceTurnPort {
   }): Promise<SemanticTurnResult> {
     this.submitted.push(input.transcript);
     this.transcriptConfidences.push(input.transcriptConfidence);
-    await this.narration.prepare(
-      {
-        narrationId: `narration-${input.interactionId}`,
-        role: "narrator",
-        text: `exact:${input.transcript}`,
-        sourceEventId: `output-${input.interactionId}`,
-        correlationId: input.interactionId,
-      },
-      new AbortController().signal,
-    );
+    for (let index = 0; index < this.narrationCount; index += 1) {
+      await this.narration.prepare(
+        {
+          narrationId: `narration-${input.interactionId}-${index}`,
+          role: "narrator",
+          text: `exact:${input.transcript}:${index}`,
+          sourceEventId: `output-${input.interactionId}-${index}`,
+          correlationId: input.interactionId,
+        },
+        new AbortController().signal,
+      );
+    }
     return {
       interactionId: input.interactionId,
       outcome: "committed",
@@ -127,7 +133,7 @@ describe("VoiceAudioController", () => {
     expect(subject.controller.state).toBe("ready");
     expect(subject.turns.submitted).toEqual(["go north"]);
     expect(subject.playback.records).toEqual([
-      expect.objectContaining({ role: "narrator", text: "exact:go north" }),
+      expect.objectContaining({ role: "narrator", text: "exact:go north:0" }),
     ]);
     expect(subject.turns.lifecycle).toEqual([
       "capture-started",
@@ -145,6 +151,54 @@ describe("VoiceAudioController", () => {
         "ready",
       ]),
     );
+  });
+
+  it("stays processing until playback reaches the audible start boundary", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const states: VoiceAudioState[] = [];
+    let announceStart: (() => void) | undefined;
+    let playbackReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      playbackReady = resolve;
+    });
+    let finishPlayback!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      finishPlayback = resolve;
+    });
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: {
+        play: async (_request, _signal, lifecycle) => {
+          announceStart = lifecycle.onStarted;
+          playbackReady();
+          await finished;
+        },
+        stop: async () => undefined,
+      },
+      nextInteractionId: () => "delayed-audible-start",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+      onState: (state) => states.push(state),
+    });
+
+    const submitting = controller.submitText("look");
+    await ready;
+
+    expect(controller.state).toBe("processing");
+    expect(turns.lifecycle).not.toContain("playback-started:narrator");
+
+    announceStart?.();
+    expect(controller.state).toBe("narrator-speaking");
+    expect(turns.lifecycle).toContain("playback-started:narrator");
+
+    finishPlayback();
+    await submitting;
+    expect(controller.state).toBe("ready");
+    expect(states).toEqual(["processing", "narrator-speaking", "ready"]);
   });
 
   it("turns silence into a recoverable non-mutating result", async () => {
@@ -360,7 +414,12 @@ describe("VoiceAudioController", () => {
       playbackStarted = resolve;
     });
     const playback = {
-      play: async (_request: NarrationRequest, signal: AbortSignal) => {
+      play: async (
+        _request: NarrationRequest,
+        signal: AbortSignal,
+        lifecycle: PlaybackLifecycle,
+      ) => {
+        lifecycle.onStarted();
         playbackStarted();
         await new Promise<void>((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), {
@@ -400,6 +459,48 @@ describe("VoiceAudioController", () => {
     expect(controller.state).toBe("ready");
   });
 
+  it("does not announce a stale audible start after pre-onset stop", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    let playbackReady!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      playbackReady = resolve;
+    });
+    let staleStart: (() => void) | undefined;
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: {
+        play: async (_request, signal, lifecycle) => {
+          staleStart = lifecycle.onStarted;
+          playbackReady();
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        },
+        stop: async () => undefined,
+      },
+      nextInteractionId: () => "pre-onset-stop",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+
+    const submitting = controller.submitText("look");
+    await ready;
+    expect(controller.state).toBe("processing");
+
+    await controller.stop();
+    await submitting;
+    staleStart?.();
+
+    expect(turns.lifecycle).toEqual(["playback-ended:interrupted"]);
+    expect(controller.state).toBe("ready");
+  });
+
   it("repeats the current narration after its first playback is interrupted", async () => {
     let playbackStarted!: () => void;
     const started = new Promise<void>((resolve) => {
@@ -407,8 +508,13 @@ describe("VoiceAudioController", () => {
     });
     const requests: NarrationRequest[] = [];
     const playback = {
-      play: async (request: NarrationRequest, signal: AbortSignal) => {
+      play: async (
+        request: NarrationRequest,
+        signal: AbortSignal,
+        lifecycle: PlaybackLifecycle,
+      ) => {
         requests.push({ ...request });
+        lifecycle.onStarted();
         if (requests.length > 1) return;
         playbackStarted();
         await new Promise<void>((_resolve, reject) => {
@@ -457,5 +563,49 @@ describe("VoiceAudioController", () => {
         "playback-ended:complete",
       ]),
     );
+  });
+
+  it("does not start queued narration after playback is stopped", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration, 2);
+    let firstStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const requests: NarrationRequest[] = [];
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: {
+        play: async (request, signal, lifecycle) => {
+          requests.push({ ...request });
+          lifecycle.onStarted();
+          firstStarted();
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        },
+        stop: async () => undefined,
+      },
+      nextInteractionId: () => "queued-stop",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+
+    const submitting = controller.submitText("look");
+    await started;
+    await controller.stop();
+    await submitting;
+
+    expect(requests).toHaveLength(1);
+    expect(turns.lifecycle).toEqual([
+      "playback-started:narrator",
+      "playback-ended:interrupted",
+    ]);
+    expect(controller.state).toBe("ready");
   });
 });

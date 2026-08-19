@@ -25,8 +25,16 @@ export interface TranscriberPort {
 }
 
 export interface PlaybackPort {
-  play(request: NarrationRequest, signal: AbortSignal): Promise<void>;
+  play(
+    request: NarrationRequest,
+    signal: AbortSignal,
+    lifecycle: PlaybackLifecycle,
+  ): Promise<void>;
   stop(): Promise<void>;
+}
+
+export interface PlaybackLifecycle {
+  readonly onStarted: () => void;
 }
 
 export interface AudioClock {

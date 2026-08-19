@@ -250,7 +250,15 @@ export class VoiceAudioController {
 
     this.#onTurn?.(result);
     const prepared = this.#narration.takePrepared(active.interactionId);
+    const playbackEpoch = this.#lifecycleEpoch;
     for (const request of prepared) {
+      if (
+        this.#lifecycleEpoch !== playbackEpoch ||
+        this.#isPaused() ||
+        this.#isRecoverableError()
+      ) {
+        break;
+      }
       await this.#play(request);
     }
     if (!this.#isPaused() && !this.#isRecoverableError()) {
@@ -346,7 +354,15 @@ export class VoiceAudioController {
       this.#turnAbort = undefined;
     }
     this.#onTurn?.(result);
+    const playbackEpoch = this.#lifecycleEpoch;
     for (const request of this.#narration.takePrepared(interactionId)) {
+      if (
+        this.#lifecycleEpoch !== playbackEpoch ||
+        this.#isPaused() ||
+        this.#isRecoverableError()
+      ) {
+        break;
+      }
       await this.#play(request);
     }
     if (!this.#isPaused() && !this.#isRecoverableError()) {
@@ -358,18 +374,29 @@ export class VoiceAudioController {
   async #play(request: NarrationRequest): Promise<void> {
     const controller = new AbortController();
     this.#playbackAbort = controller;
-    this.#setState(
-      request.role === "guide" ? "guide-speaking" : "narrator-speaking",
-    );
-    this.#turns.recordPlaybackStarted({
-      interactionId: request.correlationId,
-      narrationId: request.narrationId,
-      role: request.role,
-      sourceEventId: request.sourceEventId,
-    });
+    if (this.#state !== "processing") this.#setState("processing");
+    let started = false;
+    const onStarted = () => {
+      if (started || controller.signal.aborted) return;
+      started = true;
+      this.#setState(
+        request.role === "guide" ? "guide-speaking" : "narrator-speaking",
+      );
+      this.#turns.recordPlaybackStarted({
+        interactionId: request.correlationId,
+        narrationId: request.narrationId,
+        role: request.role,
+        sourceEventId: request.sourceEventId,
+      });
+    };
     this.#lastPlayed = { ...request };
     try {
-      await this.#playback.play(request, controller.signal);
+      await this.#playback.play(request, controller.signal, { onStarted });
+      if (!started) {
+        throw new VoiceAudioStateError(
+          "Playback completed without reaching its audible start boundary.",
+        );
+      }
       this.#turns.recordPlaybackEnded({
         interactionId: request.correlationId,
         narrationId: request.narrationId,

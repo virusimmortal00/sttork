@@ -8,6 +8,7 @@ import type {
   CapturedAudioTurn,
   CapturePort,
   FinalTranscript,
+  PlaybackLifecycle,
   PlaybackPort,
   PlaybackRecord,
   TranscriberPort,
@@ -130,9 +131,12 @@ export class ScriptedPlaybackPort implements PlaybackPort {
   public async play(
     request: NarrationRequest,
     signal: AbortSignal,
+    lifecycle: PlaybackLifecycle,
   ): Promise<void> {
     const startedAtMs = this.#clock.nowMs;
     const durationMs = Math.max(100, request.text.length * 12);
+    signal.throwIfAborted();
+    lifecycle.onStarted();
     await this.#clock.wait(durationMs, signal);
     this.records.push({
       narrationId: request.narrationId,

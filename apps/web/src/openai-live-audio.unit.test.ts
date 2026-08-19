@@ -70,19 +70,29 @@ class DelayedStopRecorder extends FakeRecorder {
 class FakeAudioElement implements LiveAudioElement {
   public readonly play = vi.fn(async () => undefined);
   public readonly pause = vi.fn();
-  readonly #listeners = new Map<"ended" | "error", Set<() => void>>();
+  readonly #listeners = new Map<
+    "playing" | "ended" | "error",
+    Set<() => void>
+  >();
 
-  public addEventListener(type: "ended" | "error", listener: () => void): void {
+  public addEventListener(
+    type: "playing" | "ended" | "error",
+    listener: () => void,
+  ): void {
     const listeners = this.#listeners.get(type) ?? new Set();
     listeners.add(listener);
     this.#listeners.set(type, listeners);
   }
 
   public removeEventListener(
-    type: "ended" | "error",
+    type: "playing" | "ended" | "error",
     listener: () => void,
   ): void {
     this.#listeners.get(type)?.delete(listener);
+  }
+
+  public start(): void {
+    for (const listener of this.#listeners.get("playing") ?? []) listener();
   }
 
   public end(): void {
@@ -458,6 +468,7 @@ describe("OpenAiLivePlaybackPort", () => {
     const audios: FakeAudioElement[] = [];
     const createdBlobs: Blob[] = [];
     const revoked: string[] = [];
+    const startedRoles: string[] = [];
     const playback = new OpenAiLivePlaybackPort({
       sessionToken,
       fetch: fetchMock,
@@ -476,18 +487,27 @@ describe("OpenAiLivePlaybackPort", () => {
     const guide = playback.play(
       narration("guide", "Guide response."),
       new AbortController().signal,
+      { onStarted: () => startedRoles.push("guide") },
     );
     await vi.waitFor(() => expect(audios[0]?.play).toHaveBeenCalledOnce());
+    expect(startedRoles).toEqual([]);
+    audios[0]?.start();
+    audios[0]?.start();
+    expect(startedRoles).toEqual(["guide"]);
     audios[0]?.end();
     await guide;
 
     const narrator = playback.play(
       narration("narrator", "Exact line one.\nExact line two."),
       new AbortController().signal,
+      { onStarted: () => startedRoles.push("narrator") },
     );
     await vi.waitFor(() => expect(audios[1]?.play).toHaveBeenCalledOnce());
+    expect(startedRoles).toEqual(["guide"]);
+    audios[1]?.start();
     audios[1]?.end();
     await narrator;
+    expect(startedRoles).toEqual(["guide", "narrator"]);
 
     expect(bodies).toEqual([
       { text: "Guide response.", role: "guide" },
@@ -515,9 +535,11 @@ describe("OpenAiLivePlaybackPort", () => {
       revokeObjectUrl: revoked,
       createAudio: () => audio,
     });
+    const onStarted = vi.fn();
     const playing = playback.play(
       narration("narrator"),
       new AbortController().signal,
+      { onStarted },
     );
     const rejected = expect(playing).rejects.toBeInstanceOf(Error);
     await vi.waitFor(() => expect(audio.play).toHaveBeenCalledOnce());
@@ -526,6 +548,7 @@ describe("OpenAiLivePlaybackPort", () => {
     await rejected;
 
     expect(audio.pause).toHaveBeenCalled();
+    expect(onStarted).not.toHaveBeenCalled();
     expect(revoked).toHaveBeenCalledOnce();
     expect(revoked).toHaveBeenCalledWith("blob:interrupt");
   });
@@ -545,11 +568,15 @@ describe("OpenAiLivePlaybackPort", () => {
       revokeObjectUrl: vi.fn(),
       createAudio: () => new FakeAudioElement(),
     });
+    const onStarted = vi.fn();
 
     await expect(
-      playback.play(narration("guide"), new AbortController().signal),
+      playback.play(narration("guide"), new AbortController().signal, {
+        onStarted,
+      }),
     ).rejects.toEqual(expect.objectContaining({ code: "malformed-response" }));
     expect(createObjectUrl).not.toHaveBeenCalled();
+    expect(onStarted).not.toHaveBeenCalled();
   });
 });
 

@@ -95,6 +95,13 @@ ready -> ended
 The UI must not show `ready` while capture is active or show `listening` while
 audio is being transmitted without the player's knowledge.
 
+Speech synthesis, response download, decoding, and buffering remain
+`processing`. The role-specific speaking state begins only when the browser
+reports its first `playing` event for that utterance. That boundary emits
+`audio.playback.started`; requesting synthesis or invoking `play()` is not
+enough. This keeps both the visible indicator and accessible live region aligned
+with the browser's closest observable approximation of audible playback.
+
 ## First-run flow
 
 The first run should be brief and playable without a visual tutorial:
