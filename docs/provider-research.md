@@ -1,7 +1,7 @@
 # Provider and upstream research snapshot
 
 Status: informative, not a runtime contract  
-Last verified: 2026-08-18
+Last verified: 2026-08-19
 
 This document records the external facts that informed the initial strategy.
 Provider catalogs, prices, authentication flows, and model status change. Each
@@ -89,9 +89,18 @@ evaluation baseline is reasoning `none`; `low` is promoted only if guide evals
 show a material grounding or ambiguity-handling gain at acceptable latency and
 cost.
 
+The guide response uses a required root object whose `decision` property is a
+nested `anyOf` over the enabled decision branches. This follows the current
+Structured Outputs subset: the root remains an object rather than an `anyOf`,
+every object field is required, and nested `anyOf` branches are supported.
+Keeping branch-specific fields inside those variants prevents a schema-valid
+response from pairing a decision kind with null or unrelated fields; the
+provider-neutral runtime validator remains the final authority.
+
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
 - [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+- [Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
 - [Responses API migration and state](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [Safety identifiers](https://developers.openai.com/api/docs/guides/safety-best-practices)
 - [Current model catalog](https://developers.openai.com/api/docs/models)

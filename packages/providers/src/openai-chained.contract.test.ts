@@ -89,16 +89,12 @@ describe("OpenAiChainedProvider", () => {
                 {
                   type: "output_text",
                   text: JSON.stringify({
-                    kind: "execute",
-                    command: "north",
-                    intentSummary: "Move north",
-                    confidence: 0.97,
-                    question: null,
-                    ambiguity: null,
-                    response: null,
-                    basis: null,
-                    sourceIds: null,
-                    reason: null,
+                    decision: {
+                      kind: "execute",
+                      command: "north",
+                      intentSummary: "Move north",
+                      confidence: 0.97,
+                    },
                   }),
                 },
               ],
@@ -155,13 +151,113 @@ describe("OpenAiChainedProvider", () => {
           schema: {
             type: "object",
             additionalProperties: false,
-            required: expect.arrayContaining(["kind", "reason"]),
+            required: ["decision"],
+            properties: {
+              decision: {
+                anyOf: expect.arrayContaining([
+                  expect.objectContaining({
+                    required: [
+                      "kind",
+                      "command",
+                      "intentSummary",
+                      "confidence",
+                    ],
+                    properties: expect.objectContaining({
+                      kind: { type: "string", enum: ["execute"] },
+                    }),
+                  }),
+                  expect.objectContaining({
+                    required: ["kind", "response", "basis", "sourceIds"],
+                    properties: expect.objectContaining({
+                      kind: { type: "string", enum: ["explain"] },
+                      basis: { type: "string", enum: ["command-help"] },
+                    }),
+                  }),
+                ]),
+              },
+            },
           },
         },
       },
     });
     expect(JSON.stringify(requestBody)).not.toContain('"const"');
+    const schema = (
+      requestBody as {
+        text: {
+          format: {
+            schema: {
+              properties: {
+                decision: {
+                  anyOf: Array<{
+                    additionalProperties: boolean;
+                    required: string[];
+                    properties: Record<
+                      string,
+                      { enum?: string[]; type: string }
+                    >;
+                  }>;
+                };
+              };
+            };
+          };
+        };
+      }
+    ).text.format.schema;
+    const branches = schema.properties.decision.anyOf;
+    expect(branches.map((branch) => branch.properties.kind?.enum?.[0])).toEqual(
+      ["execute", "clarify", "explain", "cannot_comply"],
+    );
+    expect(
+      branches.every(
+        (branch) =>
+          branch.additionalProperties === false &&
+          branch.required.length === Object.keys(branch.properties).length,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(schema)).not.toContain('"type":"null"');
     expect(JSON.stringify(requestBody)).not.toContain(testKey);
+  });
+
+  it.each([
+    {
+      name: "grounded explanation",
+      decision: {
+        kind: "explain",
+        response: "You can ask to move in a direction.",
+        basis: "command-help",
+        sourceIds: ["opening:movement"],
+      },
+    },
+    {
+      name: "unsupported request",
+      decision: {
+        kind: "cannot_comply",
+        response: "I can help with game commands.",
+        reason: "unsupported",
+      },
+    },
+  ])("normalizes the $name decision branch", async ({ decision }) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ decision }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).resolves.toEqual(decision);
   });
 
   it("adds only a caller-supplied privacy-preserving safety identifier", async () => {
@@ -179,16 +275,11 @@ describe("OpenAiChainedProvider", () => {
                 {
                   type: "output_text",
                   text: JSON.stringify({
-                    kind: "clarify",
-                    command: null,
-                    intentSummary: null,
-                    confidence: null,
-                    question: "Which direction?",
-                    ambiguity: "No direction was supplied.",
-                    response: null,
-                    basis: null,
-                    sourceIds: null,
-                    reason: null,
+                    decision: {
+                      kind: "clarify",
+                      question: "Which direction?",
+                      ambiguity: "No direction was supplied.",
+                    },
                   }),
                 },
               ],
@@ -285,6 +376,81 @@ describe("OpenAiChainedProvider", () => {
         fetch: async () => jsonResponse({ error: "denied" }, 401),
       }).decide(guideInput(), new AbortController().signal),
     ).rejects.not.toThrow(testKey);
+  });
+
+  it("rejects the former flat nullable shape before domain validation", async () => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    kind: "explain",
+                    command: null,
+                    intentSummary: null,
+                    confidence: null,
+                    question: null,
+                    ambiguity: null,
+                    response: "I can help with commands.",
+                    basis: null,
+                    sourceIds: null,
+                    reason: null,
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).rejects.toMatchObject({
+      name: "ProviderAdapterError",
+      code: "malformed-response",
+      message: "Guide output was not a decision envelope.",
+    });
+  });
+
+  it("rejects fields outside the selected decision branch", async () => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    decision: {
+                      kind: "execute",
+                      command: "north",
+                      intentSummary: "Move north",
+                      confidence: 0.97,
+                      commands: ["north", "south"],
+                    },
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).rejects.toMatchObject({
+      name: "ProviderAdapterError",
+      code: "malformed-response",
+      message: "Guide output fields did not match its decision kind.",
+    });
   });
 
   it("enforces its request budget before making another provider call", async () => {

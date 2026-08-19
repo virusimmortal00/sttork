@@ -323,6 +323,13 @@ interpreter, provider, or product is release-qualified.
   hermetic gate contains provider, BFF, browser-adapter, audio-controller, and
   local-harness regressions and makes no provider call. The ignored browser and
   Worker graph builds without credentials.
+- A 2026-08-19 private-HTTPS in-app browser smoke exercised the live text path
+  without microphone permission. A social greeting produced one grounded
+  clarification with revision zero; one movement request produced exactly one
+  committed revision, checkpoint, exact Zork output, and completed narrator
+  playback. The Worker remained isolated and the browser console stayed clean.
+  This is live-provider integration evidence, not the required microphone
+  checkpoint.
 
 ### Evidence still required
 

@@ -53,86 +53,107 @@ export interface OpenAiChainedProviderOptions {
 const guideDecisionSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "kind",
-    "command",
-    "intentSummary",
-    "confidence",
-    "question",
-    "ambiguity",
-    "response",
-    "basis",
-    "sourceIds",
-    "reason",
-  ],
+  required: ["decision"],
   properties: {
-    kind: {
-      type: "string",
-      enum: ["execute", "clarify", "explain", "cannot_comply"],
-    },
-    command: {
-      anyOf: [
-        { type: "string", minLength: 1, maxLength: 160 },
-        { type: "null" },
-      ],
-    },
-    intentSummary: {
-      anyOf: [
-        { type: "string", minLength: 1, maxLength: 240 },
-        { type: "null" },
-      ],
-    },
-    confidence: {
-      anyOf: [{ type: "number", minimum: 0, maximum: 1 }, { type: "null" }],
-    },
-    question: {
-      anyOf: [
-        { type: "string", minLength: 1, maxLength: 500 },
-        { type: "null" },
-      ],
-    },
-    ambiguity: {
-      anyOf: [
-        { type: "string", minLength: 1, maxLength: 500 },
-        { type: "null" },
-      ],
-    },
-    response: {
-      anyOf: [
-        { type: "string", minLength: 1, maxLength: 1_000 },
-        { type: "null" },
-      ],
-    },
-    basis: {
-      anyOf: [{ type: "string", enum: ["command-help"] }, { type: "null" }],
-    },
-    sourceIds: {
+    decision: {
       anyOf: [
         {
-          type: "array",
-          minItems: 1,
-          maxItems: 32,
-          items: { type: "string", minLength: 1, maxLength: 160 },
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "command", "intentSummary", "confidence"],
+          properties: {
+            kind: { type: "string", enum: ["execute"] },
+            command: { type: "string", minLength: 1, maxLength: 160 },
+            intentSummary: {
+              type: "string",
+              minLength: 1,
+              maxLength: 240,
+            },
+            confidence: { type: "number", minimum: 0, maximum: 1 },
+          },
         },
-        { type: "null" },
-      ],
-    },
-    reason: {
-      anyOf: [
         {
-          type: "string",
-          enum: [
-            "not-observed",
-            "unsupported",
-            "unsafe",
-            "provider-limitation",
-          ],
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "question", "ambiguity"],
+          properties: {
+            kind: { type: "string", enum: ["clarify"] },
+            question: { type: "string", minLength: 1, maxLength: 500 },
+            ambiguity: { type: "string", minLength: 1, maxLength: 500 },
+          },
         },
-        { type: "null" },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "response", "basis", "sourceIds"],
+          properties: {
+            kind: { type: "string", enum: ["explain"] },
+            response: { type: "string", minLength: 1, maxLength: 1_000 },
+            basis: { type: "string", enum: ["command-help"] },
+            sourceIds: {
+              type: "array",
+              minItems: 1,
+              maxItems: 32,
+              items: { type: "string", minLength: 1, maxLength: 160 },
+            },
+          },
+        },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["kind", "response", "reason"],
+          properties: {
+            kind: { type: "string", enum: ["cannot_comply"] },
+            response: { type: "string", minLength: 1, maxLength: 500 },
+            reason: {
+              type: "string",
+              enum: [
+                "not-observed",
+                "unsupported",
+                "unsafe",
+                "provider-limitation",
+              ],
+            },
+          },
+        },
       ],
     },
   },
 } as const;
+
+function decisionFromEnvelope(value: unknown): unknown {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== 1 ||
+    !Object.hasOwn(value, "decision")
+  ) {
+    throw new ProviderAdapterError(
+      "malformed-response",
+      "Guide output was not a decision envelope.",
+    );
+  }
+  return Reflect.get(value, "decision") as unknown;
+}
+
+function assertExactDecisionKeys(
+  value: object,
+  expectedKeys: readonly string[],
+): void {
+  const actualKeys = Reflect.ownKeys(value);
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some(
+      (key) => typeof key !== "string" || !expectedKeys.includes(key),
+    )
+  ) {
+    throw new ProviderAdapterError(
+      "malformed-response",
+      "Guide output fields did not match its decision kind.",
+    );
+  }
+}
 
 function normalizeGuideDecision(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -158,6 +179,12 @@ function normalizeGuideDecision(value: unknown): unknown {
   };
   const kind = field("kind");
   if (kind === "execute") {
+    assertExactDecisionKeys(value, [
+      "kind",
+      "command",
+      "intentSummary",
+      "confidence",
+    ]);
     const confidence = field("confidence");
     if (
       typeof confidence !== "number" ||
@@ -178,6 +205,7 @@ function normalizeGuideDecision(value: unknown): unknown {
     };
   }
   if (kind === "clarify") {
+    assertExactDecisionKeys(value, ["kind", "question", "ambiguity"]);
     return {
       kind,
       question: string("question", 500),
@@ -185,6 +213,7 @@ function normalizeGuideDecision(value: unknown): unknown {
     };
   }
   if (kind === "explain") {
+    assertExactDecisionKeys(value, ["kind", "response", "basis", "sourceIds"]);
     const sourceIds = field("sourceIds");
     if (
       field("basis") !== "command-help" ||
@@ -211,6 +240,7 @@ function normalizeGuideDecision(value: unknown): unknown {
     };
   }
   if (kind === "cannot_comply") {
+    assertExactDecisionKeys(value, ["kind", "response", "reason"]);
     const reason = field("reason");
     if (
       reason !== "not-observed" &&
@@ -508,7 +538,7 @@ export class OpenAiChainedProvider implements GuideModel {
           ? {}
           : { safety_identifier: this.#safetyIdentifier }),
         instructions:
-          "You are a constrained parser guide. Return one schema-valid decision. Use only the supplied command knowledge and observed objects. Never claim game state changed. Prefer clarification when intent or referents are ambiguous. Do not emit multiple commands or hidden game facts. Set every field unused by the selected kind to null.",
+          "You are a constrained parser guide. Return one schema-valid decision. Use execute only for one unambiguous game action. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed. Do not emit multiple commands or hidden game facts.",
         input: serializedInput,
         text: {
           verbosity: this.#profile.guideVerbosity,
@@ -525,7 +555,7 @@ export class OpenAiChainedProvider implements GuideModel {
     let decision: unknown;
     try {
       decision = normalizeGuideDecision(
-        JSON.parse(outputText(value)) as unknown,
+        decisionFromEnvelope(JSON.parse(outputText(value)) as unknown),
       );
     } catch (error) {
       if (error instanceof ProviderAdapterError) throw error;
