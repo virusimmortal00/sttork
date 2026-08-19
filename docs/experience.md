@@ -168,6 +168,11 @@ Narrator and guide should use distinct voices. If a provider supports only one
 acceptable voice, distinguish them with delivery settings and a brief transition
 cue. Do not rely on stereo position, pitch, or color as the only distinction.
 
+The exact voice IDs are a configurable presentation choice, not part of either
+role's semantic identity. First-run samples or cues must make a voice change
+feel like an intentional handoff between the Dungeon Guide and the game
+narrator, not a provider inconsistency.
+
 Audio behavior:
 
 - Never play narrator and guide speech simultaneously.

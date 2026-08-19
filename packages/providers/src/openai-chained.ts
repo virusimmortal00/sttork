@@ -16,6 +16,8 @@ export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
   transcriptionModel: "gpt-4o-mini-transcribe",
   guideModel: "gpt-5.6-luna",
   narrationModel: "tts-1",
+  guideVoice: "nova",
+  narratorVoice: "onyx",
   guideReasoningEffort: "none" as const,
   guideReasoningContext: "current_turn" as const,
   guideVerbosity: "low" as const,
@@ -31,6 +33,8 @@ export interface OpenAiChainedProfile {
   readonly transcriptionModel: string;
   readonly guideModel: string;
   readonly narrationModel: string;
+  readonly guideVoice: string;
+  readonly narratorVoice: string;
   readonly guideReasoningEffort: "none" | "low";
   readonly guideReasoningContext: "current_turn";
   readonly guideVerbosity: "low" | "medium" | "high";
@@ -580,6 +584,11 @@ export class OpenAiChainedProvider implements GuideModel {
       "narration text",
       this.#profile.maxNarrationCharacters,
     );
+    const voice = boundedString(
+      role === "guide" ? this.#profile.guideVoice : this.#profile.narratorVoice,
+      `${role} voice`,
+      100,
+    );
     this.#reserveRequest();
     const response = await this.#request("/audio/speech", {
       method: "POST",
@@ -587,7 +596,7 @@ export class OpenAiChainedProvider implements GuideModel {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         model: this.#profile.narrationModel,
-        voice: role === "guide" ? "nova" : "onyx",
+        voice,
         input: boundedText,
         response_format: "mp3",
         speed: 1,

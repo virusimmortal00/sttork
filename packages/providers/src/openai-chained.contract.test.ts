@@ -341,6 +341,61 @@ describe("OpenAiChainedProvider", () => {
     });
   });
 
+  it("takes role voice IDs from the provider profile", async () => {
+    const bodies: unknown[] = [];
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      profile: {
+        ...OPENAI_CHAINED_PROFILE_2026_08_18,
+        guideVoice: "guide-test-voice",
+        narratorVoice: "narrator-test-voice",
+      },
+      fetch: async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)) as unknown);
+        return new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        });
+      },
+    });
+
+    await provider.synthesize(
+      "Guide response.",
+      "guide",
+      new AbortController().signal,
+    );
+    await provider.synthesize(
+      "Exact game prose.",
+      "narrator",
+      new AbortController().signal,
+    );
+
+    expect(bodies).toEqual([
+      expect.objectContaining({ voice: "guide-test-voice" }),
+      expect.objectContaining({ voice: "narrator-test-voice" }),
+    ]);
+  });
+
+  it("rejects an unsafe configured voice before a provider request", async () => {
+    const fetchStub = vi.fn<typeof fetch>();
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      profile: {
+        ...OPENAI_CHAINED_PROFILE_2026_08_18,
+        guideVoice: "unsafe\nvoice",
+      },
+      fetch: fetchStub,
+    });
+
+    await expect(
+      provider.synthesize(
+        "Guide response.",
+        "guide",
+        new AbortController().signal,
+      ),
+    ).rejects.toEqual(expect.objectContaining({ code: "invalid-input" }));
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
   it("rejects C1 controls while preserving narration whitespace", async () => {
     const fetchStub = vi.fn<typeof fetch>();
     const provider = new OpenAiChainedProvider({

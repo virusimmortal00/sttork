@@ -151,7 +151,12 @@ an undocumented workaround.
 - Is push-to-talk the launch interaction, or can voice-activity detection meet
   privacy, reliability, and cost targets in time?
 - How are guide and narrator identities differentiated in the first release: two
-  voices, one voice plus earcons, or another accessible convention?
+  voices, one voice plus earcons, or another accessible convention? A 2026-08-19
+  device smoke found the hardcoded Nova-to-Onyx handoff perceptible but
+  initially confusing: the player interpreted it as one guide changing voice.
+  Preserve the distinct semantic roles, but treat the current voice pair as
+  prototype configuration and require an intentional first-run sample, cue, or
+  preference before settling this presentation choice.
 - What measured latency and cost budgets are achievable on representative
   desktop and mobile networks?
 - Which project name can be used without implying trademark sponsorship?
