@@ -66,8 +66,9 @@ therefore evaluates these explicit server-side capabilities without changing the
 settled OpenRouter-first or optional-Realtime delivery milestones:
 
 - transcription: `gpt-4o-mini-transcribe`;
-- schema-constrained initial guide: `gpt-5.6-luna` with reasoning disabled for
-  the bounded intent-classification decision;
+- schema-constrained initial guide: `gpt-5.6-luna` with `reasoning.effort` set
+  to `none`, `reasoning.context` set to `current_turn`, and low output verbosity
+  for the bounded, latency-sensitive intent-classification decision;
 - narration: `tts-1`, avoiding the now-deprecated GPT-4o mini TTS model.
 
 The profile is dated configuration for a budget-limited smoke, not a promoted
@@ -75,8 +76,24 @@ default. It has no automatic fallback, makes no provider request in hermetic
 tests, and keeps the deployment API key on the server. Current OpenAI model
 catalog and pricing must be rechecked before every live run.
 
+Each guide request is deliberately stateless (`store: false`) and independently
+grounded in the current reviewed command knowledge. It does not carry a
+`previous_response_id`, expose engine tools, or enable pro mode, hosted tools,
+multi-agent, or programmatic tool calling: those features add state, latency, or
+authority that this single-decision boundary does not need. The adapter retains
+strict Structured Outputs, a hard output-token limit, optional caller-supplied
+privacy-preserving `safety_identifier`, and cached-input/cache-write/reasoning
+token telemetry. Implicit prompt caching remains available; explicit cache
+writes are deferred until measured reuse offsets their higher write price. The
+evaluation baseline is reasoning `none`; `low` is promoted only if guide evals
+show a material grounding or ambiguity-handling gain at acceptable latency and
+cost.
+
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
+- [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
+- [Responses API migration and state](https://developers.openai.com/api/docs/guides/migrate-to-responses)
+- [Safety identifiers](https://developers.openai.com/api/docs/guides/safety-best-practices)
 - [Current model catalog](https://developers.openai.com/api/docs/models)
 
 Use the current supported mini-class model that passes the shared evaluations;

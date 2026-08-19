@@ -16,6 +16,9 @@ export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
   transcriptionModel: "gpt-4o-mini-transcribe",
   guideModel: "gpt-5.6-luna",
   narrationModel: "tts-1",
+  guideReasoningEffort: "none" as const,
+  guideReasoningContext: "current_turn" as const,
+  guideVerbosity: "low" as const,
   guideMaxOutputTokens: 300,
   maxRequests: 12,
   maxAudioBytes: 2 * 1024 * 1024,
@@ -28,6 +31,9 @@ export interface OpenAiChainedProfile {
   readonly transcriptionModel: string;
   readonly guideModel: string;
   readonly narrationModel: string;
+  readonly guideReasoningEffort: "none" | "low";
+  readonly guideReasoningContext: "current_turn";
+  readonly guideVerbosity: "low" | "medium" | "high";
   readonly guideMaxOutputTokens: number;
   readonly maxRequests: number;
   readonly maxAudioBytes: number;
@@ -40,6 +46,7 @@ export interface OpenAiChainedProviderOptions {
   readonly fetch?: typeof fetch;
   readonly baseUrl?: string;
   readonly profile?: OpenAiChainedProfile;
+  readonly safetyIdentifier?: string;
   readonly onUsage?: (usage: ProviderUsage) => void;
 }
 
@@ -297,9 +304,29 @@ function tokenUsage(
     typeof usage === "object" && usage !== null
       ? safeInteger(Reflect.get(usage, "input_tokens"))
       : undefined;
+  const inputDetails =
+    typeof usage === "object" && usage !== null
+      ? Reflect.get(usage, "input_tokens_details")
+      : undefined;
+  const cachedInputTokens =
+    typeof inputDetails === "object" && inputDetails !== null
+      ? safeInteger(Reflect.get(inputDetails, "cached_tokens"))
+      : undefined;
+  const cacheWriteInputTokens =
+    typeof inputDetails === "object" && inputDetails !== null
+      ? safeInteger(Reflect.get(inputDetails, "cache_write_tokens"))
+      : undefined;
   const outputTokens =
     typeof usage === "object" && usage !== null
       ? safeInteger(Reflect.get(usage, "output_tokens"))
+      : undefined;
+  const outputDetails =
+    typeof usage === "object" && usage !== null
+      ? Reflect.get(usage, "output_tokens_details")
+      : undefined;
+  const reasoningTokens =
+    typeof outputDetails === "object" && outputDetails !== null
+      ? safeInteger(Reflect.get(outputDetails, "reasoning_tokens"))
       : undefined;
   const totalTokens =
     typeof usage === "object" && usage !== null
@@ -310,7 +337,10 @@ function tokenUsage(
     capability,
     model,
     ...(inputTokens === undefined ? {} : { inputTokens }),
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(cacheWriteInputTokens === undefined ? {} : { cacheWriteInputTokens }),
     ...(outputTokens === undefined ? {} : { outputTokens }),
+    ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     ...(totalTokens === undefined ? {} : { totalTokens }),
   };
 }
@@ -320,6 +350,7 @@ export class OpenAiChainedProvider implements GuideModel {
   readonly #fetch: typeof fetch;
   readonly #baseUrl: string;
   readonly #profile: OpenAiChainedProfile;
+  readonly #safetyIdentifier: string | undefined;
   readonly #onUsage: ((usage: ProviderUsage) => void) | undefined;
   #requests = 0;
 
@@ -343,6 +374,10 @@ export class OpenAiChainedProvider implements GuideModel {
       );
     }
     this.#profile = options.profile ?? OPENAI_CHAINED_PROFILE_2026_08_18;
+    this.#safetyIdentifier =
+      options.safetyIdentifier === undefined
+        ? undefined
+        : boundedString(options.safetyIdentifier, "safety identifier", 160);
     this.#onUsage = options.onUsage;
   }
 
@@ -432,11 +467,18 @@ export class OpenAiChainedProvider implements GuideModel {
         model: this.#profile.guideModel,
         max_output_tokens: this.#profile.guideMaxOutputTokens,
         store: false,
-        reasoning: { effort: "none" },
+        reasoning: {
+          effort: this.#profile.guideReasoningEffort,
+          context: this.#profile.guideReasoningContext,
+        },
+        ...(this.#safetyIdentifier === undefined
+          ? {}
+          : { safety_identifier: this.#safetyIdentifier }),
         instructions:
           "You are a constrained parser guide. Return one schema-valid decision. Use only the supplied command knowledge and observed objects. Never claim game state changed. Prefer clarification when intent or referents are ambiguous. Do not emit multiple commands or hidden game facts. Set every field unused by the selected kind to null.",
         input: serializedInput,
         text: {
+          verbosity: this.#profile.guideVerbosity,
           format: {
             type: "json_schema",
             name: "initial_guide_decision",

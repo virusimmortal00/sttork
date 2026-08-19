@@ -104,7 +104,16 @@ describe("OpenAiChainedProvider", () => {
               ],
             },
           ],
-          usage: { input_tokens: 120, output_tokens: 25, total_tokens: 145 },
+          usage: {
+            input_tokens: 120,
+            input_tokens_details: {
+              cached_tokens: 80,
+              cache_write_tokens: 0,
+            },
+            output_tokens: 25,
+            output_tokens_details: { reasoning_tokens: 0 },
+            total_tokens: 145,
+          },
         });
       },
     });
@@ -125,7 +134,10 @@ describe("OpenAiChainedProvider", () => {
         provider: "openai",
         capability: "guide",
         inputTokens: 120,
+        cachedInputTokens: 80,
+        cacheWriteInputTokens: 0,
         outputTokens: 25,
+        reasoningTokens: 0,
         totalTokens: 145,
       }),
     });
@@ -133,8 +145,9 @@ describe("OpenAiChainedProvider", () => {
       model: "gpt-5.6-luna",
       store: false,
       max_output_tokens: 300,
-      reasoning: { effort: "none" },
+      reasoning: { effort: "none", context: "current_turn" },
       text: {
+        verbosity: "low",
         format: {
           type: "json_schema",
           name: "initial_guide_decision",
@@ -149,6 +162,50 @@ describe("OpenAiChainedProvider", () => {
     });
     expect(JSON.stringify(requestBody)).not.toContain('"const"');
     expect(JSON.stringify(requestBody)).not.toContain(testKey);
+  });
+
+  it("adds only a caller-supplied privacy-preserving safety identifier", async () => {
+    let requestBody: unknown;
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      safetyIdentifier: "sha256-user-7c4f4a6b",
+      fetch: async (_input, init) => {
+        requestBody = JSON.parse(String(init?.body)) as unknown;
+        return jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    kind: "clarify",
+                    command: null,
+                    intentSummary: null,
+                    confidence: null,
+                    question: "Which direction?",
+                    ambiguity: "No direction was supplied.",
+                    response: null,
+                    basis: null,
+                    sourceIds: null,
+                    reason: null,
+                  }),
+                },
+              ],
+            },
+          ],
+        });
+      },
+    });
+
+    await provider.decideWithUsage(
+      { ...guideInput(), playerUtterance: "go" },
+      new AbortController().signal,
+    );
+
+    expect(requestBody).toMatchObject({
+      safety_identifier: "sha256-user-7c4f4a6b",
+    });
   });
 
   it("keeps guide and narrator speech distinct and detached", async () => {

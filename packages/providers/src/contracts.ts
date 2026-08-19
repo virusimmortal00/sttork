@@ -3,7 +3,10 @@ export interface ProviderUsage {
   readonly capability: "transcription" | "guide" | "narration";
   readonly model: string;
   readonly inputTokens?: number;
+  readonly cachedInputTokens?: number;
+  readonly cacheWriteInputTokens?: number;
   readonly outputTokens?: number;
+  readonly reasoningTokens?: number;
   readonly totalTokens?: number;
   readonly inputAudioBytes?: number;
   readonly inputCharacters?: number;
