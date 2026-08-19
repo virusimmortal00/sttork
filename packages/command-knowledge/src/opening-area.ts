@@ -21,6 +21,12 @@ export type OpeningCommandVerb =
   | "read"
   | "take";
 
+export type PendingOpeningObjectAction = "examine" | "open" | "read" | "take";
+
+export interface PendingOpeningObjectIntent {
+  readonly action: PendingOpeningObjectAction;
+}
+
 export interface OpeningCommandRule {
   readonly id: string;
   readonly verb: OpeningCommandVerb;
@@ -125,7 +131,72 @@ function includesPhrase(value: string, phrase: string): boolean {
 }
 
 function appearsMultiStep(value: string): boolean {
-  return /[;\n]|\b(?:and then|then|after that|followed by)\b/iu.test(value);
+  return /[;\n]|\b(?:and|then|after that|followed by)\b/iu.test(value);
+}
+
+const pendingObjectActions: readonly PendingOpeningObjectAction[] = [
+  "examine",
+  "open",
+  "read",
+  "take",
+];
+
+export function inferPendingOpeningObjectIntent(
+  playerUtterance: string,
+): PendingOpeningObjectIntent | undefined {
+  const normalized = normalizeWords(playerUtterance);
+  if (normalized.length === 0 || appearsMultiStep(playerUtterance)) {
+    return undefined;
+  }
+
+  const actions = new Set<PendingOpeningObjectAction>();
+  if (/^what does (?:the )?.+ say$/u.test(normalized)) {
+    actions.add("examine");
+  }
+  if (/\bpick (?:it|that|this) up\b/u.test(normalized)) {
+    actions.add("take");
+  }
+  for (const rule of RULES) {
+    if (
+      !rule.objectRequired ||
+      !pendingObjectActions.includes(rule.verb as PendingOpeningObjectAction)
+    ) {
+      continue;
+    }
+    if (
+      rule.aliases.some((alias) =>
+        includesPhrase(normalized, normalizeWords(alias)),
+      )
+    ) {
+      actions.add(rule.verb as PendingOpeningObjectAction);
+    }
+  }
+
+  if (actions.size !== 1) return undefined;
+  return Object.freeze({ action: [...actions][0]! });
+}
+
+export function groundPendingOpeningObjectReply(
+  intent: PendingOpeningObjectIntent,
+  playerUtterance: string,
+  knowledge: OpeningCommandKnowledge,
+): CommandGroundingResult {
+  if (
+    typeof intent !== "object" ||
+    intent === null ||
+    !pendingObjectActions.includes(intent.action)
+  ) {
+    return { ok: false, code: "unsupported-grammar" };
+  }
+  const object = stripArticle(normalizeWords(playerUtterance));
+  if (object.length === 0 || !knowledge.observedObjects.includes(object)) {
+    return { ok: false, code: "unobserved-object" };
+  }
+  return {
+    ok: true,
+    command: canonicalizeCommand(`${intent.action} ${object}`),
+    ruleId: `grammar.${intent.action}`,
+  };
 }
 
 export function createOpeningCommandKnowledge(input: {

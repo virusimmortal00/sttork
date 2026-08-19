@@ -199,7 +199,10 @@ For a straightforward action:
 
 For an ambiguous action, no parser command is executed. The guide asks one
 concise question, the experience returns to listening when the player activates
-capture, and the answer is correlated with the pending intent.
+capture, and the answer is correlated with the pending intent. In the bounded
+opening-area profile, an object-only answer may fill one reviewed pending action
+slot only when it exactly names a currently observed object; it is not treated
+as an unconstrained new command.
 
 For a player question, the guide answers without generating an engine turn
 unless an observation command is necessary and the player has agreed to it.

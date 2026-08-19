@@ -366,6 +366,16 @@ A clarification is one short question. Offer two or three spoken choices only
 when they are grounded in observed state. Do not bury the question beneath an
 explanation.
 
+The bounded opening-area implementation may retain one typed pending object
+action (`examine`, `open`, `read`, or `take`). It derives that action from the
+player's words, never from guide prose. A follow-up such as “the leaflet” fills
+only that object slot when it exactly names one currently observed object; the
+assembled command then passes the ordinary grounding and engine commit
+boundaries. The slot is offered to the next new interaction only, except that a
+low-confidence transcript or provider failure may leave it available for a safe
+retry. A confirmed command consumes it. Replaying an old clarification
+interaction cannot restore it or execute the follow-up twice.
+
 ## Observed memory
 
 Memory exists to help with requests such as “where did I see the mailbox?” and

@@ -114,6 +114,92 @@ describe("initial bounded Dungeon Guide", () => {
     expect(model.calls).toBe(0);
   });
 
+  it("retains and resolves one reviewed pending object action", async () => {
+    const clarificationModel = FakeGuideModel.returning({
+      kind: "clarify",
+      question: "Which observed object would you like me to examine?",
+      ambiguity: "The object reference is unresolved.",
+    });
+    const clarified = await decideInitialGuideTurn(
+      clarificationModel,
+      {
+        ...baseInput,
+        playerUtterance: "What does it say?",
+      },
+      signal,
+    );
+    expect(clarified).toMatchObject({
+      kind: "clarify",
+      pendingIntent: { action: "examine" },
+    });
+
+    const answerModel = new FakeGuideModel(() => {
+      throw new Error("the exact pending-object answer reached the provider");
+    });
+    const resolved = await decideInitialGuideTurn(
+      answerModel,
+      {
+        ...baseInput,
+        playerUtterance: "The brass token",
+        pendingIntent: { action: "examine" },
+      },
+      signal,
+    );
+    expect(resolved).toMatchObject({
+      kind: "execute",
+      command: "examine brass token",
+      groundingSourceId: "grammar.examine",
+    });
+    expect(answerModel.calls).toBe(0);
+  });
+
+  it.each([
+    {
+      name: "unobserved answer",
+      playerUtterance: "The sword",
+      transcriptConfidence: 0.99,
+    },
+    {
+      name: "low-confidence answer",
+      playerUtterance: "The brass token",
+      transcriptConfidence: 0.4,
+    },
+    {
+      name: "negated answer",
+      playerUtterance: "Not the brass token",
+      transcriptConfidence: 0.99,
+    },
+    {
+      name: "multi-step answer",
+      playerUtterance: "The brass token, then go north",
+      transcriptConfidence: 0.99,
+    },
+  ])("does not execute a $name for pending intent", async (testCase) => {
+    const model = FakeGuideModel.returning({
+      kind: "clarify",
+      question: "Which one observed object?",
+      ambiguity: "The answer did not safely fill the object slot.",
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: testCase.playerUtterance,
+        transcriptConfidence: testCase.transcriptConfidence,
+        pendingIntent: { action: "examine" },
+      },
+      signal,
+    );
+    expect(result).toMatchObject({ kind: "clarify" });
+    if (testCase.name === "low-confidence answer") {
+      expect(result).toMatchObject({
+        pendingIntent: { action: "examine" },
+      });
+    } else {
+      expect(result).not.toHaveProperty("pendingIntent");
+    }
+  });
+
   it.each([
     {
       name: "low transcript confidence",
@@ -287,6 +373,33 @@ describe("initial bounded Dungeon Guide", () => {
     const result = await decideInitialGuideTurn(
       model,
       { ...baseInput, playerUtterance: "x".repeat(2_001) },
+      signal,
+    );
+    expect(result).toMatchObject({
+      kind: "rejected",
+      cause: "invalid-context",
+    });
+    expect(model.calls).toBe(0);
+  });
+
+  it("rejects malformed pending intent before calling the model", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "execute",
+      command: "north",
+      intentSummary: "Move north",
+      confidence: 0.99,
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        pendingIntent: {
+          action: "examine",
+          injected: true,
+        },
+      } as typeof baseInput & {
+        pendingIntent: { action: "examine"; injected: boolean };
+      },
       signal,
     );
     expect(result).toMatchObject({

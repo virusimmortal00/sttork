@@ -8,6 +8,7 @@ import type {
   SemanticEventPayloads,
   SemanticEventType,
 } from "../../contracts/src/index.js";
+import type { PendingOpeningObjectIntent } from "../../command-knowledge/src/index.js";
 import type { EventSequence } from "../../events/src/index.js";
 import {
   decideInitialGuideTurn,
@@ -90,6 +91,10 @@ export class SemanticTurnCapacityError extends Error {
 interface RecoveryRecord {
   readonly request: ExecuteRequest;
   readonly requestedEventId: string;
+}
+
+interface StoredPendingOpeningObjectIntent extends PendingOpeningObjectIntent {
+  readonly sourceInteractionId: string;
 }
 
 type StoredTurn =
@@ -210,6 +215,7 @@ export class SemanticTurnCoordinator {
   readonly #maxTurns: number;
   readonly #turns = new Map<string, StoredTurn>();
   #activeInteractionId: string | undefined;
+  #pendingOpeningObjectIntent: StoredPendingOpeningObjectIntent | undefined;
 
   public constructor(options: SemanticTurnCoordinatorOptions) {
     if (
@@ -494,6 +500,7 @@ export class SemanticTurnCoordinator {
     signal: AbortSignal,
   ): Promise<RunResult> {
     this.#activeInteractionId = input.interactionId;
+    const pendingOpeningObjectIntent = this.#pendingOpeningObjectIntent;
     const local: SemanticEvent[] = [];
     try {
       const transcriptEvent = this.#emit(
@@ -523,6 +530,13 @@ export class SemanticTurnCoordinator {
                 ? {}
                 : { transcriptConfidence: input.transcriptConfidence }),
               observedObjects: input.observedObjects,
+              ...(pendingOpeningObjectIntent === undefined
+                ? {}
+                : {
+                    pendingIntent: {
+                      action: pendingOpeningObjectIntent.action,
+                    },
+                  }),
             },
             signal,
           ),
@@ -618,6 +632,17 @@ export class SemanticTurnCoordinator {
       );
 
       if (guideResult.kind === "clarify") {
+        const nextPendingOpeningObjectIntent =
+          guideResult.pendingIntent === undefined
+            ? undefined
+            : {
+                action: guideResult.pendingIntent.action,
+                sourceInteractionId:
+                  pendingOpeningObjectIntent?.action ===
+                  guideResult.pendingIntent.action
+                    ? pendingOpeningObjectIntent.sourceInteractionId
+                    : input.interactionId,
+              };
         const clarification = this.#emit(
           local,
           "guide.clarification",
@@ -641,6 +666,7 @@ export class SemanticTurnCoordinator {
           clarification.id,
           signal,
         );
+        this.#pendingOpeningObjectIntent = nextPendingOpeningObjectIntent;
         return {
           result: this.#result(input.interactionId, "clarified", local),
         };
@@ -843,6 +869,7 @@ export class SemanticTurnCoordinator {
     engineResult: ExecuteResult,
     signal: AbortSignal,
   ): Promise<RunResult> {
+    this.#pendingOpeningObjectIntent = undefined;
     if (engineResult.status === "rejected") {
       this.#emit(
         local,

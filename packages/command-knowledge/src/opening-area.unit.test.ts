@@ -5,6 +5,8 @@ import {
   createOpeningCommandKnowledge,
   groundOpeningCommand,
   groundObservedObjectContentQuestion,
+  groundPendingOpeningObjectReply,
+  inferPendingOpeningObjectIntent,
   openingCommandHelp,
 } from "./opening-area.js";
 
@@ -87,6 +89,63 @@ describe("opening-area command knowledge", () => {
       ok: false,
       code,
     });
+  });
+
+  it.each([
+    ["What does it say?", "examine"],
+    ["read it", "read"],
+    ["please open it", "open"],
+    ["pick it up", "take"],
+  ])("retains the single reviewed object action in %s", (utterance, action) => {
+    expect(inferPendingOpeningObjectIntent(utterance)).toEqual({ action });
+  });
+
+  it.each([
+    "go north",
+    "open it and take it",
+    "read it and go north",
+    "what does it say then go north",
+  ])("does not retain an unsafe or absent object action in %s", (utterance) => {
+    expect(inferPendingOpeningObjectIntent(utterance)).toBeUndefined();
+  });
+
+  it("fills a pending object slot only from one exact observed-object answer", () => {
+    expect(
+      groundPendingOpeningObjectReply(
+        { action: "examine" },
+        "The brass token",
+        knowledge,
+      ),
+    ).toEqual({
+      ok: true,
+      command: "examine brass token",
+      ruleId: "grammar.examine",
+    });
+    expect(
+      groundPendingOpeningObjectReply(
+        { action: "read" },
+        "the mailbox",
+        knowledge,
+      ),
+    ).toEqual({
+      ok: true,
+      command: "read mailbox",
+      ruleId: "grammar.read",
+    });
+    expect(
+      groundPendingOpeningObjectReply(
+        { action: "examine" },
+        "the sword",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "unobserved-object" });
+    expect(
+      groundPendingOpeningObjectReply(
+        { action: "examine" },
+        "the mailbox and brass token",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "unobserved-object" });
   });
 
   it("builds help only from parser grammar and observed object names", () => {

@@ -266,6 +266,144 @@ describe("SemanticTurnCoordinator", () => {
     expect(engine.revision).toBe(0);
   });
 
+  it("carries one pending object action into an exact observed-object answer", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const guide = new FakeGuideModel(() => {
+      if (guide.calls === 1) {
+        return {
+          kind: "clarify",
+          question: "Which observed object would you like me to examine?",
+          ambiguity: "The object reference is unresolved.",
+        };
+      }
+      throw new Error("no pending intent should remain");
+    });
+    const subject = coordinator(engine, narrator, guide);
+    const first = await subject.submitTurn(
+      {
+        interactionId: "pending-object-question",
+        transcript: "What does it say?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(first.outcome).toBe("clarified");
+    expect(engine.executeCalls).toHaveLength(0);
+
+    const answer = {
+      interactionId: "pending-object-answer",
+      transcript: "The leaflet",
+      transcriptConfidence: 0.99,
+      observedObjects: ["leaflet"],
+    } as const;
+    const resolved = await subject.submitTurn(
+      answer,
+      new AbortController().signal,
+    );
+    expect(resolved).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        command: "examine leaflet",
+        revision: 1,
+      },
+    });
+    expect(engine.executeCalls).toEqual([
+      {
+        requestId: "request-1",
+        expectedRevision: 0,
+        command: "examine leaflet",
+      },
+    ]);
+    expect(guide.calls).toBe(1);
+
+    expect(
+      await subject.submitTurn(answer, new AbortController().signal),
+    ).toEqual(resolved);
+    expect(engine.executeCalls).toHaveLength(1);
+
+    expect(
+      await subject.submitTurn(
+        {
+          interactionId: "pending-object-question",
+          transcript: "What does it say?",
+          transcriptConfidence: 0.99,
+          observedObjects: ["leaflet"],
+        },
+        new AbortController().signal,
+      ),
+    ).toEqual(first);
+    const staleAnswer = await subject.submitTurn(
+      {
+        ...answer,
+        interactionId: "stale-pending-object-answer",
+      },
+      new AbortController().signal,
+    );
+    expect(staleAnswer.outcome).toBe("failed");
+    expect(engine.executeCalls).toHaveLength(1);
+    expect(guide.calls).toBe(2);
+  });
+
+  it("preserves pending intent across a provider failure before engine submission", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const guide = new FakeGuideModel(() => {
+      if (guide.calls === 1) {
+        return {
+          kind: "clarify",
+          question: "Which observed object would you like me to read?",
+          ambiguity: "The object reference is unresolved.",
+        };
+      }
+      throw new Error("provider offline");
+    });
+    const subject = coordinator(engine, narrator, guide);
+    expect(
+      (
+        await subject.submitTurn(
+          {
+            interactionId: "read-object-question",
+            transcript: "Read it",
+            transcriptConfidence: 0.99,
+            observedObjects: ["leaflet"],
+          },
+          new AbortController().signal,
+        )
+      ).outcome,
+    ).toBe("clarified");
+    expect(
+      (
+        await subject.submitTurn(
+          {
+            interactionId: "provider-failed-answer",
+            transcript: "The sword",
+            transcriptConfidence: 0.99,
+            observedObjects: ["leaflet"],
+          },
+          new AbortController().signal,
+        )
+      ).outcome,
+    ).toBe("failed");
+
+    const recovered = await subject.submitTurn(
+      {
+        interactionId: "provider-retry-answer",
+        transcript: "The leaflet",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(recovered).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "read leaflet", revision: 1 },
+    });
+    expect(guide.calls).toBe(2);
+    expect(engine.executeCalls).toHaveLength(1);
+  });
+
   it("deduplicates concurrent and completed delivery and rejects conflicting reuse", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();

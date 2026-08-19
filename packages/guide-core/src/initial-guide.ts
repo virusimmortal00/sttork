@@ -2,8 +2,11 @@ import {
   createOpeningCommandKnowledge,
   groundOpeningCommand,
   groundObservedObjectContentQuestion,
+  groundPendingOpeningObjectReply,
+  inferPendingOpeningObjectIntent,
   openingCommandHelp,
   type OpeningCommandKnowledge,
+  type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
 import type {
   CanonicalCommand,
@@ -20,6 +23,7 @@ export interface InitialGuideInput {
   readonly playerUtterance: string;
   readonly transcriptConfidence?: number;
   readonly observedObjects: readonly string[];
+  readonly pendingIntent?: PendingOpeningObjectIntent;
 }
 
 export interface InitialGuideModelInput extends InitialGuideInput {
@@ -40,6 +44,7 @@ export type InitialGuideResult =
   | {
       readonly kind: "clarify";
       readonly decision: Extract<GuideDecision, { readonly kind: "clarify" }>;
+      readonly pendingIntent?: PendingOpeningObjectIntent;
     }
   | {
       readonly kind: "explain";
@@ -68,15 +73,17 @@ export type InitialGuideResult =
 function clarification(
   question: string,
   ambiguity: string,
+  pendingIntent?: PendingOpeningObjectIntent,
 ): InitialGuideResult {
   return {
     kind: "clarify",
     decision: { kind: "clarify", question, ambiguity },
+    ...(pendingIntent === undefined ? {} : { pendingIntent }),
   };
 }
 
 function appearsMultiStep(utterance: string): boolean {
-  return /[;\n]|\b(?:and then|then|after that|followed by)\b/iu.test(utterance);
+  return /[;\n]|\b(?:and|then|after that|followed by)\b/iu.test(utterance);
 }
 
 function containsNegation(utterance: string): boolean {
@@ -91,6 +98,18 @@ function transcriptConfidenceRequiresClarification(
     (!Number.isFinite(transcriptConfidence) ||
       transcriptConfidence < INITIAL_TRANSCRIPT_CONFIDENCE ||
       transcriptConfidence > 1)
+  );
+}
+
+function validPendingIntent(
+  value: PendingOpeningObjectIntent | undefined,
+): boolean {
+  return (
+    value === undefined ||
+    (typeof value === "object" &&
+      value !== null &&
+      Object.keys(value).length === 1 &&
+      ["examine", "open", "read", "take"].includes(value.action))
   );
 }
 
@@ -109,7 +128,8 @@ export async function decideInitialGuideTurn(
       input.playerUtterance.trim().length === 0 ||
       input.playerUtterance.length > 2_000 ||
       /\p{Cc}/u.test(input.interactionId) ||
-      /\p{Cc}/u.test(input.playerUtterance)
+      /\p{Cc}/u.test(input.playerUtterance) ||
+      !validPendingIntent(input.pendingIntent)
     ) {
       throw new TypeError("Initial guide context strings are invalid.");
     }
@@ -135,6 +155,7 @@ export async function decideInitialGuideTurn(
     return clarification(
       "Could you say which single action you want me to try?",
       "The interpretation confidence is too low to safely execute.",
+      input.pendingIntent,
     );
   }
 
@@ -150,6 +171,29 @@ export async function decideInitialGuideTurn(
       "What single action would you like me to perform instead?",
       "The utterance contains a negation, so executing the proposed command would be unsafe.",
     );
+  }
+
+  if (input.pendingIntent !== undefined) {
+    const pendingReply = groundPendingOpeningObjectReply(
+      input.pendingIntent,
+      input.playerUtterance,
+      knowledge,
+    );
+    if (pendingReply.ok) {
+      const decision = {
+        kind: "execute" as const,
+        command: pendingReply.command,
+        intentSummary:
+          "Apply the pending action to the selected observed object.",
+        confidence: 1,
+      };
+      return {
+        kind: "execute",
+        command: pendingReply.command,
+        decision,
+        groundingSourceId: pendingReply.ruleId,
+      };
+    }
   }
 
   const directContentQuestion = groundObservedObjectContentQuestion(
@@ -206,7 +250,14 @@ export async function decideInitialGuideTurn(
   }
 
   if (decision.kind === "clarify") {
-    return { kind: "clarify", decision };
+    const pendingIntent = inferPendingOpeningObjectIntent(
+      input.playerUtterance,
+    );
+    return {
+      kind: "clarify",
+      decision,
+      ...(pendingIntent === undefined ? {} : { pendingIntent }),
+    };
   }
 
   if (decision.kind === "explain") {
@@ -256,6 +307,7 @@ export async function decideInitialGuideTurn(
     return clarification(
       "Could you say which single action you want me to try?",
       "The interpretation confidence is too low to safely execute.",
+      input.pendingIntent,
     );
   }
 
@@ -263,6 +315,7 @@ export async function decideInitialGuideTurn(
     return clarification(
       "Which one action should I try first?",
       "The request contains more than one possible game turn.",
+      inferPendingOpeningObjectIntent(input.playerUtterance),
     );
   }
 
