@@ -33,6 +33,7 @@ const compatibility: EngineCompatibility = {
 
 class FakeEngine implements EnginePort {
   public revision = 0;
+  public openingOutput = "boot";
   public executeCalls: ExecuteRequest[] = [];
   public inspectCalls = 0;
   public snapshotCalls = 0;
@@ -49,7 +50,7 @@ class FakeEngine implements EnginePort {
   public async boot(): Promise<BootResult> {
     return {
       revision: 0,
-      output: "boot",
+      output: this.openingOutput,
       turnComplete: true,
       boundary: "input-requested",
       compatibility,
@@ -108,7 +109,7 @@ class FakeEngine implements EnginePort {
     if (this.inspectFailure) throw new Error("inspect failed");
     return {
       revision: this.revision,
-      lastOutput: this.revision === 0 ? "boot" : "committed",
+      lastOutput: this.revision === 0 ? this.openingOutput : "committed",
       boundary: "input-requested",
     };
   }
@@ -214,6 +215,95 @@ describe("SemanticTurnCoordinator", () => {
     expect(narrator.requests).toHaveLength(1);
   });
 
+  it("narrates a bounded exact-line excerpt while retaining full opening output", async () => {
+    const engine = new FakeEngine();
+    engine.openingOutput =
+      "Story Title\nCredits and release details\n\nOpening Room\nThe exact scene description.\n\n>";
+    const narrator = new FakeNarrator();
+    const subject = coordinator(engine, narrator);
+    const narrationText =
+      "Story Title\n\nOpening Room\nThe exact scene description.";
+    const result = await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot: await engine.boot(),
+        narrationText,
+      },
+      new AbortController().signal,
+    );
+
+    expect(result.events[0]).toMatchObject({
+      type: "engine.output",
+      payload: { exactText: engine.openingOutput },
+    });
+    expect(result.events[1]).toMatchObject({
+      type: "narration.requested",
+      payload: { text: narrationText, sourceEventId: result.events[0]?.id },
+    });
+    expect(narrator.requests).toEqual([
+      expect.objectContaining({
+        text: narrationText,
+        sourceEventId: result.events[0]?.id,
+      }),
+    ]);
+  });
+
+  it.each([
+    "",
+    "rewritten opening",
+    "boot\nadded prose",
+    "boot\u0000",
+    "x".repeat(MAX_OPENING_OUTPUT_LENGTH + 1),
+  ])(
+    "rejects invalid opening narration text before side effects",
+    async (text) => {
+      const engine = new FakeEngine();
+      const narrator = new FakeNarrator();
+      const published: SemanticEvent[] = [];
+      const subject = coordinator(engine, narrator, undefined, (event) => {
+        published.push(event);
+      });
+
+      await expect(
+        subject.prepareOpening(
+          {
+            interactionId: "story-opening",
+            boot: await engine.boot(),
+            narrationText: text,
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toBeInstanceOf(TypeError);
+      expect(engine.inspectCalls).toBe(0);
+      expect(published).toHaveLength(0);
+      expect(narrator.requests).toHaveLength(0);
+    },
+  );
+
+  it("includes normalized opening narration in idempotency conflicts", async () => {
+    const engine = new FakeEngine();
+    engine.openingOutput = "Title\nMetadata\nScene";
+    const narrator = new FakeNarrator();
+    const subject = coordinator(engine, narrator);
+    const boot = await engine.boot();
+
+    await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot,
+        narrationText: "Title\nScene",
+      },
+      new AbortController().signal,
+    );
+    await expect(
+      subject.prepareOpening(
+        { interactionId: "story-opening", boot },
+        new AbortController().signal,
+      ),
+    ).rejects.toBeInstanceOf(SemanticTurnConflictError);
+    expect(narrator.requests).toHaveLength(1);
+  });
+
   it("rejects an opening that no longer matches authoritative public state", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();
@@ -235,6 +325,7 @@ describe("SemanticTurnCoordinator", () => {
 
   it("retries failed opening preparation without duplicating engine output", async () => {
     const engine = new FakeEngine();
+    engine.openingOutput = "Title\nMetadata\nScene";
     const narrator = new FakeNarrator();
     narrator.failure = true;
     const published: SemanticEvent[] = [];
@@ -244,6 +335,7 @@ describe("SemanticTurnCoordinator", () => {
     const input = {
       interactionId: "story-opening",
       boot: await engine.boot(),
+      narrationText: "Title\nScene",
     } as const;
 
     const failed = await subject.prepareOpening(
@@ -279,6 +371,10 @@ describe("SemanticTurnCoordinator", () => {
     expect(narrator.requests.map((request) => request.sourceEventId)).toEqual([
       output?.id,
       output?.id,
+    ]);
+    expect(narrator.requests.map((request) => request.text)).toEqual([
+      "Title\nScene",
+      "Title\nScene",
     ]);
     expect(engine.inspectCalls).toBe(inspectionCount);
   });

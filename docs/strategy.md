@@ -33,8 +33,12 @@ over the same event stream. It is not a separate implementation of the game.
    least revealing response that can help.
 4. **Interpret conservatively.** Clear, reversible intent can be executed.
    Ambiguous, destructive, or multi-step intent is clarified or confirmed.
-5. **Original prose stays original.** Engine output is labeled and narrated as
-   game output, never silently rewritten by a model. Guide speech is a distinct
+5. **Original prose stays original.** Canonical engine output is byte-exact and
+   labeled as game output, never silently rewritten by a model. Ordinary game
+   responses are narrated exactly. `START STORY` may speak only the
+   deterministic, story-pinned whole-line excerpt defined by
+   [ADR-0014](./adr/0014-story-pinned-spoken-opening-excerpt.md), while the full
+   opening remains available as exact game text. Guide speech is a distinct
    role.
 6. **Providers are replaceable.** Speech recognition, guide reasoning, and
    narration depend on capability-based ports, not a provider-specific domain
@@ -210,8 +214,10 @@ Codex login is not treated as an OpenAI API login unless OpenAI publishes a
 supported third-party authorization flow for that purpose.
 
 Even in a unified realtime session, the provider must use the same guide tool
-boundary. Exact engine prose is passed to a narration path that is forbidden to
-summarize or embellish it.
+boundary. Ordinary exact engine prose is passed to a narration path that is
+forbidden to summarize or embellish it. The only shorter game narration is the
+deterministic, provenance-bound `START STORY` excerpt in ADR-0014; a provider or
+model does not select or generate it.
 
 ### Hugging Face: conditional and experimental
 

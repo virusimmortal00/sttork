@@ -55,6 +55,13 @@ Players must be able to tell whether a statement came from the game, the Dungeon
 Guide, or the application. This distinction is represented in typed events and
 conveyed through voice, earcons, captions, or labels as appropriate.
 
+[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) keeps the full
+authenticated `BootResult`, revision-zero `engine.output`, transcript, and
+accessibility text byte-exact while permitting one deterministic whole-line
+spoken excerpt for `START STORY`. The excerpt is bound to the exact story ID,
+artifact hash, and known opening; any mismatch speaks the full output. No model
+or provider summarizes it, and ordinary command-result narration remains exact.
+
 ### Provider-neutral core
 
 Game state, guide policy, command grounding, event history, saves, and tests do

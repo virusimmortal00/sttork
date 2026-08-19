@@ -12,6 +12,7 @@ import { EventSequence } from "../../../packages/events/src/index.js";
 import {
   initialExperienceProjection,
   reduceExperienceProjection,
+  selectOpeningNarrationText,
   type ExperienceProjectionState,
 } from "../../../packages/experience/src/index.js";
 import { SemanticTurnCoordinator } from "../../../packages/session/src/index.js";
@@ -406,6 +407,7 @@ async function run(): Promise<void> {
     storyId: STORY_ID,
     artifactSha256: STORY_SHA256,
   });
+  const openingNarrationText = selectOpeningNarrationText(boot);
   let observedObjectProjection = createOpeningObjectProjection();
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
@@ -636,7 +638,11 @@ async function run(): Promise<void> {
     openingAbort = abort;
     const operation = (async () => {
       const prepared = await coordinator.prepareOpening(
-        { interactionId: STORY_OPENING_INTERACTION_ID, boot },
+        {
+          interactionId: STORY_OPENING_INTERACTION_ID,
+          boot,
+          narrationText: openingNarrationText,
+        },
         abort.signal,
       );
       const disposition = openingPreparationDisposition(prepared.outcome);
@@ -710,7 +716,11 @@ async function run(): Promise<void> {
     openingAbort = abort;
     const operation = (async () => {
       const prepared = await coordinator.prepareOpening(
-        { interactionId: STORY_OPENING_INTERACTION_ID, boot },
+        {
+          interactionId: STORY_OPENING_INTERACTION_ID,
+          boot,
+          narrationText: openingNarrationText,
+        },
         abort.signal,
       );
       const disposition = openingPreparationDisposition(prepared.outcome);

@@ -7,6 +7,7 @@ import {
 } from "../packages/command-knowledge/src/index.js";
 import { canonicalizeCommand, type SemanticEvent } from "@zork-voice/contracts";
 import { EventSequence } from "@zork-voice/events";
+import { selectOpeningNarrationText } from "../packages/experience/src/index.js";
 import { FakeGuideModel } from "../packages/guide-core/src/index.js";
 import {
   SemanticTurnCoordinator,
@@ -29,6 +30,8 @@ const ZORK_STORY_SHA256 =
   "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79";
 const ZORK_RELEASE_119_OPENING =
   "ZORK I: The Great Underground Empire\nInfocom interactive fiction - a fantasy story\nCopyright (c) 1981, 1982, 1983, 1984, 1985, 1986 Infocom, Inc. All rights reserved.\nZORK is a registered trademark of Infocom, Inc.\nRelease 119 / Serial number 880429\n\nWest of House\nYou are standing in an open field west of a white house, with a boarded front door.\nThere is a small mailbox here.\n\n>";
+const ZORK_RELEASE_119_SPOKEN_OPENING =
+  "ZORK I: The Great Underground Empire\n\nWest of House\nYou are standing in an open field west of a white house, with a boarded front door.\nThere is a small mailbox here.";
 const storyUrl = new URL(
   "../fixtures/stories/minimal/artifact/minimal.z3",
   import.meta.url,
@@ -60,7 +63,7 @@ class RuntimeFactory implements DorkWorkerLeaseFactory {
 }
 
 describe("semantic turn through the isolated Dork engine", () => {
-  it("presents the exact Zork I opening at revision zero before the first turn", async () => {
+  it("preserves the exact Zork I opening while narrating its reviewed excerpt", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({
       factory: new RuntimeFactory(),
@@ -109,6 +112,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     const openingInput = {
       interactionId: "story-opening",
       boot,
+      narrationText: selectOpeningNarrationText(boot),
     } as const;
 
     const [opening, duplicate] = await Promise.all([
@@ -145,7 +149,7 @@ describe("semantic turn through the isolated Dork engine", () => {
       {
         narrationId: "opening-narration-1",
         role: "narrator",
-        text: ZORK_RELEASE_119_OPENING,
+        text: ZORK_RELEASE_119_SPOKEN_OPENING,
         sourceEventId: openingOutput?.id,
         correlationId: "story-opening",
       },

@@ -13,10 +13,12 @@ require visible text; the same typed events remain available to the optional
 accessible transcript and developer-debug surfaces.
 
 A fresh smoke begins with one explicit `START STORY` action. It publishes and
-narrates the authenticated boot output as exact `engine.output` at revision zero
-before microphone permission or any player turn. Opening completion,
-interruption, or failure all yield the normal controls; Repeat retains that same
-narrator source without republishing it or advancing the engine. Failure keeps
+retains the authenticated boot output as exact `engine.output` at revision zero
+before microphone permission or any player turn. For an exact reviewed
+story/build/opening tuple it speaks ADR-0014's deterministic whole-line excerpt;
+any mismatch speaks the complete output. Opening completion, interruption, or
+failure all yield the normal controls; Repeat retains that same narrator source
+and selected text without republishing it or advancing the engine. Failure keeps
 the recoverable blocked status, with actionable safe text where available,
 rather than reporting Ready.
 
@@ -345,12 +347,13 @@ interpreter, provider, or product is release-qualified.
   `START STORY` action that does not require microphone permission. Its
   authenticated revision-zero boot output is published once, its initial
   narration consumes one TTS request, and any terminal playback outcome exposes
-  the normal controls with the exact opening retained for accessibility and
-  Repeat. A failed terminal remains visibly blocked and recoverable while those
-  controls stay usable. Browser playback now primes and reuses one media element
-  from explicit audio-related gestures; safe failures distinguish playback
-  authorization and the request cap, and active retries replace a stale blocked
-  heading with Processing.
+  the normal controls with the exact full opening retained for accessibility.
+  Repeat retains the same source and actual spoken selection. A failed terminal
+  remains visibly blocked and recoverable while those controls stay usable.
+  Browser playback now primes and reuses one media element from explicit
+  audio-related gestures; safe failures distinguish playback authorization and
+  the request cap, and active retries replace a stale blocked heading with
+  Processing.
 - A 2026-08-19 private-HTTPS in-app browser smoke exercised the live text path
   without microphone permission. A social greeting produced one grounded
   clarification with revision zero; one movement request produced exactly one
@@ -359,14 +362,23 @@ interpreter, provider, or product is release-qualified.
   This is live-provider integration evidence, not the required microphone
   checkpoint.
 
+Policy evolution after that recorded smoke: accepted
+[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) keeps the complete
+opening canonical and accessible but permits the exact Release 119 tuple to
+speak a reviewed 32-word excerpt instead of the full 67-word boot output. That
+decision does not rewrite the preceding historical result and is not evidence
+that the excerpt has passed a live browser or microphone smoke.
+
 ### Evidence still required
 
 - Record a real browser microphone turn for one unambiguous intent, one engine
   revision, and audible exact narration without relying on visible prose.
-- Begin that run with `START STORY` and record the revision-zero opening,
-  no-microphone activation, one initial TTS request, terminal transition to the
-  normal controls, and retained-source Repeat behavior. This remains pending
-  live evidence rather than a claim established by the hermetic implementation.
+- Begin that run with `START STORY` and record the revision-zero opening, its
+  full exact transcript/accessibility text, the reviewed excerpt (or safe
+  full-output fallback), no-microphone activation, one initial TTS request,
+  terminal transition to the normal controls, and retained-source-and-text
+  Repeat behavior. This remains pending live evidence rather than a claim
+  established by the hermetic implementation.
 - Record a spoken ambiguous intent that produces clarification and no engine
   mutation, plus interruption behavior and injected-provider-failure recovery
   from the last confirmed checkpoint.

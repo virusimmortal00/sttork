@@ -44,6 +44,7 @@ export interface SemanticTurnInput {
 export interface OpeningNarrationInput {
   readonly interactionId: string;
   readonly boot: BootResult;
+  readonly narrationText?: string;
 }
 
 export interface OpeningNarrationResult {
@@ -144,18 +145,24 @@ interface OpeningRunProgress {
   sourceEventId?: string;
 }
 
+interface NormalizedOpeningNarrationInput {
+  readonly interactionId: string;
+  readonly boot: BootResult;
+  readonly narrationText: string;
+}
+
 type StoredOpening =
   | {
       readonly kind: "pending";
       readonly fingerprint: string;
-      readonly input: OpeningNarrationInput;
+      readonly input: NormalizedOpeningNarrationInput;
       readonly progress: OpeningRunProgress;
       readonly promise: Promise<OpeningRunResult>;
     }
   | {
       readonly kind: "retryable";
       readonly fingerprint: string;
-      readonly input: OpeningNarrationInput;
+      readonly input: NormalizedOpeningNarrationInput;
       readonly sourceEventId: string;
     }
   | {
@@ -294,13 +301,70 @@ function validatedOpeningBoot(input: unknown): BootResult {
   };
 }
 
-function openingFingerprint(interactionId: string, boot: BootResult): string {
+function hasUnsafeNarrationControl(value: string): boolean {
+  for (const character of value) {
+    if (
+      character !== "\t" &&
+      character !== "\n" &&
+      character !== "\r" &&
+      /\p{Cc}/u.test(character)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isOrderedExactLineSubsequence(
+  source: string,
+  candidate: string,
+): boolean {
+  const sourceLines = source.split("\n");
+  const candidateLines = candidate.split("\n");
+  let sourceIndex = 0;
+  for (const candidateLine of candidateLines) {
+    while (
+      sourceIndex < sourceLines.length &&
+      sourceLines[sourceIndex] !== candidateLine
+    ) {
+      sourceIndex += 1;
+    }
+    if (sourceIndex === sourceLines.length) return false;
+    sourceIndex += 1;
+  }
+  return true;
+}
+
+function validatedOpeningNarrationText(
+  input: unknown,
+  exactOutput: string,
+): string {
+  if (
+    typeof input !== "string" ||
+    input.trim().length === 0 ||
+    input.length > MAX_OPENING_OUTPUT_LENGTH ||
+    hasUnsafeNarrationControl(input) ||
+    !isOrderedExactLineSubsequence(exactOutput, input)
+  ) {
+    throw new TypeError(
+      "opening narration must be a bounded exact-line excerpt of engine output",
+    );
+  }
+  return input;
+}
+
+function openingFingerprint(
+  interactionId: string,
+  boot: BootResult,
+  narrationText: string,
+): string {
   return JSON.stringify({
     interactionId,
     revision: boot.revision,
     output: boot.output,
     boundary: boot.boundary,
     compatibility: boot.compatibility,
+    narrationText,
   });
 }
 
@@ -430,7 +494,15 @@ export class SemanticTurnCoordinator {
   ): Promise<OpeningNarrationResult> {
     const interactionId = this.#requireId(input.interactionId, "interaction");
     const boot = validatedOpeningBoot(input.boot);
-    const inputFingerprint = openingFingerprint(interactionId, boot);
+    const narrationText = validatedOpeningNarrationText(
+      input.narrationText ?? boot.output,
+      boot.output,
+    );
+    const inputFingerprint = openingFingerprint(
+      interactionId,
+      boot,
+      narrationText,
+    );
     const existing = this.#opening;
     if (existing !== undefined) {
       if (existing.fingerprint !== inputFingerprint) {
@@ -443,7 +515,7 @@ export class SemanticTurnCoordinator {
       throw new SemanticTurnBusyError();
     }
 
-    const normalizedInput = { interactionId, boot };
+    const normalizedInput = { interactionId, boot, narrationText };
     const sourceEventId =
       existing?.kind === "retryable" ? existing.sourceEventId : undefined;
     const progress: OpeningRunProgress = {
@@ -542,7 +614,7 @@ export class SemanticTurnCoordinator {
   }
 
   async #runOpening(
-    input: OpeningNarrationInput,
+    input: NormalizedOpeningNarrationInput,
     signal: AbortSignal,
     progress: OpeningRunProgress,
   ): Promise<OpeningRunResult> {
@@ -588,7 +660,7 @@ export class SemanticTurnCoordinator {
         local,
         input.interactionId,
         "narrator",
-        input.boot.output,
+        input.narrationText,
         sourceEventId,
         signal,
       );

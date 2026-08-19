@@ -74,14 +74,18 @@ A fresh playable session authenticates and boots the story before enabling its
 first gameplay action, but it does not discard or narrate the boot result. The
 one-shot `START STORY` action revalidates the boot result against public engine
 state, appends its exact text as accessible `engine.output` at revision zero,
-and requests narrator synthesis from that event. It submits no canonical
-command, takes no checkpoint, and requires no microphone permission. Ordinary
-capture and text submission remain gated until the opening playback completes,
-is interrupted, or fails; any of those terminal outcomes exposes the normal
-gameplay controls so a provider failure cannot trap the player. Completion or
-interruption returns the experience to ready. Failure keeps the recoverable
-blocked status while leaving those controls usable; safe failure codes may make
-the status actionable without exposing provider response prose.
+and requests narrator synthesis from that event. Under
+[ADR-0014](./adr/0014-story-pinned-spoken-opening-excerpt.md), the synthesis
+text may be a deterministic reviewed whole-line excerpt only when the story ID,
+artifact SHA-256, and complete known opening all match; otherwise it is the full
+boot output. It submits no canonical command, takes no checkpoint, and requires
+no microphone permission. Ordinary capture and text submission remain gated
+until the opening playback completes, is interrupted, or fails; any of those
+terminal outcomes exposes the normal gameplay controls so a provider failure
+cannot trap the player. Completion or interruption returns the experience to
+ready. Failure keeps the recoverable blocked status while leaving those controls
+usable; safe failure codes may make the status actionable without exposing
+provider response prose.
 
 ### 3.2 Session backend
 
@@ -410,9 +414,12 @@ a preparation failure emits `narration.failed` instead of `narration.ready`. The
 `engine.output` exact text, boundary, and revision must match the authenticated
 `BootResult` and current public engine state. Concurrent or repeated
 `START STORY` activation shares one idempotent preparation, so the opening event
-and initial synthesis request are emitted at most once. Repeat retains that same
-narrator source and may synthesize it again after any terminal playback outcome
-without appending another engine event.
+and initial synthesis request are emitted at most once.
+`narration.requested.text` is the actual spoken selection: either ADR-0014's
+exact story-pinned excerpt or the complete-output fallback. Its `sourceEventId`
+still links the full revision-zero `engine.output`. Repeat retains that same
+selected text and narrator source and may synthesize it again after any terminal
+playback outcome without appending another engine event.
 
 Partial transcripts are ephemeral UI state unless diagnostic recording is
 explicitly enabled. Events containing prose have a retention classification; the
@@ -463,8 +470,9 @@ opens a new turn. Stale provider responses are ignored using correlation IDs.
 
 The opening gate is not a player turn and cannot reach `executing`. Stop may
 cancel its synthesis or playback, after which the session enters ordinary
-`idle`; Repeat retries the retained narrator source rather than reopening the
-gate. Microphone activation is unavailable until that terminal transition.
+`idle`; Repeat retries the retained narrator source and selected text rather
+than reopening the gate. Microphone activation is unavailable until that
+terminal transition.
 
 The bounded implementation is `packages/session`. It journals interaction IDs,
 owns the `EventSequence`, and coordinates final transcript, guide policy, engine
@@ -648,9 +656,10 @@ injection. The repository provides:
 
 The primary end-to-end test drives microphone-like audio through a fake or
 recorded provider profile, validates the guide decision, executes the real
-engine, verifies exact output and narrator input, checkpoints, restores, and
-compares the next engine transition. No live paid API is required for ordinary
-pull-request CI.
+engine, verifies exact output and the applicable narrator input (exact ordinary
+output or ADR-0014's opening selection), checkpoints, restores, and compares the
+next engine transition. No live paid API is required for ordinary pull-request
+CI.
 
 ## 12. Repository dependency rules
 

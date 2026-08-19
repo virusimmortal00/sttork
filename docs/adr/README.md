@@ -42,6 +42,8 @@ decision with a new ADR and link both records.
   — accepted; the first rollout is limited to certified global observations.
 - [ADR-0013: Keep a bounded command history and hide idle activity](0013-persistent-command-history-and-active-only-indicator.md)
   — accepted; supersedes ADR-0011.
+- [ADR-0014: Allow a story-pinned spoken opening excerpt](0014-story-pinned-spoken-opening-excerpt.md)
+  — accepted; canonical boot output remains byte-exact.
 
 ## Template
 

@@ -72,17 +72,21 @@ status text communicates every state independently of motion.
 
 On a fresh session, the first gameplay control is `START STORY`. It is enabled
 without microphone permission and does not begin capture. Activating it once
-publishes and narrates the authenticated opening engine output at revision zero;
-it is not a parser command and therefore never enters the canonical-command
-history. While the opening is being prepared or played, ordinary capture and
-text submission remain gated and Stop remains available. After playback
-completes, is interrupted, or fails, the primary control becomes the ordinary
-`Start speaking` control and the accessibility text path becomes available.
-Completion and interruption show Ready; failure preserves a recoverable blocked
-state while those ordinary controls remain usable. Known safe failures replace
-generic `Action needed` with an actionable status: browser playback
-authorization asks the player to tap Repeat, and the bounded developer profile
-reports when its request limit has been reached.
+publishes the full authenticated opening engine output at revision zero and
+requests narrator speech from it; it is not a parser command and therefore never
+enters the canonical-command history. The spoken request may use only the
+deterministic, story-pinned whole-line excerpt in
+[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md), with the complete
+output as the fallback for any identity or text mismatch. While the opening is
+being prepared or played, ordinary capture and text submission remain gated and
+Stop remains available. After playback completes, is interrupted, or fails, the
+primary control becomes the ordinary `Start speaking` control and the
+accessibility text path becomes available. Completion and interruption show
+Ready; failure preserves a recoverable blocked state while those ordinary
+controls remain usable. Known safe failures replace generic `Action needed` with
+an actionable status: browser playback authorization asks the player to tap
+Repeat, and the bounded developer profile reports when its request limit has
+been reached.
 
 ## Display-state projection
 
@@ -153,7 +157,9 @@ The first run should be brief and playable without a visual tutorial:
 2. Present `START STORY` as the first gameplay control. It remains available
    without microphone permission and does not request that permission.
 3. On one activation, publish the authenticated boot output as exact
-   `engine.output` at revision zero and narrate it once in the narrator role.
+   `engine.output` at revision zero. Request the deterministic ADR-0014 spoken
+   selection once in the narrator role, falling back to the complete output on
+   any story/build/opening mismatch.
 4. After opening playback completes, is interrupted with Stop, or fails, expose
    the ordinary speaking and accessible-text controls. Preserve the exact
    opening in the transcript/accessibility projection in every case. Keep a
@@ -167,11 +173,27 @@ The first run should be brief and playable without a visual tutorial:
 Returning players skip the tutorial unless audio output, microphone access, or
 provider configuration has changed.
 
+For the current authenticated Zork I Release 119 tuple, the spoken form is the
+following 32-word whole-line excerpt rather than all 67 words in the boot
+output:
+
+```text
+ZORK I: The Great Underground Empire
+
+West of House
+You are standing in an open field west of a white house, with a boarded front door.
+There is a small mailbox here.
+```
+
+The omitted credits, release metadata, and prompt remain in the exact game
+event, transcript, and accessibility projection. The excerpt contains no
+generated replacement prose.
+
 `START STORY` is a one-shot session transition. Rapid or repeated activation
 does not republish the opening event or synthesize it twice. The opening remains
-the most recent narrator source, so Repeat can request playback again after a
-completion, interruption, or failure without advancing the engine or appending
-another `engine.output`.
+the most recent narrator source, and its actual spoken selection is retained, so
+Repeat can request the same playback again after a completion, interruption, or
+failure without advancing the engine or appending another `engine.output`.
 
 ## Input model
 
@@ -202,7 +224,10 @@ defined by the guide policy.
 
 The narrator reads the exact Z-machine response. Pronunciation hints, whitespace
 normalization, and expansion of non-semantic formatting are allowed; paraphrase
-and embellishment are not.
+and embellishment are not. `START STORY` is the sole shorter-prose exception:
+ADR-0014 may select reviewed whole original lines for an exact story/build and
+known opening. A mismatch reads the complete output, and ordinary turn responses
+remain exact.
 
 ### Dungeon Guide
 
@@ -230,8 +255,9 @@ narrator, not a provider inconsistency.
 Audio behavior:
 
 - Never play narrator and guide speech simultaneously.
-- Queue exact engine narration ahead of optional guide commentary unless
-  clarification must occur first.
+- Queue exact ordinary engine narration ahead of optional guide commentary
+  unless clarification must occur first. The one `START STORY` selection remains
+  governed by ADR-0014.
 - Cancel queued, no-longer-relevant commentary after a barge-in.
 - Preserve interrupted content so “repeat that” can replay it from the
   beginning.
@@ -354,15 +380,15 @@ Ready.
 
 Canonical-to-experience mapping is explicit:
 
-| Canonical event families                                                     | Experience projections                                                                                                 |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `session.*`, `provider.*`, `system.*`                                        | Session status, connection recovery, and accessible notices                                                            |
-| `audio.capture.*`, `audio.playback.*`                                        | Listening/speaking state, control state, and interruption feedback                                                     |
-| `transcript.final`                                                           | Player transcript item and guide input; partial transcripts remain ephemeral unless diagnostic retention is enabled    |
-| `guide.decision.*`, `guide.clarification`, `guide.explanation`, `guide.hint` | Guide role item, pending clarification, and debug decision detail                                                      |
-| `engine.command.*`, `engine.output`                                          | Active command cue, bounded committed-command history, exact game item, narrator request, and engine-turn debug detail |
-| `narration.*`                                                                | Audio queue and delivery state for an existing guide or engine source event                                            |
-| `save.*`                                                                     | Checkpoint/recovery status and debug metadata                                                                          |
+| Canonical event families                                                     | Experience projections                                                                                                                                                        |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session.*`, `provider.*`, `system.*`                                        | Session status, connection recovery, and accessible notices                                                                                                                   |
+| `audio.capture.*`, `audio.playback.*`                                        | Listening/speaking state, control state, and interruption feedback                                                                                                            |
+| `transcript.final`                                                           | Player transcript item and guide input; partial transcripts remain ephemeral unless diagnostic retention is enabled                                                           |
+| `guide.decision.*`, `guide.clarification`, `guide.explanation`, `guide.hint` | Guide role item, pending clarification, and debug decision detail                                                                                                             |
+| `engine.command.*`, `engine.output`                                          | Active command cue, bounded committed-command history, exact game item, source-linked narrator request (including the pinned opening selection), and engine-turn debug detail |
+| `narration.*`                                                                | Audio queue and delivery state for an existing guide or engine source event                                                                                                   |
+| `save.*`                                                                     | Checkpoint/recovery status and debug metadata                                                                                                                                 |
 
 Projection reducers are pure and replayable. They may hide information but may
 not change canonical text, reorder source events, or infer game facts from
@@ -491,11 +517,11 @@ output.
 
 If opening narration fails or is interrupted, retain its revision-zero
 `engine.output`, expose the normal controls, and make Repeat a retry of that
-same narrator source. Interruption returns to Ready; failure remains `blocked`
-with actionable safe status text where available, or generic `Action needed`,
-while those controls stay usable. A retry may issue another synthesis request,
-but it must not republish the boot output, advance the engine, or re-enter the
-`START STORY` gate.
+same narrator source and the same excerpt-or-fallback text. Interruption returns
+to Ready; failure remains `blocked` with actionable safe status text where
+available, or generic `Action needed`, while those controls stay usable. A retry
+may issue another synthesis request, but it must not republish the boot output,
+advance the engine, reselect narration text, or re-enter the `START STORY` gate.
 
 ## Preferences and persistence
 
@@ -540,11 +566,12 @@ The first vertical slice is ready when:
 
 1. A first-time player can start and complete the slice without reading the
    screen.
-2. `START STORY` narrates the exact authenticated revision-zero opening without
-   requesting microphone permission, then yields the normal controls after a
-   completed, interrupted, or failed playback. Failure retains the recoverable
-   blocked status, using actionable safe text where available, rather than
-   falsely reporting Ready.
+2. `START STORY` publishes the exact authenticated revision-zero opening and
+   speaks its deterministic story-pinned excerpt (or full-output fallback)
+   without requesting microphone permission, then yields the normal controls
+   after a completed, interrupted, or failed playback. Failure retains the
+   recoverable blocked status, using actionable safe text where available,
+   rather than falsely reporting Ready.
 3. Default play shows no transcript, player speech, or game prose; the only
    persistent text is bounded canonical-command history defined by ADR-0013.
 4. The player can hear which speech belongs to the original game and which

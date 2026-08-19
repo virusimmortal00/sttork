@@ -28,7 +28,7 @@ The responsibilities are deliberately split:
 | Z-machine            | World state, valid actions, movement, inventory, puzzles, score, death, and exact game prose                      | Infer player intent or supply guide dialogue                |
 | Dungeon Guide        | Intent interpretation, clarification, command grounding, command help, observed-memory recall, and hint selection | Mutate game state except through a validated parser command |
 | Session orchestrator | Turn ordering, tool validation, audio routing, save/checkpoint coordination, retries, and meta controls           | Fabricate engine or guide results                           |
-| Narrator             | Speaking exact Z-machine output                                                                                   | Paraphrase, embellish, or add hints to game prose           |
+| Narrator             | Speaking exact ordinary Z-machine output and the story-pinned `START STORY` excerpt                               | Generate, paraphrase, embellish, or add hints to game prose |
 
 Only a successful `executeGameCommand` call may advance the game. Model text
 claiming that an action happened has no effect and must never be presented as an
@@ -46,8 +46,10 @@ engine result.
 4. The guide sees only player-observed information plus deliberately exposed
    command grammar. Hidden map, object, and puzzle state are excluded from its
    normal context.
-5. Narration preserves exact engine text. Guide speech is a separate event and a
-   perceptibly separate role.
+5. Canonical engine text remains exact. Ordinary narration preserves that text;
+   the sole shorter-prose exception is ADR-0014's deterministic whole-line
+   `START STORY` excerpt for an exact story/build/opening match. Guide speech is
+   a separate event and a perceptibly separate role.
 6. Ambiguity with materially different outcomes results in clarification, not a
    guess.
 7. Hints never exceed the player's selected spoiler level.
@@ -450,7 +452,12 @@ Rules:
 ## Guide and narrator speech
 
 The narrator speaks `EngineTurnResult.exactOutput`, subject only to
-pronunciation markup that does not change words or meaning. The guide speaks
+pronunciation markup that does not change words or meaning. `START STORY` is not
+an ordinary guide turn:
+[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) may select a
+deterministic set of whole original lines only for an exact story ID, artifact
+hash, and known opening. Any mismatch speaks the complete boot output. No guide
+model or narration provider generates or selects this excerpt. The guide speaks
 acknowledgements, questions, command help, memory answers, and hints.
 
 Acknowledgements should be omitted for obvious commands when they would add

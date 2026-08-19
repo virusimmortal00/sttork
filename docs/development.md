@@ -161,33 +161,40 @@ a trusted home network.
 The 2026-08-19 smoke profile uses `gpt-4o-mini-transcribe`, `gpt-5.6-luna`, and
 `tts-1`, with one global maximum of 12 provider requests for the server process.
 The initial `START STORY` narration uses one speech request without requesting
-microphone permission. A normal spoken turn uses three requests; Repeat uses
-another speech request, including when it retries the retained opening source.
-All of them count against the same global ceiling. This is a request ceiling,
-not a dollar-denominated spend cap. Browser actions can incur API charges, so
-stop the server when the smoke is complete. This harness is not provider
-promotion, production authentication, or a substitute for the hermetic source
-gate.
+microphone permission. For the exact Zork I Release 119 story/build/opening
+tuple, [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) selects the
+reviewed 32-word title-and-scene excerpt instead of speaking the full 67-word
+boot output; the full output remains the revision-zero event and accessible
+text. Any identity or exact-opening mismatch speaks the full output. A normal
+spoken turn uses three requests; Repeat uses another speech request, including
+when it retries the retained opening source and same selected text. All of them
+count against the same global ceiling. This is a request ceiling, not a
+dollar-denominated spend cap. Browser actions can incur API charges, so stop the
+server when the smoke is complete. This harness is not provider promotion,
+production authentication, or a substitute for the hermetic source gate.
 
 For the pending manual checkpoint, first activate `START STORY` without granting
-microphone permission. Confirm that the authenticated opening is narrated once
-at revision zero, that Stop is available during playback, and that the normal
-speaking control appears after a completed, interrupted, or failed opening. An
+microphone permission. Confirm one byte-exact authenticated opening event at
+revision zero, the full opening in the accessible transcript, and the reviewed
+32-word excerpt as the actual spoken request for the exact Release 119 tuple.
+Confirm that Stop is available during playback and that the normal speaking
+control appears after a completed, interrupted, or failed opening. An
 unclassified failed case should remain `Action needed`, with speaking, text, and
 Repeat still usable. On Safari and other browsers that require explicit media
 authorization, the status should instead say `Tap Repeat to enable audio`;
 `Request limit reached` identifies the process-global smoke cap. Repeat must
-show Processing while it is synthesizing rather than retaining a stale blocked
-heading. The initial path should consume one TTS request; Repeat should consume
-another while reusing the same opening event. Then say an unambiguous single
-action such as “look” and confirm one revision plus audible exact engine
-narration. Say an ambiguous request such as “open it” and confirm that the guide
-asks for clarification without advancing the engine. Exercise Stop during
-capture or playback, and inspect the optional transcript/debug surfaces only to
-confirm attribution, Worker isolation, and absence of sensitive audio or
-credentials. Record the browser version and console/CSP result. The harness
-implementation and its hermetic tests are present, but Slice 5 is not complete
-until this real microphone evidence is recorded.
+show Processing while it is synthesizing, reuse the same excerpt, and avoid
+retaining a stale blocked heading. The initial path should consume one TTS
+request; Repeat should consume another while reusing the same opening event.
+Then say an unambiguous single action such as “look” and confirm one revision
+plus audible exact engine narration. Say an ambiguous request such as “open it”
+and confirm that the guide asks for clarification without advancing the engine.
+Exercise Stop during capture or playback, and inspect the optional
+transcript/debug surfaces only to confirm attribution, Worker isolation, and
+absence of sensitive audio or credentials. Record the browser version and
+console/CSP result. The harness implementation and its hermetic tests are
+present, but Slice 5 is not complete until this real microphone evidence is
+recorded; this documentation does not establish that live result.
 
 For a remote-device run, additionally record the device operating system and
 browser, that `window.isSecureContext` is true, the exact configured origin and

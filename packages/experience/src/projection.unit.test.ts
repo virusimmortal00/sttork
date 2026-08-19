@@ -124,7 +124,7 @@ function appendOpeningPreparation(sequence: EventSequence) {
     payload: {
       narrationId: "opening-narration",
       role: "narrator" as const,
-      text: output.payload.exactText,
+      text: "ZORK I\n\nWest of House",
       sourceEventId: output.id,
       retention: "session-only" as const,
     },
@@ -287,6 +287,8 @@ describe("experience projection", () => {
       expect(projection.displayState).toBe(expectedState);
       expect(projection.statusText).toBe(expectedStatus);
       expect(projection.storyStartPhase).toBe("started");
+      expect(requested.payload.text).not.toBe(output.payload.exactText);
+      expect(projection.transcript[0]?.text).toBe(output.payload.exactText);
     },
   );
 
