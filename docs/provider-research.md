@@ -97,15 +97,15 @@ Keeping branch-specific fields inside those variants prevents a schema-valid
 response from pairing a decision kind with null or unrelated fields; the
 provider-neutral runtime validator remains the final authority.
 
-The live execute branch also requires a bounded `affordanceId` selected from the
-current command-knowledge rules. Aliases and grammar strings are prompt
-examples, not an exhaustive paraphrase list. Guide core verifies that the ID and
-proposed command agree, permits semantic fallback only for locally certified
-global observations, compiles the canonical command locally, and removes this
-provider-only field before canonical guide events are recorded. This is the
-compatibility stage of
-[ADR-0012](adr/0012-structured-semantic-command-intents.md), not the completed
-typed-slot migration.
+The live execute branch requires a bounded `affordanceId` and bounded slots
+selected from current command knowledge; it no longer accepts provider-authored
+parser text. Aliases and grammar strings are prompt examples, not an exhaustive
+paraphrase list. Guide core validates current slot IDs, compiles the canonical
+command locally, permits semantic fallback only for certified T1 observations
+and T2 examination of an explicitly named observed object, and removes all
+provider-only metadata before canonical guide events are recorded. T3 and higher
+contextual and confirmation policies in
+[ADR-0012](adr/0012-structured-semantic-command-intents.md) remain open.
 
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)

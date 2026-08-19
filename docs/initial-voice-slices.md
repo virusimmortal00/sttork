@@ -91,12 +91,14 @@ policy accepts only `execute`, `clarify`, and deterministic command-help
 `explain` outcomes. This does not complete M2 or qualify a live guide model.
 
 Evolution note, 2026-08-19: the chained OpenAI smoke now requires execute
-proposals to select a current command-knowledge affordance ID. The first
-risk-tiered semantic lane covers only zero-slot `look` and `inventory`, allowing
-unseen natural paraphrases without adding literal aliases. Navigation and object
-actions retain lexical grounding until the typed-slot design in
-[ADR-0012](adr/0012-structured-semantic-command-intents.md) is implemented and
-evaluated. This does not reopen the Slice 2 checkpoint or complete M2.
+proposals to select a current command-knowledge affordance ID and typed slots;
+provider-authored parser text is no longer accepted. The risk-tiered semantic
+lane covers zero-slot `look` and `inventory` plus T2 examination of one
+explicitly named observed object, allowing unseen natural paraphrases without
+adding literal aliases. Navigation and state-changing actions retain lexical
+grounding pending the later policies in
+[ADR-0012](adr/0012-structured-semantic-command-intents.md). This does not
+reopen the Slice 2 checkpoint or complete M2.
 
 ### Deliverables
 

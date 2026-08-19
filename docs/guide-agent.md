@@ -323,9 +323,10 @@ natural-language authorization list. The provider-facing model selects a bounded
 affordance ID and typed slots from the current index. Command knowledge
 validates that selection and locally compiles the parser command under the
 risk-tier policy in [ADR-0012](adr/0012-structured-semantic-command-intents.md).
-The compatibility slice permits semantic paraphrases only for certified
-zero-slot `look` and `inventory`; higher-risk actions retain lexical grounding
-until their typed slots land.
+The live semantic lane permits certified zero-slot `look` and `inventory`, plus
+T2 `examine` with one locally validated observed-object slot whose label is
+explicit in the utterance. Navigation and state-changing actions retain lexical
+grounding even though the provider selects their typed affordance frame.
 
 Before execution, the orchestrator checks:
 

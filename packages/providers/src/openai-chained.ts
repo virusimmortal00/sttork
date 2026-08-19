@@ -66,15 +66,28 @@ const guideDecisionSchema = {
           additionalProperties: false,
           required: [
             "kind",
-            "command",
             "affordanceId",
+            "slots",
             "intentSummary",
             "confidence",
           ],
           properties: {
             kind: { type: "string", enum: ["execute"] },
-            command: { type: "string", minLength: 1, maxLength: 160 },
             affordanceId: { type: "string", minLength: 1, maxLength: 160 },
+            slots: {
+              type: "array",
+              minItems: 0,
+              maxItems: 1,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["slotId", "valueId"],
+                properties: {
+                  slotId: { type: "string", enum: ["object"] },
+                  valueId: { type: "string", minLength: 1, maxLength: 160 },
+                },
+              },
+            },
             intentSummary: {
               type: "string",
               minLength: 1,
@@ -192,11 +205,46 @@ function normalizeGuideDecision(value: unknown): unknown {
   if (kind === "execute") {
     assertExactDecisionKeys(value, [
       "kind",
-      "command",
       "affordanceId",
+      "slots",
       "intentSummary",
       "confidence",
     ]);
+    const slots = field("slots");
+    if (!Array.isArray(slots) || slots.length > 1) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        "Guide output slots were invalid.",
+      );
+    }
+    const normalizedSlots = slots.map((slot) => {
+      if (typeof slot !== "object" || slot === null || Array.isArray(slot)) {
+        throw new ProviderAdapterError(
+          "malformed-response",
+          "Guide output slot was invalid.",
+        );
+      }
+      assertExactDecisionKeys(slot, ["slotId", "valueId"]);
+      if (Reflect.get(slot, "slotId") !== "object") {
+        throw new ProviderAdapterError(
+          "malformed-response",
+          "Guide output slot identifier was invalid.",
+        );
+      }
+      const valueId = Reflect.get(slot, "valueId") as unknown;
+      if (
+        typeof valueId !== "string" ||
+        valueId.trim().length === 0 ||
+        valueId.length > 160 ||
+        /\p{Cc}/u.test(valueId)
+      ) {
+        throw new ProviderAdapterError(
+          "malformed-response",
+          "Guide output slot value identifier was invalid.",
+        );
+      }
+      return { slotId: "object" as const, valueId };
+    });
     const confidence = field("confidence");
     if (
       typeof confidence !== "number" ||
@@ -211,8 +259,8 @@ function normalizeGuideDecision(value: unknown): unknown {
     }
     return {
       kind,
-      command: string("command", 160),
       affordanceId: string("affordanceId", 160),
+      slots: normalizedSlots,
       intentSummary: string("intentSummary", 240),
       confidence,
     };
@@ -551,7 +599,7 @@ export class OpenAiChainedProvider implements GuideModel {
           ? {}
           : { safety_identifier: this.#safetyIdentifier }),
         instructions:
-          "You are a constrained parser guide. Return one schema-valid decision. Use execute only when the player directly requests one unambiguous game action; do not execute a command merely mentioned in a question, quotation, example, hypothetical, or description. For execute, select affordanceId as the exact ID of one current commandKnowledge rule and ensure command agrees with that rule. Treat commandKnowledge aliases and grammar examples as non-exhaustive examples of how a player may express that action, not as an exhaustive natural-language allowlist. Return one action only; never combine, sequence, or emit multiple commands. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed or reveal hidden game facts.",
+          "You are a constrained parser guide. Return one schema-valid decision. Use execute only when the player directly requests one unambiguous game action. Do not execute an action merely quoted, offered as an example, discussed hypothetically, or reported as someone else's request. A direct player question asking to observe or describe the current surroundings or one observed object is an action request. For execute, select affordanceId as the exact ID of one current commandKnowledge rule and select only slot value IDs currently allowed by commandKnowledge. Return slots: [] for a zero-slot rule. For an observed-object rule, return exactly one object slot whose valueId identifies the single intended observed object. A request to describe, inspect, look at, or check out one observed object selects grammar.examine. Never write parser command text or invent an affordance, slot, or value ID. Treat commandKnowledge aliases and grammar examples as non-exhaustive examples of how a player may express that action, not as an exhaustive natural-language allowlist. Return one action only; never combine, sequence, or emit multiple actions. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed or reveal hidden game facts.",
         input: serializedInput,
         text: {
           verbosity: this.#profile.guideVerbosity,

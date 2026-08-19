@@ -50,18 +50,21 @@ Rollout is risk-tiered and story-specific:
 - T3 contains navigation and ordinary state-changing actions.
 - T4 contains consequential, lifecycle, hazardous, or unclassified actions.
 
-The first compatibility slice adds a required `affordanceId` to the OpenAI live
-model's execute proposal while preserving the existing canonical event contract.
-Guide core strips this provider-only metadata after resolving it. Only the local
-T1 allowlist may bypass literal alias matching. It derives `look` or `inventory`
-from command knowledge and rejects unknown IDs, command/ID disagreement, or any
-object, navigation, or mutating affordance on that semantic path. Legacy
-hermetic model fixtures without an affordance ID retain the lexical path.
+The first compatibility slice added a required `affordanceId` to the OpenAI live
+model's execute proposal and enabled zero-slot T1 observation. The next slice
+adopts the target frame for the live path: the model returns an `affordanceId`
+and bounded slots, while command knowledge alone compiles the parser string. T2
+semantic fallback is enabled only for `examine` with one explicitly named,
+currently offered observed-object ID. T3 navigation and state-changing actions
+are compiled from the same frame but still require lexical authorization. Guide
+core strips all provider-only intent metadata before recording the canonical
+decision. Legacy hermetic model fixtures without an affordance ID retain the
+lexical path.
 
 All existing transcript-confidence, model-confidence, negation, multi-step,
 cancellation, observed-state, revision, idempotency, and engine commit gates
-stay in force. Higher tiers retain lexical grounding until their typed slots and
-confirmation policy land.
+stay in force. T3 and higher tiers retain lexical grounding until their
+contextual and confirmation policies land.
 
 ## Consequences
 
@@ -77,10 +80,9 @@ is controlled through risk-tiered rollout, clarification thresholds, repeated
 provider evaluations, and conservative local policy. Unknown intent defaults to
 the highest risk tier and does not execute.
 
-The interim contains redundant provider fields (`command` and `affordanceId`) so
-their agreement can be checked while existing provider-neutral events remain
-stable. The completed migration removes the provider command field and compiles
-from the intent frame alone.
+The OpenAI live path no longer accepts a provider-authored parser command.
+Existing provider-neutral events remain stable because guide core materializes
+only the locally compiled canonical command.
 
 ## Alternatives considered
 
@@ -97,11 +99,12 @@ from the intent frame alone.
 
 ## Validation
 
-Hermetic tests must prove affordance/command agreement, local canonical
-derivation, legacy compatibility, transcript and model confidence gates,
-negation, multi-step rejection, and absence of engine mutation on invalid
-frames. A real Dork/Zork I integration must show “tell me where I am” producing
-one canonical `look`, one committed revision, and exact engine narration.
+Hermetic tests must prove local canonical derivation, exact slot validation,
+legacy compatibility, transcript and model confidence gates, negation,
+multi-step rejection, and absence of engine mutation on invalid frames. Real
+Dork/Zork I integrations must show “tell me where I am” producing one canonical
+`look`, and natural observed-object descriptions producing one canonical
+`examine`, one committed revision, and exact engine narration.
 
 Provider contract tests must prove the live structured schema requires the
 affordance ID and rejects malformed or extra fields. The guide evaluation corpus

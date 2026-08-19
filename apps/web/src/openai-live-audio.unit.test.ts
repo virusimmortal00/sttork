@@ -447,8 +447,8 @@ describe("OpenAiLiveGuideModel", () => {
   it("sends only player-safe guide context and returns the unknown decision", async () => {
     const decision = {
       kind: "execute",
-      command: "north",
       affordanceId: "grammar.direction.north",
+      slots: [],
       intentSummary: "Move north",
       confidence: 0.98,
     };

@@ -81,8 +81,8 @@ describe("initial guide to authoritative engine boundary", () => {
       observing,
       FakeGuideModel.returning({
         kind: "execute",
-        command: "look",
         affordanceId: "grammar.look",
+        slots: [],
         intentSummary: "Observe the current surroundings",
         confidence: 0.99,
       }),

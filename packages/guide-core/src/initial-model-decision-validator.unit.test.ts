@@ -4,20 +4,20 @@ import { GuideDecisionValidationError } from "./decision-validator.js";
 import { validateInitialGuideModelDecision } from "./initial-model-decision-validator.js";
 
 describe("validateInitialGuideModelDecision", () => {
-  it("accepts provider-only affordance metadata on an execute proposal", () => {
+  it("accepts a provider-only semantic execute frame without a command", () => {
     expect(
       validateInitialGuideModelDecision({
         kind: "execute",
-        command: "look",
-        affordanceId: "grammar.look",
-        intentSummary: "Observe the current location",
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "mailbox" }],
+        intentSummary: "Observe the mailbox more closely",
         confidence: 0.98,
       }),
     ).toEqual({
       kind: "execute",
-      command: "look",
-      affordanceId: "grammar.look",
-      intentSummary: "Observe the current location",
+      affordanceId: "grammar.examine",
+      slots: [{ slotId: "object", valueId: "mailbox" }],
+      intentSummary: "Observe the mailbox more closely",
       confidence: 0.98,
     });
   });
@@ -39,8 +39,8 @@ describe("validateInitialGuideModelDecision", () => {
       expect(() =>
         validateInitialGuideModelDecision({
           kind: "execute",
-          command: "look",
           affordanceId,
+          slots: [],
           intentSummary: "Observe the current location",
           confidence: 0.98,
         }),
@@ -57,5 +57,61 @@ describe("validateInitialGuideModelDecision", () => {
         affordanceId: "grammar.look",
       }),
     ).toThrow(GuideDecisionValidationError);
+  });
+
+  it.each([
+    {
+      name: "provider command",
+      extra: { command: "examine mailbox" },
+    },
+    {
+      name: "extra decision field",
+      extra: { bypassEngine: true },
+    },
+  ])("rejects a semantic execute frame with $name", ({ extra }) => {
+    expect(() =>
+      validateInitialGuideModelDecision({
+        kind: "execute",
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "mailbox" }],
+        intentSummary: "Observe the mailbox",
+        confidence: 0.98,
+        ...extra,
+      }),
+    ).toThrow(GuideDecisionValidationError);
+  });
+
+  it.each([
+    {
+      name: "missing slots",
+      slots: undefined,
+    },
+    {
+      name: "duplicate slot IDs",
+      slots: [
+        { slotId: "object", valueId: "mailbox" },
+        { slotId: "object", valueId: "door" },
+      ],
+    },
+    {
+      name: "extra slot field",
+      slots: [{ slotId: "object", valueId: "mailbox", command: "open" }],
+    },
+    {
+      name: "unbounded slot value",
+      slots: [{ slotId: "object", valueId: "x".repeat(161) }],
+    },
+  ])("rejects $name", ({ slots }) => {
+    const input = {
+      kind: "execute",
+      affordanceId: "grammar.examine",
+      slots,
+      intentSummary: "Observe the mailbox",
+      confidence: 0.98,
+    };
+    if (slots === undefined) delete (input as { slots?: unknown }).slots;
+    expect(() => validateInitialGuideModelDecision(input)).toThrow(
+      GuideDecisionValidationError,
+    );
   });
 });

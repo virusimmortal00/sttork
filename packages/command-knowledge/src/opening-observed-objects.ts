@@ -1,6 +1,6 @@
 import type { SemanticEvent } from "../../contracts/src/index.js";
 
-export const OPENING_OBJECT_PROJECTION_VERSION = 1;
+export const OPENING_OBJECT_PROJECTION_VERSION = 2;
 export const MAX_OPENING_ENGINE_OUTPUT_LENGTH = 32_768;
 
 const openingObservedObjectNames = [
@@ -14,7 +14,12 @@ export type OpeningObservedObject = (typeof openingObservedObjectNames)[number];
 
 export interface OpeningObjectProjection {
   readonly version: typeof OPENING_OBJECT_PROJECTION_VERSION;
+  /** Every reviewed object disclosed on the current save branch. */
   readonly observedObjects: readonly OpeningObservedObject[];
+  /** Reviewed objects offered as referents in the current scene. */
+  readonly currentObjects: readonly OpeningObservedObject[];
+  /** A committed movement whose engine output has not yet been projected. */
+  readonly pendingMovementRevision: number | null;
 }
 
 interface ReviewedDisclosure {
@@ -41,15 +46,40 @@ const reviewedDisclosures: readonly ReviewedDisclosure[] = Object.freeze([
   ]),
 ]);
 
+const openingMovementCommands: ReadonlySet<string> = new Set([
+  "north",
+  "south",
+  "east",
+  "west",
+  "up",
+  "down",
+]);
+
 function freezeProjection(
   observed: ReadonlySet<OpeningObservedObject>,
+  current: ReadonlySet<OpeningObservedObject>,
+  pendingMovementRevision: number | null,
 ): OpeningObjectProjection {
   return Object.freeze({
     version: OPENING_OBJECT_PROJECTION_VERSION,
     observedObjects: Object.freeze(
       openingObservedObjectNames.filter((object) => observed.has(object)),
     ),
+    currentObjects: Object.freeze(
+      openingObservedObjectNames.filter((object) => current.has(object)),
+    ),
+    pendingMovementRevision,
   });
+}
+
+function validObjectList(objects: readonly OpeningObservedObject[]): boolean {
+  const expected = openingObservedObjectNames.filter((object) =>
+    objects.includes(object),
+  );
+  return (
+    expected.length === objects.length &&
+    expected.every((object, index) => objects[index] === object)
+  );
 }
 
 function assertProjection(
@@ -58,19 +88,64 @@ function assertProjection(
   if (
     projection.version !== OPENING_OBJECT_PROJECTION_VERSION ||
     !Array.isArray(projection.observedObjects) ||
-    projection.observedObjects.length > openingObservedObjectNames.length ||
-    projection.observedObjects.some(
-      (object, index) =>
-        !openingObservedObjectNames.includes(object) ||
-        projection.observedObjects.indexOf(object) !== index,
-    )
+    !validObjectList(projection.observedObjects) ||
+    !Array.isArray(projection.currentObjects) ||
+    !validObjectList(projection.currentObjects) ||
+    projection.currentObjects.some(
+      (object) => !projection.observedObjects.includes(object),
+    ) ||
+    (projection.pendingMovementRevision !== null &&
+      (!Number.isSafeInteger(projection.pendingMovementRevision) ||
+        projection.pendingMovementRevision < 0))
   ) {
     throw new TypeError("Opening object projection is invalid.");
   }
 }
 
 export function createOpeningObjectProjection(): OpeningObjectProjection {
-  return freezeProjection(new Set());
+  return freezeProjection(new Set(), new Set(), null);
+}
+
+function sameObjects(
+  objects: ReadonlySet<OpeningObservedObject>,
+  expected: readonly OpeningObservedObject[],
+): boolean {
+  return (
+    objects.size === expected.length &&
+    expected.every((object) => objects.has(object))
+  );
+}
+
+function projectReviewedEngineOutput(
+  projection: OpeningObjectProjection,
+  exactEngineOutput: string,
+  clearCurrent: boolean,
+  pendingMovementRevision: number | null,
+): OpeningObjectProjection {
+  const observed = new Set(projection.observedObjects);
+  const current = clearCurrent
+    ? new Set<OpeningObservedObject>()
+    : new Set(projection.currentObjects);
+
+  if (exactEngineOutput.length <= MAX_OPENING_ENGINE_OUTPUT_LENGTH) {
+    const lines = new Set(exactEngineOutput.split("\n"));
+    for (const disclosure of reviewedDisclosures) {
+      if (!lines.has(disclosure.exactLine)) continue;
+      for (const object of disclosure.objects) {
+        observed.add(object);
+        current.add(object);
+      }
+    }
+  }
+
+  if (
+    sameObjects(observed, projection.observedObjects) &&
+    sameObjects(current, projection.currentObjects) &&
+    pendingMovementRevision === projection.pendingMovementRevision
+  ) {
+    return projection;
+  }
+  return freezeProjection(observed, current, pendingMovementRevision);
 }
 
 export function projectOpeningObjectsFromEngineOutput(
@@ -81,28 +156,39 @@ export function projectOpeningObjectsFromEngineOutput(
   if (typeof exactEngineOutput !== "string") {
     throw new TypeError("Exact engine output must be a string.");
   }
-  if (exactEngineOutput.length > MAX_OPENING_ENGINE_OUTPUT_LENGTH) {
-    return projection;
-  }
-
-  const lines = new Set(exactEngineOutput.split("\n"));
-  const observed = new Set(projection.observedObjects);
-  for (const disclosure of reviewedDisclosures) {
-    if (!lines.has(disclosure.exactLine)) continue;
-    for (const object of disclosure.objects) observed.add(object);
-  }
-
-  if (observed.size === projection.observedObjects.length) return projection;
-  return freezeProjection(observed);
+  return projectReviewedEngineOutput(
+    projection,
+    exactEngineOutput,
+    false,
+    projection.pendingMovementRevision,
+  );
 }
 
 export function projectOpeningObjectsFromEvent(
   projection: OpeningObjectProjection,
   event: SemanticEvent,
 ): OpeningObjectProjection {
+  assertProjection(projection);
+  if (event.type === "engine.command.committed") {
+    if (!openingMovementCommands.has(event.payload.command)) return projection;
+    if (projection.pendingMovementRevision === event.payload.revision) {
+      return projection;
+    }
+    return freezeProjection(
+      new Set(projection.observedObjects),
+      new Set(projection.currentObjects),
+      event.payload.revision,
+    );
+  }
   if (event.type !== "engine.output") return projection;
-  return projectOpeningObjectsFromEngineOutput(
+
+  const clearsCurrent =
+    projection.pendingMovementRevision !== null &&
+    event.payload.revision >= projection.pendingMovementRevision;
+  return projectReviewedEngineOutput(
     projection,
     event.payload.exactText,
+    clearsCurrent,
+    clearsCurrent ? null : projection.pendingMovementRevision,
   );
 }

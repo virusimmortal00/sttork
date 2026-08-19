@@ -5,7 +5,8 @@ import {
   groundPendingOpeningObjectReply,
   inferPendingOpeningObjectIntent,
   openingCommandHelp,
-  resolveOpeningAffordanceCommand,
+  openingObjectSelectionMentioned,
+  resolveOpeningCommandIntent,
   type OpeningCommandKnowledge,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
@@ -121,9 +122,17 @@ function materializeExecuteDecision(
   proposal: Extract<InitialGuideModelDecision, { readonly kind: "execute" }>,
   command: CanonicalCommand,
 ): Extract<GuideDecision, { readonly kind: "execute" }> {
-  const { affordanceId: _providerOnlyAffordanceId, ...decision } = proposal;
-  void _providerOnlyAffordanceId;
-  return { ...decision, command };
+  if ("affordanceId" in proposal) {
+    const {
+      affordanceId: _providerOnlyAffordanceId,
+      slots: _providerOnlySlots,
+      ...decision
+    } = proposal;
+    void _providerOnlyAffordanceId;
+    void _providerOnlySlots;
+    return { ...decision, command };
+  }
+  return { ...proposal, command };
 }
 
 export async function decideInitialGuideTurn(
@@ -324,7 +333,7 @@ export async function decideInitialGuideTurn(
     );
   }
 
-  if (decision.remainingGoal !== undefined) {
+  if ("remainingGoal" in decision && decision.remainingGoal !== undefined) {
     return clarification(
       "Which one action should I try first?",
       "The request contains more than one possible game turn.",
@@ -333,12 +342,12 @@ export async function decideInitialGuideTurn(
   }
 
   try {
-    const lexicalGrounding = groundOpeningCommand(
-      decision.command,
-      input.playerUtterance,
-      knowledge,
-    );
-    if (decision.affordanceId === undefined) {
+    if (!("affordanceId" in decision)) {
+      const lexicalGrounding = groundOpeningCommand(
+        decision.command,
+        input.playerUtterance,
+        knowledge,
+      );
       if (!lexicalGrounding.ok) {
         return {
           kind: "rejected",
@@ -362,17 +371,42 @@ export async function decideInitialGuideTurn(
       };
     }
 
-    const semanticGrounding = resolveOpeningAffordanceCommand(
-      decision.command,
-      decision.affordanceId,
+    const semanticGrounding = resolveOpeningCommandIntent(
+      {
+        affordanceId: decision.affordanceId,
+        slots: decision.slots,
+      },
       knowledge,
     );
-    if (
-      !semanticGrounding.ok ||
-      (!lexicalGrounding.ok &&
-        (!semanticGrounding.semanticFallbackAllowed ||
-          semanticGrounding.riskTier !== 1))
-    ) {
+    if (!semanticGrounding.ok) {
+      return {
+        kind: "rejected",
+        cause: "ungrounded-command",
+        decision: {
+          kind: "cannot_comply",
+          response:
+            "I could not ground that command in your words and the observed scene.",
+          reason: "not-observed",
+        },
+      };
+    }
+
+    const lexicalGrounding = groundOpeningCommand(
+      semanticGrounding.command,
+      input.playerUtterance,
+      knowledge,
+    );
+    const semanticFallbackAllowed =
+      semanticGrounding.semanticFallbackAllowed &&
+      (semanticGrounding.riskTier === 1 ||
+        (semanticGrounding.riskTier === 2 &&
+          semanticGrounding.ruleId === "grammar.examine" &&
+          semanticGrounding.selectedObject !== undefined &&
+          openingObjectSelectionMentioned(
+            semanticGrounding.selectedObject,
+            input.playerUtterance,
+          )));
+    if (!lexicalGrounding.ok && !semanticFallbackAllowed) {
       return {
         kind: "rejected",
         cause: "ungrounded-command",

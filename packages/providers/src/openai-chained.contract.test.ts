@@ -91,8 +91,8 @@ describe("OpenAiChainedProvider", () => {
                   text: JSON.stringify({
                     decision: {
                       kind: "execute",
-                      command: "north",
                       affordanceId: "grammar.direction.north",
+                      slots: [],
                       intentSummary: "Move north",
                       confidence: 0.97,
                     },
@@ -123,8 +123,8 @@ describe("OpenAiChainedProvider", () => {
     expect(result).toEqual({
       decision: {
         kind: "execute",
-        command: "north",
         affordanceId: "grammar.direction.north",
+        slots: [],
         intentSummary: "Move north",
         confidence: 0.97,
       },
@@ -160,8 +160,8 @@ describe("OpenAiChainedProvider", () => {
                   expect.objectContaining({
                     required: [
                       "kind",
-                      "command",
                       "affordanceId",
+                      "slots",
                       "intentSummary",
                       "confidence",
                     ],
@@ -171,6 +171,27 @@ describe("OpenAiChainedProvider", () => {
                         type: "string",
                         minLength: 1,
                         maxLength: 160,
+                      },
+                      slots: {
+                        type: "array",
+                        minItems: 0,
+                        maxItems: 1,
+                        items: {
+                          type: "object",
+                          additionalProperties: false,
+                          required: ["slotId", "valueId"],
+                          properties: {
+                            slotId: {
+                              type: "string",
+                              enum: ["object"],
+                            },
+                            valueId: {
+                              type: "string",
+                              minLength: 1,
+                              maxLength: 160,
+                            },
+                          },
+                        },
                       },
                     }),
                   }),
@@ -223,6 +244,7 @@ describe("OpenAiChainedProvider", () => {
       ),
     ).toBe(true);
     expect(JSON.stringify(schema)).not.toContain('"type":"null"');
+    expect(branches[0]?.properties).not.toHaveProperty("command");
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
         "select affordanceId as the exact ID of one current commandKnowledge rule",
@@ -234,11 +256,34 @@ describe("OpenAiChainedProvider", () => {
       ),
     });
     expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "select only slot value IDs currently allowed by commandKnowledge",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "Return slots: [] for a zero-slot rule",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "check out one observed object selects grammar.examine",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining("Never write parser command text"),
+    });
+    expect(requestBody).toMatchObject({
       instructions: expect.stringContaining("Return one action only"),
     });
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
-        "do not execute a command merely mentioned",
+        "direct player question asking to observe or describe",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "Do not execute an action merely quoted",
       ),
     });
     expect(JSON.stringify(requestBody)).not.toContain(testKey);
@@ -263,6 +308,37 @@ describe("OpenAiChainedProvider", () => {
       },
     },
   ])("normalizes the $name decision branch", async ({ decision }) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ decision }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).resolves.toEqual(decision);
+  });
+
+  it("normalizes one observed-object slot without parser command text", async () => {
+    const decision = {
+      kind: "execute",
+      affordanceId: "grammar.examine",
+      slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+      intentSummary: "Observe the mailbox more closely",
+      confidence: 0.98,
+    } as const;
     const provider = new OpenAiChainedProvider({
       apiKey: testKey,
       fetch: async () =>
@@ -512,11 +588,11 @@ describe("OpenAiChainedProvider", () => {
                   text: JSON.stringify({
                     decision: {
                       kind: "execute",
-                      command: "north",
                       affordanceId: "grammar.direction.north",
+                      slots: [],
                       intentSummary: "Move north",
                       confidence: 0.97,
-                      commands: ["north", "south"],
+                      command: "north",
                     },
                   }),
                 },
@@ -540,7 +616,7 @@ describe("OpenAiChainedProvider", () => {
       name: "missing affordance ID",
       decision: {
         kind: "execute",
-        command: "north",
+        slots: [],
         intentSummary: "Move north",
         confidence: 0.97,
       },
@@ -549,8 +625,8 @@ describe("OpenAiChainedProvider", () => {
       name: "empty affordance ID",
       decision: {
         kind: "execute",
-        command: "north",
         affordanceId: "",
+        slots: [],
         intentSummary: "Move north",
         confidence: 0.97,
       },
@@ -559,13 +635,88 @@ describe("OpenAiChainedProvider", () => {
       name: "oversized affordance ID",
       decision: {
         kind: "execute",
-        command: "north",
         affordanceId: "a".repeat(161),
+        slots: [],
         intentSummary: "Move north",
         confidence: 0.97,
       },
     },
   ])("rejects an execute decision with a $name", async ({ decision }) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ decision }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).rejects.toMatchObject({
+      name: "ProviderAdapterError",
+      code: "malformed-response",
+    });
+  });
+
+  it.each([
+    { name: "missing slots", slots: undefined },
+    {
+      name: "more than one slot",
+      slots: [
+        { slotId: "object", valueId: "observed-object:mailbox" },
+        { slotId: "object", valueId: "observed-object:leaflet" },
+      ],
+    },
+    { name: "non-object slot", slots: ["observed-object:mailbox"] },
+    {
+      name: "extra slot field",
+      slots: [
+        {
+          slotId: "object",
+          valueId: "observed-object:mailbox",
+          label: "mailbox",
+        },
+      ],
+    },
+    {
+      name: "unknown slot identifier",
+      slots: [{ slotId: "destination", valueId: "observed-object:mailbox" }],
+    },
+    { name: "missing value identifier", slots: [{ slotId: "object" }] },
+    {
+      name: "empty value identifier",
+      slots: [{ slotId: "object", valueId: "" }],
+    },
+    {
+      name: "blank value identifier",
+      slots: [{ slotId: "object", valueId: "   " }],
+    },
+    {
+      name: "controlled value identifier",
+      slots: [{ slotId: "object", valueId: "observed-object:mailbox\nopen" }],
+    },
+    {
+      name: "oversized value identifier",
+      slots: [{ slotId: "object", valueId: "a".repeat(161) }],
+    },
+  ])("rejects an execute decision with $name", async ({ slots }) => {
+    const decision = {
+      kind: "execute",
+      affordanceId: "grammar.examine",
+      ...(slots === undefined ? {} : { slots }),
+      intentSummary: "Observe one object",
+      confidence: 0.97,
+    };
     const provider = new OpenAiChainedProvider({
       apiKey: testKey,
       fetch: async () =>

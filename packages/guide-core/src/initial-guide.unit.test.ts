@@ -68,8 +68,8 @@ describe("initial bounded Dungeon Guide", () => {
       const result = await decideInitialGuideTurn(
         FakeGuideModel.returning({
           kind: "execute",
-          command,
           affordanceId,
+          slots: [],
           intentSummary: "Resolve one global observation",
           confidence: 0.99,
         }),
@@ -84,48 +84,180 @@ describe("initial bounded Dungeon Guide", () => {
       });
       if (result.kind === "execute") {
         expect(result.decision).not.toHaveProperty("affordanceId");
+        expect(result.decision).not.toHaveProperty("slots");
+      }
+    },
+  );
+
+  it.each(["What does the mailbox look like?", "Let's check out the mailbox."])(
+    "semantically examines the explicitly mentioned observed mailbox in %s",
+    async (playerUtterance) => {
+      const result = await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          affordanceId: "grammar.examine",
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:mailbox",
+            },
+          ],
+          intentSummary: "Observe the mailbox more closely",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["door", "mailbox"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "execute",
+        command: "examine mailbox",
+        groundingSourceId: "grammar.examine",
+        decision: {
+          kind: "execute",
+          command: "examine mailbox",
+          intentSummary: "Observe the mailbox more closely",
+          confidence: 0.99,
+        },
+      });
+      if (result.kind === "execute") {
+        expect(result.decision).not.toHaveProperty("affordanceId");
+        expect(result.decision).not.toHaveProperty("slots");
       }
     },
   );
 
   it.each([
     {
-      name: "mismatched command",
-      playerUtterance: "Tell me where I am.",
-      command: "north",
-      affordanceId: "grammar.look",
+      name: "low-confidence transcript",
+      input: {
+        ...baseInput,
+        playerUtterance: "What does the mailbox look like?",
+        transcriptConfidence: 0.4,
+        observedObjects: ["mailbox"],
+      },
     },
     {
-      name: "mismatched affordance",
-      playerUtterance: "Tell me where I am.",
-      command: "look",
-      affordanceId: "grammar.direction.north",
+      name: "negated request",
+      input: {
+        ...baseInput,
+        playerUtterance: "Do not check out the mailbox.",
+        observedObjects: ["mailbox"],
+      },
     },
+    {
+      name: "multi-step request",
+      input: {
+        ...baseInput,
+        playerUtterance: "Check out the mailbox, then open it.",
+        observedObjects: ["mailbox"],
+      },
+    },
+  ])(
+    "clarifies a $name before requesting a semantic examine decision",
+    async ({ input }) => {
+      const model = FakeGuideModel.returning({
+        kind: "execute",
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+        intentSummary: "Observe the mailbox more closely",
+        confidence: 0.99,
+      });
+
+      expect(await decideInitialGuideTurn(model, input, signal)).toMatchObject({
+        kind: "clarify",
+      });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("clarifies a low-confidence semantic examine decision", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "execute",
+      affordanceId: "grammar.examine",
+      slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+      intentSummary: "Observe the mailbox more closely",
+      confidence: 0.5,
+    });
+
+    expect(
+      await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "What does the mailbox look like?",
+          observedObjects: ["mailbox"],
+        },
+        signal,
+      ),
+    ).toMatchObject({ kind: "clarify" });
+    expect(model.calls).toBe(1);
+  });
+
+  it.each([
     {
       name: "unknown affordance",
       playerUtterance: "Tell me where I am.",
-      command: "look",
       affordanceId: "grammar.unknown",
+      slots: [],
     },
     {
-      name: "higher-risk semantic bypass",
-      playerUtterance: "Please reveal the mailbox.",
-      command: "open mailbox",
+      name: "wrong action for an appearance request",
+      playerUtterance: "What does the mailbox look like?",
       affordanceId: "grammar.open",
+      slots: [
+        { slotId: "object" as const, valueId: "observed-object:mailbox" },
+      ],
+    },
+    {
+      name: "wrong mutating action for an appearance request",
+      playerUtterance: "Let's check out the mailbox.",
+      affordanceId: "grammar.take",
+      slots: [
+        { slotId: "object" as const, valueId: "observed-object:mailbox" },
+      ],
+    },
+    {
+      name: "wrong observed object",
+      playerUtterance: "What does the mailbox look like?",
+      affordanceId: "grammar.examine",
+      slots: [{ slotId: "object" as const, valueId: "observed-object:door" }],
+    },
+    {
+      name: "unobserved object",
+      playerUtterance: "What does the sword look like?",
+      affordanceId: "grammar.examine",
+      slots: [{ slotId: "object" as const, valueId: "observed-object:sword" }],
+    },
+    {
+      name: "higher-risk nonlexical bypass",
+      playerUtterance: "Please reveal the mailbox.",
+      affordanceId: "grammar.open",
+      slots: [
+        { slotId: "object" as const, valueId: "observed-object:mailbox" },
+      ],
     },
   ])(
     "rejects $name without lexical authorization",
-    async ({ playerUtterance, command, affordanceId }) => {
+    async ({ playerUtterance, affordanceId, slots }) => {
       expect(
         await decideInitialGuideTurn(
           FakeGuideModel.returning({
             kind: "execute",
-            command,
             affordanceId,
+            slots,
             intentSummary: "Unsafe semantic proposal",
             confidence: 0.99,
           }),
-          { ...baseInput, playerUtterance, observedObjects: ["mailbox"] },
+          {
+            ...baseInput,
+            playerUtterance,
+            observedObjects: ["door", "mailbox"],
+          },
           signal,
         ),
       ).toMatchObject({ kind: "rejected", cause: "ungrounded-command" });
@@ -133,17 +265,22 @@ describe("initial bounded Dungeon Guide", () => {
   );
 
   it.each([
-    ["go north", "north", "grammar.direction.north"],
-    ["open the mailbox", "open mailbox", "grammar.open"],
+    ["go north", "north", "grammar.direction.north", []],
+    [
+      "open the mailbox",
+      "open mailbox",
+      "grammar.open",
+      [{ slotId: "object", valueId: "observed-object:mailbox" }],
+    ],
   ])(
     "retains lexical grounding for the higher-risk request %s",
-    async (playerUtterance, command, affordanceId) => {
+    async (playerUtterance, command, affordanceId, slots) => {
       expect(
         await decideInitialGuideTurn(
           FakeGuideModel.returning({
             kind: "execute",
-            command,
             affordanceId,
+            slots,
             intentSummary: "Perform the explicitly requested action",
             confidence: 0.99,
           }),
@@ -166,8 +303,8 @@ describe("initial bounded Dungeon Guide", () => {
     async (playerUtterance) => {
       const model = FakeGuideModel.returning({
         kind: "execute",
-        command: "look",
         affordanceId: "grammar.look",
+        slots: [],
         intentSummary: "Observe the location",
         confidence: 0.99,
       });
@@ -187,8 +324,8 @@ describe("initial bounded Dungeon Guide", () => {
       await decideInitialGuideTurn(
         FakeGuideModel.returning({
           kind: "execute",
-          command: "look",
           affordanceId: "grammar.look",
+          slots: [],
           intentSummary: "Observe the location",
           confidence: 0.5,
         }),

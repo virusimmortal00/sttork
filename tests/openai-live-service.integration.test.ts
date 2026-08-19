@@ -39,8 +39,8 @@ class FakeProvider implements OpenAiLiveProviderPort {
       return {
         decision: {
           kind: "execute",
-          command: "north",
           affordanceId: "grammar.direction.north",
+          slots: [],
           intentSummary: "Move north",
           confidence: 0.98,
         },
@@ -259,8 +259,8 @@ describe("OpenAI local live service", () => {
     expect(await response.json()).toEqual({
       decision: {
         kind: "execute",
-        command: "north",
         affordanceId: "grammar.direction.north",
+        slots: [],
         intentSummary: "Move north",
         confidence: 0.98,
       },
@@ -270,7 +270,23 @@ describe("OpenAI local live service", () => {
       expect.objectContaining({
         interactionId: "live-1",
         observedObjects: ["token"],
-        knowledge: expect.objectContaining({ observedObjects: ["token"] }),
+        knowledge: expect.objectContaining({
+          observedObjects: ["token"],
+          observedObjectOptions: [
+            { id: "observed-object:token", label: "token" },
+          ],
+          rules: expect.arrayContaining([
+            expect.objectContaining({
+              id: "grammar.examine",
+              slots: [
+                {
+                  slotId: "object",
+                  allowedValueIds: ["observed-object:token"],
+                },
+              ],
+            }),
+          ]),
+        }),
       }),
       expect.any(AbortSignal),
     );
@@ -403,8 +419,8 @@ describe("OpenAI local live service", () => {
     provider.decideWithUsage.mockResolvedValueOnce({
       decision: {
         kind: "execute",
-        command: "look",
         affordanceId: "",
+        slots: [],
         intentSummary: "Observe the location",
         confidence: 0.99,
       },

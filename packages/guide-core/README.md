@@ -6,11 +6,13 @@ remains `unknown` until it passes the strict union validator. The initial guide
 can authorize one grounded command, clarify, or generate deterministic parser
 help; all other paths fail closed.
 
-The live model proposal also carries provider-only affordance metadata. Guide
-core resolves that metadata against current command knowledge, rejects unknown
-or mismatched IDs, and strips it before producing the replayable canonical guide
-decision. The first risk-tiered semantic fallback is limited to global
-observation; it does not relax navigation or object-action grounding.
+The live model proposal carries only provider-side affordance and slot metadata,
+not parser text. Guide core resolves that frame against current command
+knowledge, rejects unknown or mismatched IDs, locally compiles one command, and
+strips the metadata before producing the replayable canonical guide decision.
+Risk-tiered semantic fallback covers global observation and `examine` of one
+explicitly named observed object; it does not relax navigation or state-changing
+object actions.
 
 The package cannot access or mutate Z-machine memory directly. Execution is a
 typed result for a later coordinator to submit through the authoritative engine

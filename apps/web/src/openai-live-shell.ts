@@ -464,7 +464,7 @@ async function run(): Promise<void> {
     playback,
     nextInteractionId: () => `interaction-${++interactionId}`,
     nextCaptureId: () => `capture-${++captureId}`,
-    observedObjects: () => observedObjectProjection.observedObjects,
+    observedObjects: () => observedObjectProjection.currentObjects,
     onState: (state: VoiceAudioState) => {
       applyVoiceStatePresentation(
         state,

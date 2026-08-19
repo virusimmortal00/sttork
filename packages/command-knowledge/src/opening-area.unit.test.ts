@@ -7,8 +7,9 @@ import {
   groundObservedObjectContentQuestion,
   groundPendingOpeningObjectReply,
   inferPendingOpeningObjectIntent,
+  openingObjectSelectionMentioned,
   openingCommandHelp,
-  resolveOpeningAffordanceCommand,
+  resolveOpeningCommandIntent,
 } from "./opening-area.js";
 
 describe("opening-area command knowledge", () => {
@@ -52,9 +53,12 @@ describe("opening-area command knowledge", () => {
     ).toEqual({ ok: false, code: "unsupported-grammar" });
   });
 
-  it("resolves only locally described affordances and marks the semantic tier", () => {
+  it("compiles zero-slot and observed-object intents under local risk policy", () => {
     expect(
-      resolveOpeningAffordanceCommand("look", "grammar.look", knowledge),
+      resolveOpeningCommandIntent(
+        { affordanceId: "grammar.look", slots: [] },
+        knowledge,
+      ),
     ).toEqual({
       ok: true,
       command: "look",
@@ -63,9 +67,8 @@ describe("opening-area command knowledge", () => {
       semanticFallbackAllowed: true,
     });
     expect(
-      resolveOpeningAffordanceCommand(
-        "inventory",
-        "grammar.inventory",
+      resolveOpeningCommandIntent(
+        { affordanceId: "grammar.inventory", slots: [] },
         knowledge,
       ),
     ).toEqual({
@@ -76,9 +79,30 @@ describe("opening-area command knowledge", () => {
       semanticFallbackAllowed: true,
     });
     expect(
-      resolveOpeningAffordanceCommand(
-        "open mailbox",
-        "grammar.open",
+      resolveOpeningCommandIntent(
+        {
+          affordanceId: "grammar.examine",
+          slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+        },
+        knowledge,
+      ),
+    ).toEqual({
+      ok: true,
+      command: "examine mailbox",
+      ruleId: "grammar.examine",
+      riskTier: 2,
+      semanticFallbackAllowed: true,
+      selectedObject: {
+        id: "observed-object:mailbox",
+        label: "mailbox",
+      },
+    });
+    expect(
+      resolveOpeningCommandIntent(
+        {
+          affordanceId: "grammar.open",
+          slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+        },
         knowledge,
       ),
     ).toMatchObject({
@@ -90,14 +114,114 @@ describe("opening-area command knowledge", () => {
   });
 
   it.each([
-    ["look", "grammar.direction.north", "affordance-command-mismatch"],
-    ["north", "grammar.look", "affordance-command-mismatch"],
-    ["look", "grammar.unknown", "unknown-affordance"],
-    ["take sword", "grammar.take", "unobserved-object"],
-  ])("rejects command %s for affordance %s", (command, affordanceId, code) => {
+    {
+      name: "missing object slot",
+      intent: { affordanceId: "grammar.examine", slots: [] },
+      code: "missing-slot",
+    },
+    {
+      name: "extra object slot",
+      intent: {
+        affordanceId: "grammar.examine",
+        slots: [
+          { slotId: "object", valueId: "observed-object:mailbox" },
+          { slotId: "object", valueId: "observed-object:brass token" },
+        ],
+      },
+      code: "unexpected-slot",
+    },
+    {
+      name: "slot on a zero-slot rule",
+      intent: {
+        affordanceId: "grammar.look",
+        slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+      },
+      code: "unexpected-slot",
+    },
+    {
+      name: "unknown slot ID",
+      intent: {
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "direction", valueId: "observed-object:mailbox" }],
+      },
+      code: "unexpected-slot",
+    },
+    {
+      name: "unobserved value ID",
+      intent: {
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "observed-object:sword" }],
+      },
+      code: "unknown-slot-value",
+    },
+    {
+      name: "unknown affordance",
+      intent: { affordanceId: "grammar.unknown", slots: [] },
+      code: "unknown-affordance",
+    },
+    {
+      name: "extra intent field",
+      intent: { affordanceId: "grammar.look", slots: [], command: "look" },
+      code: "invalid-intent",
+    },
+    {
+      name: "extra slot field",
+      intent: {
+        affordanceId: "grammar.examine",
+        slots: [
+          {
+            slotId: "object",
+            valueId: "observed-object:mailbox",
+            label: "mailbox",
+          },
+        ],
+      },
+      code: "unexpected-slot",
+    },
+  ])("rejects an intent with $name", ({ intent, code }) => {
+    expect(resolveOpeningCommandIntent(intent, knowledge)).toEqual({
+      ok: false,
+      code,
+    });
+  });
+
+  it("verifies that the selected observed-object label is explicit in the utterance", () => {
+    const resolved = resolveOpeningCommandIntent(
+      {
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+      },
+      knowledge,
+    );
+    expect(resolved).toMatchObject({ ok: true });
+    if (!resolved.ok || resolved.selectedObject === undefined) {
+      throw new Error("Expected one selected observed object.");
+    }
+
     expect(
-      resolveOpeningAffordanceCommand(command, affordanceId, knowledge),
-    ).toEqual({ ok: false, code });
+      openingObjectSelectionMentioned(
+        resolved.selectedObject,
+        "What does the mailbox look like?",
+      ),
+    ).toBe(true);
+    expect(
+      openingObjectSelectionMentioned(
+        resolved.selectedObject,
+        "Let's check out MAILBOX.",
+      ),
+    ).toBe(true);
+    expect(
+      openingObjectSelectionMentioned(
+        resolved.selectedObject,
+        "Let's check out the house.",
+      ),
+    ).toBe(false);
+    expect(
+      openingObjectSelectionMentioned(
+        resolved.selectedObject,
+        "What do the mailboxes look like?",
+      ),
+    ).toBe(false);
   });
 
   it.each([
@@ -210,15 +334,42 @@ describe("opening-area command knowledge", () => {
     expect(Object.isFrozen(knowledge)).toBe(true);
     expect(Object.isFrozen(knowledge.rules)).toBe(true);
     expect(Object.isFrozen(knowledge.observedObjects)).toBe(true);
+    expect(Object.isFrozen(knowledge.observedObjectOptions)).toBe(true);
     expect(knowledge.version).toBe(OPENING_AREA_KNOWLEDGE_VERSION);
-    expect(knowledge.version).toBe(5);
+    expect(knowledge.version).toBe(6);
+    expect(knowledge.observedObjectOptions).toEqual([
+      {
+        id: "observed-object:brass token",
+        label: "brass token",
+      },
+      { id: "observed-object:mailbox", label: "mailbox" },
+    ]);
     expect(
       knowledge.rules.find((rule) => rule.id === "grammar.look"),
     ).toMatchObject({
       semanticDescription: expect.any(String),
       riskTier: 1,
       semanticFallbackAllowed: true,
+      slots: [],
     });
+    const examine = knowledge.rules.find(
+      (rule) => rule.id === "grammar.examine",
+    );
+    expect(examine).toMatchObject({
+      riskTier: 2,
+      semanticFallbackAllowed: true,
+      slots: [
+        {
+          slotId: "object",
+          allowedValueIds: [
+            "observed-object:brass token",
+            "observed-object:mailbox",
+          ],
+        },
+      ],
+    });
+    expect(Object.isFrozen(examine?.slots)).toBe(true);
+    expect(Object.isFrozen(examine?.slots[0]?.allowedValueIds)).toBe(true);
     expect(
       knowledge.rules.find((rule) => rule.id === "grammar.look")?.aliases,
     ).not.toContain("tell me where i am");
@@ -229,6 +380,7 @@ describe("opening-area command knowledge", () => {
     ).toEqual([
       ["grammar.look", 1],
       ["grammar.inventory", 1],
+      ["grammar.examine", 2],
     ]);
   });
 

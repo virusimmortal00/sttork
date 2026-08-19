@@ -231,10 +231,16 @@ valid paraphrase. Per
 [ADR-0012](adr/0012-structured-semantic-command-intents.md), the provider-facing
 guide selects a bounded affordance ID and typed slots from the current index.
 Command knowledge validates those IDs, observed referents, revision, and local
-risk tier, then compiles the canonical parser string. During the compatibility
-slice, only certified global observations may use this semantic lane; other
-actions retain lexical grounding until their slot and confirmation contracts
-land.
+risk tier, then compiles the canonical parser string. The current live lane
+admits certified global observations and T2 examination of one explicitly named
+observed object. Navigation and state-changing actions retain lexical grounding
+until their contextual and confirmation contracts land.
+
+The current affordance index is narrower than observed-memory history. A
+committed movement invalidates the prior scene's object slots when its engine
+output arrives, while historical observations remain available for bounded
+memory and explanation. Reviewed disclosures in later authenticated engine
+output repopulate the current slot set.
 
 The normal guide context never includes the complete object table, map, puzzle
 solutions, or engine memory. `inspectPublicState` exposes only supported public

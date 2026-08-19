@@ -3,9 +3,13 @@ import {
   type CanonicalCommand,
 } from "../../contracts/src/index.js";
 
-export const OPENING_AREA_KNOWLEDGE_VERSION = 5;
+export const OPENING_AREA_KNOWLEDGE_VERSION = 6;
 export const MAX_OBSERVED_OBJECTS = 32;
 export const MAX_OBSERVED_OBJECT_LENGTH = 80;
+export const OBSERVED_OBJECT_VALUE_ID_PREFIX = "observed-object:";
+export const MAX_OBSERVED_OBJECT_VALUE_ID_LENGTH =
+  OBSERVED_OBJECT_VALUE_ID_PREFIX.length + MAX_OBSERVED_OBJECT_LENGTH;
+export const OPENING_OBJECT_SLOT_ID = "object";
 
 export type OpeningCommandVerb =
   | "look"
@@ -27,6 +31,26 @@ export interface PendingOpeningObjectIntent {
   readonly action: PendingOpeningObjectAction;
 }
 
+export interface OpeningObservedObjectOption {
+  readonly id: string;
+  readonly label: string;
+}
+
+export interface OpeningCommandSlotDefinition {
+  readonly slotId: typeof OPENING_OBJECT_SLOT_ID;
+  readonly allowedValueIds: readonly string[];
+}
+
+export interface OpeningCommandIntentSlot {
+  readonly slotId: string;
+  readonly valueId: string;
+}
+
+export interface OpeningCommandIntent {
+  readonly affordanceId: string;
+  readonly slots: readonly OpeningCommandIntentSlot[];
+}
+
 export interface OpeningCommandRule {
   readonly id: string;
   readonly verb: OpeningCommandVerb;
@@ -36,12 +60,14 @@ export interface OpeningCommandRule {
   readonly semanticDescription: string;
   readonly riskTier: 1 | 2 | 3;
   readonly semanticFallbackAllowed: boolean;
+  readonly slots: readonly OpeningCommandSlotDefinition[];
 }
 
 export interface OpeningCommandKnowledge {
   readonly version: typeof OPENING_AREA_KNOWLEDGE_VERSION;
   readonly rules: readonly OpeningCommandRule[];
   readonly observedObjects: readonly string[];
+  readonly observedObjectOptions: readonly OpeningObservedObjectOption[];
   readonly sourceIds: readonly string[];
 }
 
@@ -51,7 +77,10 @@ export type CommandGroundingFailureCode =
   | "unobserved-object"
   | "not-grounded-in-utterance"
   | "unknown-affordance"
-  | "affordance-command-mismatch";
+  | "invalid-intent"
+  | "missing-slot"
+  | "unexpected-slot"
+  | "unknown-slot-value";
 
 export type CommandGroundingResult =
   | {
@@ -64,20 +93,23 @@ export type CommandGroundingResult =
       readonly code: CommandGroundingFailureCode;
     };
 
-export type OpeningAffordanceResolution =
+export type OpeningCommandIntentResolution =
   | {
       readonly ok: true;
       readonly command: CanonicalCommand;
       readonly ruleId: string;
       readonly riskTier: 1 | 2 | 3;
       readonly semanticFallbackAllowed: boolean;
+      readonly selectedObject?: OpeningObservedObjectOption;
     }
   | {
       readonly ok: false;
       readonly code: CommandGroundingFailureCode;
     };
 
-const RULES: readonly OpeningCommandRule[] = [
+type OpeningCommandRuleTemplate = Omit<OpeningCommandRule, "slots">;
+
+const RULES: readonly OpeningCommandRuleTemplate[] = [
   {
     id: "grammar.look",
     verb: "look",
@@ -105,7 +137,7 @@ const RULES: readonly OpeningCommandRule[] = [
     semanticFallbackAllowed: true,
   },
   ...(["north", "south", "east", "west", "up", "down"] as const).map(
-    (direction): OpeningCommandRule => ({
+    (direction): OpeningCommandRuleTemplate => ({
       id: `grammar.direction.${direction}`,
       verb: direction,
       aliases: [direction, `go ${direction}`, `head ${direction}`],
@@ -124,7 +156,7 @@ const RULES: readonly OpeningCommandRule[] = [
     grammar: "examine <observed object>",
     semanticDescription: "Observe one currently observed object more closely.",
     riskTier: 2,
-    semanticFallbackAllowed: false,
+    semanticFallbackAllowed: true,
   },
   {
     id: "grammar.open",
@@ -265,25 +297,53 @@ export function createOpeningCommandKnowledge(input: {
               "Observed object names must be bounded strings.",
             );
           }
-          return stripArticle(normalizeWords(object));
+          const normalized = stripArticle(normalizeWords(object));
+          if (normalized.length > MAX_OBSERVED_OBJECT_LENGTH) {
+            throw new TypeError(
+              "Normalized observed object names must remain bounded.",
+            );
+          }
+          return normalized;
         })
         .filter((object) => object.length > 0),
     ),
   ].sort();
 
-  const rules = RULES.map((rule) =>
-    Object.freeze({ ...rule, aliases: Object.freeze([...rule.aliases]) }),
+  const observedObjectOptions = observedObjects.map((label) =>
+    Object.freeze({
+      id: `${OBSERVED_OBJECT_VALUE_ID_PREFIX}${label}`,
+      label,
+    }),
   );
+  const allowedObjectValueIds = Object.freeze(
+    observedObjectOptions.map((option) => option.id),
+  );
+  const rules = RULES.map((rule) => {
+    const slots: readonly OpeningCommandSlotDefinition[] = rule.objectRequired
+      ? Object.freeze([
+          Object.freeze({
+            slotId: OPENING_OBJECT_SLOT_ID,
+            allowedValueIds: allowedObjectValueIds,
+          }),
+        ])
+      : Object.freeze([]);
+    return Object.freeze({
+      ...rule,
+      aliases: Object.freeze([...rule.aliases]),
+      slots,
+    });
+  });
   return Object.freeze({
     version: OPENING_AREA_KNOWLEDGE_VERSION,
     rules: Object.freeze(rules),
     observedObjects: Object.freeze(observedObjects),
+    observedObjectOptions: Object.freeze(observedObjectOptions),
     sourceIds: Object.freeze(RULES.map((rule) => rule.id)),
   });
 }
 
 function findRule(command: string): {
-  readonly rule: OpeningCommandRule;
+  readonly rule: OpeningCommandRuleTemplate;
   readonly object: string;
 } | null {
   for (const rule of RULES) {
@@ -329,35 +389,139 @@ function compileParsedOpeningCommand(
   };
 }
 
-export function resolveOpeningAffordanceCommand(
-  proposedCommand: unknown,
-  affordanceId: unknown,
+function exactObjectKeys(
+  value: object,
+  expectedKeys: readonly string[],
+): boolean {
+  const keys = Reflect.ownKeys(value);
+  return (
+    keys.length === expectedKeys.length &&
+    keys.every((key) => typeof key === "string" && expectedKeys.includes(key))
+  );
+}
+
+function validIntentIdentifier(
+  value: unknown,
+  maximum: number,
+): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maximum &&
+    !/\p{Cc}/u.test(value)
+  );
+}
+
+export function resolveOpeningCommandIntent(
+  intent: unknown,
   knowledge: OpeningCommandKnowledge,
-): OpeningAffordanceResolution {
-  if (typeof affordanceId !== "string") {
-    return { ok: false, code: "unknown-affordance" };
-  }
-  const selectedRule = RULES.find((rule) => rule.id === affordanceId);
+): OpeningCommandIntentResolution {
   if (
+    typeof intent !== "object" ||
+    intent === null ||
+    Array.isArray(intent) ||
+    !exactObjectKeys(intent, ["affordanceId", "slots"])
+  ) {
+    return { ok: false, code: "invalid-intent" };
+  }
+  const affordanceId = Reflect.get(intent, "affordanceId") as unknown;
+  const slots = Reflect.get(intent, "slots") as unknown;
+  if (!validIntentIdentifier(affordanceId, 160) || !Array.isArray(slots)) {
+    return { ok: false, code: "invalid-intent" };
+  }
+
+  const rulePolicy = RULES.find((rule) => rule.id === affordanceId);
+  const selectedRule = knowledge.rules.find((rule) => rule.id === affordanceId);
+  if (
+    rulePolicy === undefined ||
     selectedRule === undefined ||
-    !knowledge.sourceIds.includes(selectedRule.id)
+    !knowledge.sourceIds.includes(rulePolicy.id)
   ) {
     return { ok: false, code: "unknown-affordance" };
   }
 
-  const candidate = canonicalizeCommand(proposedCommand);
-  const parsed = findRule(normalizeWords(candidate));
-  if (parsed === null || parsed.rule.id !== selectedRule.id) {
-    return { ok: false, code: "affordance-command-mismatch" };
+  if (!rulePolicy.objectRequired) {
+    if (slots.length !== 0) {
+      return { ok: false, code: "unexpected-slot" };
+    }
+    return {
+      ok: true,
+      command: canonicalizeCommand(rulePolicy.verb),
+      ruleId: rulePolicy.id,
+      riskTier: rulePolicy.riskTier,
+      semanticFallbackAllowed: rulePolicy.semanticFallbackAllowed,
+    };
   }
 
-  const compiled = compileParsedOpeningCommand(parsed, knowledge);
-  if (!compiled.ok) return compiled;
+  if (slots.length === 0) {
+    return { ok: false, code: "missing-slot" };
+  }
+  if (slots.length > 1) {
+    return { ok: false, code: "unexpected-slot" };
+  }
+  const slot = slots[0];
+  if (
+    typeof slot !== "object" ||
+    slot === null ||
+    Array.isArray(slot) ||
+    !exactObjectKeys(slot, ["slotId", "valueId"])
+  ) {
+    return { ok: false, code: "unexpected-slot" };
+  }
+  const slotId = Reflect.get(slot, "slotId") as unknown;
+  const valueId = Reflect.get(slot, "valueId") as unknown;
+  const definition = selectedRule.slots[0];
+  if (
+    selectedRule.slots.length !== 1 ||
+    definition === undefined ||
+    slotId !== definition.slotId
+  ) {
+    return { ok: false, code: "unexpected-slot" };
+  }
+  if (
+    !validIntentIdentifier(valueId, MAX_OBSERVED_OBJECT_VALUE_ID_LENGTH) ||
+    !definition.allowedValueIds.includes(valueId)
+  ) {
+    return { ok: false, code: "unknown-slot-value" };
+  }
+  const selectedObject = knowledge.observedObjectOptions.find(
+    (option) => option.id === valueId,
+  );
+  if (selectedObject === undefined) {
+    return { ok: false, code: "unknown-slot-value" };
+  }
+
   return {
-    ...compiled,
-    riskTier: selectedRule.riskTier,
-    semanticFallbackAllowed: selectedRule.semanticFallbackAllowed,
+    ok: true,
+    command: canonicalizeCommand(`${rulePolicy.verb} ${selectedObject.label}`),
+    ruleId: rulePolicy.id,
+    riskTier: rulePolicy.riskTier,
+    semanticFallbackAllowed: rulePolicy.semanticFallbackAllowed,
+    selectedObject,
   };
+}
+
+export function openingObjectSelectionMentioned(
+  selectedObject: OpeningObservedObjectOption,
+  playerUtterance: string,
+): boolean {
+  if (
+    typeof selectedObject !== "object" ||
+    selectedObject === null ||
+    !exactObjectKeys(selectedObject, ["id", "label"]) ||
+    !validIntentIdentifier(
+      selectedObject.id,
+      MAX_OBSERVED_OBJECT_VALUE_ID_LENGTH,
+    ) ||
+    typeof selectedObject.label !== "string" ||
+    typeof playerUtterance !== "string"
+  ) {
+    return false;
+  }
+  const label = stripArticle(normalizeWords(selectedObject.label));
+  return (
+    label.length > 0 && includesPhrase(normalizeWords(playerUtterance), label)
+  );
 }
 
 export function groundOpeningCommand(
