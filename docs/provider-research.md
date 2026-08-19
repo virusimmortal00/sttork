@@ -66,7 +66,8 @@ therefore evaluates these explicit server-side capabilities without changing the
 settled OpenRouter-first or optional-Realtime delivery milestones:
 
 - transcription: `gpt-4o-mini-transcribe`;
-- schema-constrained initial guide: pinned `gpt-4o-mini-2024-07-18`;
+- schema-constrained initial guide: `gpt-5.6-luna` with reasoning disabled for
+  the bounded intent-classification decision;
 - narration: `tts-1`, avoiding the now-deprecated GPT-4o mini TTS model.
 
 The profile is dated configuration for a budget-limited smoke, not a promoted
@@ -75,7 +76,7 @@ tests, and keeps the deployment API key on the server. Current OpenAI model
 catalog and pricing must be rechecked before every live run.
 
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
-- [GPT-4o mini model and pinned snapshot](https://developers.openai.com/api/docs/models/gpt-4o-mini)
+- [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
 - [Current model catalog](https://developers.openai.com/api/docs/models)
 
 Use the current supported mini-class model that passes the shared evaluations;

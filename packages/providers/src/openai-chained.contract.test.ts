@@ -93,6 +93,12 @@ describe("OpenAiChainedProvider", () => {
                     command: "north",
                     intentSummary: "Move north",
                     confidence: 0.97,
+                    question: null,
+                    ambiguity: null,
+                    response: null,
+                    basis: null,
+                    sourceIds: null,
+                    reason: null,
                   }),
                 },
               ],
@@ -124,18 +130,24 @@ describe("OpenAiChainedProvider", () => {
       }),
     });
     expect(requestBody).toMatchObject({
-      model: "gpt-4o-mini-2024-07-18",
+      model: "gpt-5.6-luna",
       store: false,
       max_output_tokens: 300,
+      reasoning: { effort: "none" },
       text: {
         format: {
           type: "json_schema",
           name: "initial_guide_decision",
           strict: true,
-          schema: { type: "object", anyOf: expect.any(Array) },
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            required: expect.arrayContaining(["kind", "reason"]),
+          },
         },
       },
     });
+    expect(JSON.stringify(requestBody)).not.toContain('"const"');
     expect(JSON.stringify(requestBody)).not.toContain(testKey);
   });
 

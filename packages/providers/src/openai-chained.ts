@@ -14,7 +14,7 @@ import {
 export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
   provider: "openai" as const,
   transcriptionModel: "gpt-4o-mini-transcribe",
-  guideModel: "gpt-4o-mini-2024-07-18",
+  guideModel: "gpt-5.6-luna",
   narrationModel: "tts-1",
   guideMaxOutputTokens: 300,
   maxRequests: 12,
@@ -45,52 +45,75 @@ export interface OpenAiChainedProviderOptions {
 
 const guideDecisionSchema = {
   type: "object",
-  anyOf: [
-    {
-      type: "object",
-      additionalProperties: false,
-      required: ["kind", "command", "intentSummary", "confidence"],
-      properties: {
-        kind: { const: "execute" },
-        command: { type: "string", minLength: 1, maxLength: 160 },
-        intentSummary: { type: "string", minLength: 1, maxLength: 240 },
-        confidence: { type: "number", minimum: 0, maximum: 1 },
-      },
+  additionalProperties: false,
+  required: [
+    "kind",
+    "command",
+    "intentSummary",
+    "confidence",
+    "question",
+    "ambiguity",
+    "response",
+    "basis",
+    "sourceIds",
+    "reason",
+  ],
+  properties: {
+    kind: {
+      type: "string",
+      enum: ["execute", "clarify", "explain", "cannot_comply"],
     },
-    {
-      type: "object",
-      additionalProperties: false,
-      required: ["kind", "question", "ambiguity"],
-      properties: {
-        kind: { const: "clarify" },
-        question: { type: "string", minLength: 1, maxLength: 500 },
-        ambiguity: { type: "string", minLength: 1, maxLength: 500 },
-      },
+    command: {
+      anyOf: [
+        { type: "string", minLength: 1, maxLength: 160 },
+        { type: "null" },
+      ],
     },
-    {
-      type: "object",
-      additionalProperties: false,
-      required: ["kind", "response", "basis", "sourceIds"],
-      properties: {
-        kind: { const: "explain" },
-        response: { type: "string", minLength: 1, maxLength: 1_000 },
-        basis: { const: "command-help" },
-        sourceIds: {
+    intentSummary: {
+      anyOf: [
+        { type: "string", minLength: 1, maxLength: 240 },
+        { type: "null" },
+      ],
+    },
+    confidence: {
+      anyOf: [{ type: "number", minimum: 0, maximum: 1 }, { type: "null" }],
+    },
+    question: {
+      anyOf: [
+        { type: "string", minLength: 1, maxLength: 500 },
+        { type: "null" },
+      ],
+    },
+    ambiguity: {
+      anyOf: [
+        { type: "string", minLength: 1, maxLength: 500 },
+        { type: "null" },
+      ],
+    },
+    response: {
+      anyOf: [
+        { type: "string", minLength: 1, maxLength: 1_000 },
+        { type: "null" },
+      ],
+    },
+    basis: {
+      anyOf: [{ type: "string", enum: ["command-help"] }, { type: "null" }],
+    },
+    sourceIds: {
+      anyOf: [
+        {
           type: "array",
           minItems: 1,
           maxItems: 32,
           items: { type: "string", minLength: 1, maxLength: 160 },
         },
-      },
+        { type: "null" },
+      ],
     },
-    {
-      type: "object",
-      additionalProperties: false,
-      required: ["kind", "response", "reason"],
-      properties: {
-        kind: { const: "cannot_comply" },
-        response: { type: "string", minLength: 1, maxLength: 500 },
-        reason: {
+    reason: {
+      anyOf: [
+        {
+          type: "string",
           enum: [
             "not-observed",
             "unsupported",
@@ -98,10 +121,108 @@ const guideDecisionSchema = {
             "provider-limitation",
           ],
         },
-      },
+        { type: "null" },
+      ],
     },
-  ],
+  },
 } as const;
+
+function normalizeGuideDecision(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ProviderAdapterError(
+      "malformed-response",
+      "Guide output was not a decision object.",
+    );
+  }
+  const field = (name: string) => Reflect.get(value, name) as unknown;
+  const string = (name: string, maximum: number): string => {
+    const candidate = field(name);
+    if (
+      typeof candidate !== "string" ||
+      candidate.length === 0 ||
+      candidate.length > maximum
+    ) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        `Guide output field ${name} was invalid.`,
+      );
+    }
+    return candidate;
+  };
+  const kind = field("kind");
+  if (kind === "execute") {
+    const confidence = field("confidence");
+    if (
+      typeof confidence !== "number" ||
+      !Number.isFinite(confidence) ||
+      confidence < 0 ||
+      confidence > 1
+    ) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        "Guide output confidence was invalid.",
+      );
+    }
+    return {
+      kind,
+      command: string("command", 160),
+      intentSummary: string("intentSummary", 240),
+      confidence,
+    };
+  }
+  if (kind === "clarify") {
+    return {
+      kind,
+      question: string("question", 500),
+      ambiguity: string("ambiguity", 500),
+    };
+  }
+  if (kind === "explain") {
+    const sourceIds = field("sourceIds");
+    if (
+      field("basis") !== "command-help" ||
+      !Array.isArray(sourceIds) ||
+      sourceIds.length === 0 ||
+      sourceIds.length > 32 ||
+      sourceIds.some(
+        (sourceId) =>
+          typeof sourceId !== "string" ||
+          sourceId.length === 0 ||
+          sourceId.length > 160,
+      )
+    ) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        "Guide explanation metadata was invalid.",
+      );
+    }
+    return {
+      kind,
+      response: string("response", 1_000),
+      basis: "command-help",
+      sourceIds: [...sourceIds] as string[],
+    };
+  }
+  if (kind === "cannot_comply") {
+    const reason = field("reason");
+    if (
+      reason !== "not-observed" &&
+      reason !== "unsupported" &&
+      reason !== "unsafe" &&
+      reason !== "provider-limitation"
+    ) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        "Guide refusal reason was invalid.",
+      );
+    }
+    return { kind, response: string("response", 500), reason };
+  }
+  throw new ProviderAdapterError(
+    "malformed-response",
+    "Guide output kind was invalid.",
+  );
+}
 
 function boundedString(value: unknown, name: string, maximum: number): string {
   if (
@@ -311,8 +432,9 @@ export class OpenAiChainedProvider implements GuideModel {
         model: this.#profile.guideModel,
         max_output_tokens: this.#profile.guideMaxOutputTokens,
         store: false,
+        reasoning: { effort: "none" },
         instructions:
-          "You are a constrained parser guide. Return one schema-valid decision. Use only the supplied command knowledge and observed objects. Never claim game state changed. Prefer clarification when intent or referents are ambiguous. Do not emit multiple commands or hidden game facts.",
+          "You are a constrained parser guide. Return one schema-valid decision. Use only the supplied command knowledge and observed objects. Never claim game state changed. Prefer clarification when intent or referents are ambiguous. Do not emit multiple commands or hidden game facts. Set every field unused by the selected kind to null.",
         input: serializedInput,
         text: {
           format: {
@@ -327,7 +449,9 @@ export class OpenAiChainedProvider implements GuideModel {
     const value: unknown = await this.#json(response);
     let decision: unknown;
     try {
-      decision = JSON.parse(outputText(value)) as unknown;
+      decision = normalizeGuideDecision(
+        JSON.parse(outputText(value)) as unknown,
+      );
     } catch (error) {
       if (error instanceof ProviderAdapterError) throw error;
       throw new ProviderAdapterError(
