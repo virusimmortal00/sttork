@@ -333,6 +333,24 @@ transcript is a failure when it executes the wrong command.
 
 Required assertions include:
 
+- a fresh playable session exposes `START STORY` before capture, keeps it
+  enabled without microphone permission, and does not request that permission
+  when activated;
+- one activation produces exactly one `engine.output` whose exact text,
+  `input-requested` boundary, and revision zero match authenticated boot state,
+  followed by one narrator synthesis request and no engine command, checkpoint,
+  or revision advance;
+- rapid or duplicate activation cannot duplicate the opening event or initial
+  synthesis request; ordinary capture and text submission remain gated while the
+  opening is active, while Stop remains operable;
+- completion, interruption, and synthesis/playback failure all expose the
+  ordinary controls and retain the exact opening for accessible text and Repeat;
+  completion/interruption project Ready while failure projects recoverable
+  `blocked` / `Action needed`; Repeat reuses the same source without another
+  `engine.output` or revision advance;
+- incremental reduction and replay derive the same opening phase: revision-zero
+  output is active until its correlated narrator cancellation, failure, or
+  playback terminal, after which ordinary controls remain available;
 - silence and low-confidence input do not execute commands;
 - ambiguous recognition asks for clarification;
 - one engine-command request produces at most one committed turn; a multi-step
@@ -386,6 +404,8 @@ cost.
 The absence of visible text by default is a presentation choice, not a reduction
 in semantic information. Automated and manual tests must cover:
 
+- keyboard activation of `START STORY` before microphone permission, including
+  an equivalent exact-text path when opening narration fails;
 - status changes exposed through appropriately managed live regions;
 - complete keyboard operation of microphone, stop, repeat, settings, transcript,
   and debug controls;

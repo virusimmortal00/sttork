@@ -160,21 +160,30 @@ a trusted home network.
 
 The 2026-08-19 smoke profile uses `gpt-4o-mini-transcribe`, `gpt-5.6-luna`, and
 `tts-1`, with one global maximum of 12 provider requests for the server process.
-A normal spoken turn uses three requests; Repeat uses another speech request.
-This is a request ceiling, not a dollar-denominated spend cap. Browser actions
-can incur API charges, so stop the server when the smoke is complete. This
-harness is not provider promotion, production authentication, or a substitute
-for the hermetic source gate.
+The initial `START STORY` narration uses one speech request without requesting
+microphone permission. A normal spoken turn uses three requests; Repeat uses
+another speech request, including when it retries the retained opening source.
+All of them count against the same global ceiling. This is a request ceiling,
+not a dollar-denominated spend cap. Browser actions can incur API charges, so
+stop the server when the smoke is complete. This harness is not provider
+promotion, production authentication, or a substitute for the hermetic source
+gate.
 
-For the pending manual checkpoint, say an unambiguous single action such as
-“look” and confirm one revision plus audible exact engine narration. Then say an
-ambiguous request such as “open it” and confirm that the guide asks for
-clarification without advancing the engine. Exercise Stop during capture or
-playback, and inspect the optional transcript/debug surfaces only to confirm
-attribution, Worker isolation, and absence of sensitive audio or credentials.
-Record the browser version and console/CSP result. The harness implementation
-and its hermetic tests are present, but Slice 5 is not complete until this real
-microphone evidence is recorded.
+For the pending manual checkpoint, first activate `START STORY` without granting
+microphone permission. Confirm that the authenticated opening is narrated once
+at revision zero, that Stop is available during playback, and that the normal
+speaking control appears after a completed, interrupted, or failed opening. The
+failed case should remain `Action needed`, with speaking, text, and Repeat still
+usable. The initial path should consume one TTS request; Repeat should consume
+another while reusing the same opening event. Then say an unambiguous single
+action such as “look” and confirm one revision plus audible exact engine
+narration. Say an ambiguous request such as “open it” and confirm that the guide
+asks for clarification without advancing the engine. Exercise Stop during
+capture or playback, and inspect the optional transcript/debug surfaces only to
+confirm attribution, Worker isolation, and absence of sensitive audio or
+credentials. Record the browser version and console/CSP result. The harness
+implementation and its hermetic tests are present, but Slice 5 is not complete
+until this real microphone evidence is recorded.
 
 For a remote-device run, additionally record the device operating system and
 browser, that `window.isSecureContext` is true, the exact configured origin and

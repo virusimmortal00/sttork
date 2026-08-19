@@ -34,14 +34,14 @@
         tabindex="0"
         hidden
       ></ol>
-      <p class="cue" aria-hidden="true">Press V or use the speaking control.</p>
-      <button id="capture" type="button" aria-pressed="false" disabled>
-        Start speaking
-      </button>
+      <p id="primary-cue" class="cue" aria-hidden="true">
+        Use Start story to hear the opening.
+      </p>
+      <button id="capture" type="button" disabled>START STORY</button>
       <nav aria-label="Voice session controls">
-        <button id="stop" type="button">Stop</button>
-        <button id="pause" type="button">Pause</button>
-        <button id="repeat" type="button">Repeat</button>
+        <button id="stop" type="button" disabled>Stop</button>
+        <button id="pause" type="button" disabled>Pause</button>
+        <button id="repeat" type="button" disabled>Repeat</button>
         <button id="toggle-transcript" type="button" aria-expanded="false">
           Transcript
         </button>
@@ -53,8 +53,8 @@
         <ol id="transcript-list"></ol>
         <form id="text-form">
           <label for="text-input">Accessible text input</label>
-          <input id="text-input" autocomplete="off" />
-          <button type="submit">Send</button>
+          <input id="text-input" autocomplete="off" disabled />
+          <button id="text-submit" type="submit" disabled>Send</button>
         </form>
       </section>
       <pre id="debug-panel" aria-label="Developer event evidence" hidden></pre>

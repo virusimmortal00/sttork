@@ -22,6 +22,26 @@ export interface VoiceStatePresentationElements {
   };
 }
 
+export interface CanonicalStatusProjection {
+  readonly displayState: ExperienceDisplayState;
+  readonly statusText: string;
+}
+
+export interface VoiceStatePresentation {
+  readonly state: VoiceAudioState | ExperienceDisplayState;
+  readonly statusText: string;
+}
+
+export function authoritativeVoiceStatePresentation(
+  state: VoiceAudioState,
+  statusText: string,
+  projection: CanonicalStatusProjection,
+): VoiceStatePresentation {
+  return projection.displayState === "blocked"
+    ? { state: "blocked", statusText: projection.statusText }
+    : { state, statusText };
+}
+
 export interface CommandCuePresentationElement {
   textContent: string | null;
 }

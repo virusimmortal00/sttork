@@ -70,6 +70,18 @@ The web application is a TypeScript PWA with four layers:
 UI projections consume events; they do not call the engine or providers
 directly. This ensures that hiding all prose changes presentation only.
 
+A fresh playable session authenticates and boots the story before enabling its
+first gameplay action, but it does not discard or narrate the boot result. The
+one-shot `START STORY` action revalidates the boot result against public engine
+state, appends its exact text as accessible `engine.output` at revision zero,
+and requests narrator synthesis from that event. It submits no canonical
+command, takes no checkpoint, and requires no microphone permission. Ordinary
+capture and text submission remain gated until the opening playback completes,
+is interrupted, or fails; any of those terminal outcomes exposes the normal
+gameplay controls so a provider failure cannot trap the player. Completion or
+interruption returns the experience to ready. Failure keeps the recoverable
+`blocked` / `Action needed` status while leaving those controls usable.
+
 ### 3.2 Session backend
 
 The backend exposes narrowly scoped endpoints:
@@ -386,6 +398,16 @@ processing and must not drive a speaking projection. Playback aborted or failed
 before that boundary has no started event and is recorded only through its
 terminal outcome.
 
+A successfully prepared opening sequence is `engine.output` (revision zero),
+`narration.requested`, `narration.ready`, and the applicable playback lifecycle;
+a preparation failure emits `narration.failed` instead of `narration.ready`. The
+`engine.output` exact text, boundary, and revision must match the authenticated
+`BootResult` and current public engine state. Concurrent or repeated
+`START STORY` activation shares one idempotent preparation, so the opening event
+and initial synthesis request are emitted at most once. Repeat retains that same
+narrator source and may synthesize it again after any terminal playback outcome
+without appending another engine event.
+
 Partial transcripts are ephemeral UI state unless diagnostic recording is
 explicitly enabled. Events containing prose have a retention classification; the
 cloud receives none by default in the local-save milestone.
@@ -394,7 +416,11 @@ cloud receives none by default in the local-save milestone.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> idle
+    [*] --> awaiting_story_start
+    awaiting_story_start --> preparing_opening: START STORY
+    preparing_opening --> speaking_opening: first opening audio
+    preparing_opening --> idle: opening synthesis fails (blocked display)
+    speaking_opening --> idle: opening completes or stops
     idle --> listening: activate
     listening --> interpreting: end of speech
     interpreting --> awaiting_clarification: ambiguous
@@ -428,6 +454,11 @@ which snapshot is active.
 Only one player turn may reach `executing`. New microphone input during guide or
 narrator playback first cancels playback, emits a cancellation event, and then
 opens a new turn. Stale provider responses are ignored using correlation IDs.
+
+The opening gate is not a player turn and cannot reach `executing`. Stop may
+cancel its synthesis or playback, after which the session enters ordinary
+`idle`; Repeat retries the retained narrator source rather than reopening the
+gate. Microphone activation is unavailable until that terminal transition.
 
 The bounded implementation is `packages/session`. It journals interaction IDs,
 owns the `EventSequence`, and coordinates final transcript, guide policy, engine

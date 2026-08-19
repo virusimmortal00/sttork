@@ -12,6 +12,13 @@ hears the exact engine response through narration. The ordinary path must not
 require visible text; the same typed events remain available to the optional
 accessible transcript and developer-debug surfaces.
 
+A fresh smoke begins with one explicit `START STORY` action. It publishes and
+narrates the authenticated boot output as exact `engine.output` at revision zero
+before microphone permission or any player turn. Opening completion,
+interruption, or failure all yield the normal controls; Repeat retains that same
+narrator source without republishing it or advancing the engine. Failure keeps
+the recoverable `Action needed` status rather than reporting Ready.
+
 This is an integration checkpoint, not a beta or provider-support claim. The
 smoke may use explicit developer configuration and an opt-in, budget-limited
 live test account.
@@ -333,6 +340,13 @@ interpreter, provider, or product is release-qualified.
   hermetic gate contains provider, BFF, browser-adapter, audio-controller, and
   local-harness regressions and makes no provider call. The ignored browser and
   Worker graph builds without credentials.
+- The fresh-session presentation gates capture and text submission behind one
+  `START STORY` action that does not require microphone permission. Its
+  authenticated revision-zero boot output is published once, its initial
+  narration consumes one TTS request, and any terminal playback outcome exposes
+  the normal controls with the exact opening retained for accessibility and
+  Repeat. A failed terminal remains visibly blocked and recoverable while those
+  controls stay usable.
 - A 2026-08-19 private-HTTPS in-app browser smoke exercised the live text path
   without microphone permission. A social greeting produced one grounded
   clarification with revision zero; one movement request produced exactly one
@@ -345,6 +359,10 @@ interpreter, provider, or product is release-qualified.
 
 - Record a real browser microphone turn for one unambiguous intent, one engine
   revision, and audible exact narration without relying on visible prose.
+- Begin that run with `START STORY` and record the revision-zero opening,
+  no-microphone activation, one initial TTS request, terminal transition to the
+  normal controls, and retained-source Repeat behavior. This remains pending
+  live evidence rather than a claim established by the hermetic implementation.
 - Record a spoken ambiguous intent that produces clarification and no engine
   mutation, plus interruption behavior and injected-provider-failure recovery
   from the last confirmed checkpoint.

@@ -25,6 +25,11 @@ describe("voice shell accessibility markup", () => {
         /id="action-log"[\s\S]*?role="list"[\s\S]*?aria-label="Recent game commands"[\s\S]*?tabindex="0"[\s\S]*?hidden/u,
       );
       expect(html).not.toMatch(/id="action-log"[^>]*aria-live=/u);
+      expect(html).toMatch(
+        /<button id="capture" type="button" disabled>START STORY<\/button>/u,
+      );
+      expect(html).not.toMatch(/id="capture"[^>]*aria-pressed=/u);
+      expect(html).toContain("Use Start story to hear the opening.");
     }
   });
 

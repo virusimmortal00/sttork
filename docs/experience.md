@@ -70,6 +70,17 @@ paused, blocked, or finished. It appears only during startup, microphone
 permission, listening, processing/reconnecting, or audible playback. Stable
 status text communicates every state independently of motion.
 
+On a fresh session, the first gameplay control is `START STORY`. It is enabled
+without microphone permission and does not begin capture. Activating it once
+publishes and narrates the authenticated opening engine output at revision zero;
+it is not a parser command and therefore never enters the canonical-command
+history. While the opening is being prepared or played, ordinary capture and
+text submission remain gated and Stop remains available. After playback
+completes, is interrupted, or fails, the primary control becomes the ordinary
+`Start speaking` control and the accessibility text path becomes available.
+Completion and interruption show Ready; failure preserves the recoverable
+`Action needed` status while those ordinary controls remain usable.
+
 ## Display-state projection
 
 The interaction state machine in `architecture.md` is canonical. The experience
@@ -97,7 +108,10 @@ manipulate the interface.
 Expected high-level display transitions:
 
 ```text
-booting -> ready -> listening -> processing
+booting -> ready (START STORY) -> processing -> narrator-speaking -> ready
+processing | narrator-speaking -> ready: opening completes or is interrupted
+processing | narrator-speaking -> blocked: opening fails; normal controls remain usable
+ready -> listening -> processing
 processing -> guide-speaking -> ready
 processing -> narrator-speaking -> ready
 processing -> guide-speaking -> narrator-speaking -> ready
@@ -121,18 +135,30 @@ with the browser's closest observable approximation of audible playback.
 
 The first run should be brief and playable without a visual tutorial:
 
-1. Ask for microphone access immediately before it is needed, with a concise
-   explanation.
-2. Let the player choose or confirm a configured provider connection.
-3. Play short samples that establish the narrator voice, guide voice, and
-   listening cue.
-4. Teach three controls by voice: how to speak, “stop,” and “help.”
-5. Ask whether captions should remain visible and whether proactive hint offers
-   are allowed.
-6. Begin the game and narrate the exact opening output.
+1. Complete any required story authentication and provider connection before
+   presenting the playable surface.
+2. Present `START STORY` as the first gameplay control. It remains available
+   without microphone permission and does not request that permission.
+3. On one activation, publish the authenticated boot output as exact
+   `engine.output` at revision zero and narrate it once in the narrator role.
+4. After opening playback completes, is interrupted with Stop, or fails, expose
+   the ordinary speaking and accessible-text controls. Preserve the exact
+   opening in the transcript/accessibility projection in every case. Keep a
+   failed opening visibly recoverable as `Action needed`; do not put it back
+   behind `START STORY`.
+5. Ask for microphone access immediately before the first capture, with a
+   concise explanation and an equivalent text-input path.
+6. Teach “stop” and “help” by voice, establish the narrator/guide distinction,
+   and ask whether captions and proactive hint offers should remain enabled.
 
 Returning players skip the tutorial unless audio output, microphone access, or
 provider configuration has changed.
+
+`START STORY` is a one-shot session transition. Rapid or repeated activation
+does not republish the opening event or synthesize it twice. The opening remains
+the most recent narrator source, so Repeat can request playback again after a
+completion, interruption, or failure without advancing the engine or appending
+another `engine.output`.
 
 ## Input model
 
@@ -291,7 +317,25 @@ type TranscriptItemProjection = ExperienceProjection<
     delivery: "pending" | "speaking" | "interrupted" | "complete" | "failed";
   }
 >;
+
+type StoryStartPhase = "ready" | "starting" | "started";
+
+interface ExperienceProjectionState {
+  storyStartPhase: StoryStartPhase;
+  storyStartSource?: {
+    outputEventId: string;
+    correlationId: string;
+    narration?: { id: string; requestEventId: string };
+  };
+}
 ```
+
+The revision-zero opening `engine.output` moves `storyStartPhase` from `ready`
+to `starting`. Only the correlated narrator preparation terminal or playback
+terminal moves it to `started`, so replay and live reduction expose the same
+control gate. A failed terminal projects `blocked` / `Action needed`; the
+`started` phase still exposes ordinary controls and Repeat. Completion,
+interruption, or preparation cancellation projects Ready.
 
 Canonical-to-experience mapping is explicit:
 
@@ -340,6 +384,8 @@ speech. It does not bypass the guide or become a separate save format.
 
 - Maintain semantic live regions for current system status, guide speech, and
   narrator speech even when visible captions are off.
+- Keep `START STORY` keyboard operable and enabled before microphone permission;
+  activating it must not request or begin microphone capture.
 - Provide keyboard equivalents for capture, stop, repeat, pause, transcript, and
   settings.
 - Do not require hold gestures; tap-to-talk is always available.
@@ -428,6 +474,13 @@ The experience remains quiet but explicit when something fails:
 No error automatically substitutes model-generated prose for missing Z-machine
 output.
 
+If opening narration fails or is interrupted, retain its revision-zero
+`engine.output`, expose the normal controls, and make Repeat a retry of that
+same narrator source. Interruption returns to Ready; failure remains `blocked`
+with `Action needed` while those controls stay usable. A retry may issue another
+synthesis request, but it must not republish the boot output, advance the
+engine, or re-enter the `START STORY` gate.
+
 ## Preferences and persistence
 
 Persist locally by default:
@@ -471,22 +524,26 @@ The first vertical slice is ready when:
 
 1. A first-time player can start and complete the slice without reading the
    screen.
-2. Default play shows no transcript, player speech, or game prose; the only
+2. `START STORY` narrates the exact authenticated revision-zero opening without
+   requesting microphone permission, then yields the normal controls after a
+   completed, interrupted, or failed playback. Failure retains the recoverable
+   `Action needed` status rather than falsely reporting Ready.
+3. Default play shows no transcript, player speech, or game prose; the only
    persistent text is bounded canonical-command history defined by ADR-0013.
-3. The player can hear which speech belongs to the original game and which
+4. The player can hear which speech belongs to the original game and which
    belongs to the guide.
-4. Direct, ambiguous, informational, and hint-seeking utterances follow the
+5. Direct, ambiguous, informational, and hint-seeking utterances follow the
    guide contract.
-5. “Stop,” “repeat,” “pause,” “resume,” “help,” speed changes, and transcript
+6. “Stop,” “repeat,” “pause,” “resume,” “help,” speed changes, and transcript
    toggling work by voice and keyboard.
-6. Barge-in stops speech without duplicating or silently cancelling an accepted
+7. Barge-in stops speech without duplicating or silently cancelling an accepted
    engine command.
-7. Transcript mode can reconstruct every player, guide, command, engine,
+8. Transcript mode can reconstruct every player, guide, command, engine,
    narrator, and error turn in order.
-8. Debug mode can explain a failed turn without exposing credentials.
-9. Screen-reader, keyboard-only, visible-caption, reduced-motion, and text-input
-   paths complete the same slice.
-10. Provider disconnect, TTS failure, and microphone denial preserve the last
+9. Debug mode can explain a failed turn without exposing credentials.
+10. Screen-reader, keyboard-only, visible-caption, reduced-motion, and
+    text-input paths complete the same slice.
+11. Provider disconnect, TTS failure, and microphone denial preserve the last
     verified game state and offer an accessible recovery path.
-11. OpenAI Realtime and each enabled OpenRouter or Hugging Face profile pass the
+12. OpenAI Realtime and each enabled OpenRouter or Hugging Face profile pass the
     same experience and guide conformance fixtures.

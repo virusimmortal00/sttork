@@ -1,4 +1,5 @@
 import type {
+  BootResult,
   EnginePort,
   EngineSnapshot,
   ExecuteRequest,
@@ -17,6 +18,7 @@ import {
 } from "../../guide-core/src/index.js";
 
 export const MAX_COORDINATED_TURNS = 128;
+export const MAX_OPENING_OUTPUT_LENGTH = 32_768;
 export const MAX_TURN_TRANSCRIPT_LENGTH = 2_000;
 export const MAX_TURN_OBSERVED_OBJECTS = 32;
 
@@ -38,6 +40,19 @@ export interface SemanticTurnInput {
   readonly transcriptConfidence?: number;
   readonly observedObjects: readonly string[];
 }
+
+export interface OpeningNarrationInput {
+  readonly interactionId: string;
+  readonly boot: BootResult;
+}
+
+export interface OpeningNarrationResult {
+  readonly interactionId: string;
+  readonly outcome: "ready" | "cancelled" | "failed";
+  readonly events: readonly SemanticEvent[];
+}
+
+type NarrationPreparationOutcome = OpeningNarrationResult["outcome"];
 
 export type SemanticTurnOutcome =
   | "committed"
@@ -120,6 +135,35 @@ interface RunResult {
   readonly recovery?: RecoveryRecord;
 }
 
+interface OpeningRunResult {
+  readonly result: OpeningNarrationResult;
+  readonly sourceEventId: string;
+}
+
+interface OpeningRunProgress {
+  sourceEventId?: string;
+}
+
+type StoredOpening =
+  | {
+      readonly kind: "pending";
+      readonly fingerprint: string;
+      readonly input: OpeningNarrationInput;
+      readonly progress: OpeningRunProgress;
+      readonly promise: Promise<OpeningRunResult>;
+    }
+  | {
+      readonly kind: "retryable";
+      readonly fingerprint: string;
+      readonly input: OpeningNarrationInput;
+      readonly sourceEventId: string;
+    }
+  | {
+      readonly kind: "complete";
+      readonly fingerprint: string;
+      readonly result: OpeningNarrationResult;
+    };
+
 function fingerprint(input: SemanticTurnInput): string {
   return JSON.stringify({
     interactionId: input.interactionId,
@@ -170,6 +214,96 @@ function validateTurnInput(input: SemanticTurnInput): void {
   }
 }
 
+function boundedOpeningIdentity(value: unknown, field: string): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 160 ||
+    /\p{Cc}/u.test(value)
+  ) {
+    throw new TypeError(`${field} must be a bounded nonempty string`);
+  }
+  return value;
+}
+
+function validatedOpeningBoot(input: unknown): BootResult {
+  if (typeof input !== "object" || input === null) {
+    throw new TypeError("opening boot result is not narratable");
+  }
+  const candidate = input as Partial<BootResult>;
+  if (
+    candidate.revision !== 0 ||
+    candidate.turnComplete !== true ||
+    candidate.boundary !== "input-requested" ||
+    typeof candidate.output !== "string" ||
+    candidate.output.length === 0 ||
+    candidate.output.length > MAX_OPENING_OUTPUT_LENGTH
+  ) {
+    throw new TypeError("opening boot result is not narratable");
+  }
+  const compatibility = candidate.compatibility;
+  if (typeof compatibility !== "object" || compatibility === null) {
+    throw new TypeError("opening compatibility is required");
+  }
+  if (
+    !Number.isSafeInteger(compatibility.snapshotSchemaVersion) ||
+    compatibility.snapshotSchemaVersion < 1
+  ) {
+    throw new TypeError("opening snapshot schema version is invalid");
+  }
+
+  return {
+    revision: 0,
+    output: candidate.output,
+    turnComplete: true,
+    boundary: "input-requested",
+    compatibility: {
+      story: {
+        id: boundedOpeningIdentity(compatibility.story?.id, "opening story id"),
+        artifactSha256: boundedOpeningIdentity(
+          compatibility.story?.artifactSha256,
+          "opening story hash",
+        ),
+      },
+      runtime: {
+        id: boundedOpeningIdentity(
+          compatibility.runtime?.id,
+          "opening runtime id",
+        ),
+        version: boundedOpeningIdentity(
+          compatibility.runtime?.version,
+          "opening runtime version",
+        ),
+        artifactSha256: boundedOpeningIdentity(
+          compatibility.runtime?.artifactSha256,
+          "opening runtime hash",
+        ),
+      },
+      adapter: {
+        id: boundedOpeningIdentity(
+          compatibility.adapter?.id,
+          "opening adapter id",
+        ),
+        version: boundedOpeningIdentity(
+          compatibility.adapter?.version,
+          "opening adapter version",
+        ),
+      },
+      snapshotSchemaVersion: compatibility.snapshotSchemaVersion,
+    },
+  };
+}
+
+function openingFingerprint(interactionId: string, boot: BootResult): string {
+  return JSON.stringify({
+    interactionId,
+    revision: boot.revision,
+    output: boot.output,
+    boundary: boot.boundary,
+    compatibility: boot.compatibility,
+  });
+}
+
 function engineCommitState(error: unknown): "not-submitted" | "unknown" {
   return typeof error === "object" &&
     error !== null &&
@@ -214,6 +348,7 @@ export class SemanticTurnCoordinator {
   readonly #publish: ((event: SemanticEvent) => void) | undefined;
   readonly #maxTurns: number;
   readonly #turns = new Map<string, StoredTurn>();
+  #opening: StoredOpening | undefined;
   #activeInteractionId: string | undefined;
   #pendingOpeningObjectIntent: StoredPendingOpeningObjectIntent | undefined;
 
@@ -255,6 +390,9 @@ export class SemanticTurnCoordinator {
     if (this.#activeInteractionId !== undefined) {
       throw new SemanticTurnBusyError();
     }
+    if (this.#opening?.kind === "pending") {
+      throw new SemanticTurnBusyError();
+    }
 
     const operation = this.#runNew(input, signal);
     this.#turns.set(input.interactionId, {
@@ -282,6 +420,72 @@ export class SemanticTurnCoordinator {
       return completed.result;
     } catch (error) {
       this.#turns.delete(input.interactionId);
+      throw error;
+    }
+  }
+
+  public async prepareOpening(
+    input: OpeningNarrationInput,
+    signal: AbortSignal,
+  ): Promise<OpeningNarrationResult> {
+    const interactionId = this.#requireId(input.interactionId, "interaction");
+    const boot = validatedOpeningBoot(input.boot);
+    const inputFingerprint = openingFingerprint(interactionId, boot);
+    const existing = this.#opening;
+    if (existing !== undefined) {
+      if (existing.fingerprint !== inputFingerprint) {
+        throw new SemanticTurnConflictError(interactionId);
+      }
+      if (existing.kind === "complete") return existing.result;
+      if (existing.kind === "pending") return (await existing.promise).result;
+    }
+    if (this.#activeInteractionId !== undefined) {
+      throw new SemanticTurnBusyError();
+    }
+
+    const normalizedInput = { interactionId, boot };
+    const sourceEventId =
+      existing?.kind === "retryable" ? existing.sourceEventId : undefined;
+    const progress: OpeningRunProgress = {
+      ...(sourceEventId === undefined ? {} : { sourceEventId }),
+    };
+    const operation = this.#runOpening(normalizedInput, signal, progress);
+    this.#opening = {
+      kind: "pending",
+      fingerprint: inputFingerprint,
+      input: normalizedInput,
+      progress,
+      promise: operation,
+    };
+    try {
+      const completed = await operation;
+      this.#opening =
+        completed.result.outcome !== "ready"
+          ? {
+              kind: "retryable",
+              fingerprint: inputFingerprint,
+              input: normalizedInput,
+              sourceEventId: completed.sourceEventId,
+            }
+          : {
+              kind: "complete",
+              fingerprint: inputFingerprint,
+              result: completed.result,
+            };
+      return completed.result;
+    } catch (error) {
+      if (this.#opening?.kind === "pending") {
+        const retainedSourceEventId = progress.sourceEventId;
+        this.#opening =
+          retainedSourceEventId === undefined
+            ? undefined
+            : {
+                kind: "retryable",
+                fingerprint: inputFingerprint,
+                input: normalizedInput,
+                sourceEventId: retainedSourceEventId,
+              };
+      }
       throw error;
     }
   }
@@ -335,6 +539,70 @@ export class SemanticTurnCoordinator {
       result,
     });
     return result;
+  }
+
+  async #runOpening(
+    input: OpeningNarrationInput,
+    signal: AbortSignal,
+    progress: OpeningRunProgress,
+  ): Promise<OpeningRunResult> {
+    if (this.#activeInteractionId !== undefined) {
+      throw new SemanticTurnBusyError();
+    }
+    this.#activeInteractionId = input.interactionId;
+    try {
+      if (progress.sourceEventId === undefined) {
+        const publicState = await awaitWithAbort(
+          this.#engine.inspectPublicState(),
+          signal,
+        );
+        if (
+          publicState.revision !== input.boot.revision ||
+          publicState.lastOutput !== input.boot.output ||
+          publicState.boundary !== input.boot.boundary
+        ) {
+          throw new SemanticTurnConflictError(input.interactionId);
+        }
+        signal.throwIfAborted();
+      }
+
+      const local: SemanticEvent[] = [];
+      let sourceEventId = progress.sourceEventId;
+      if (sourceEventId === undefined) {
+        sourceEventId = this.#emit(
+          local,
+          "engine.output",
+          input.interactionId,
+          undefined,
+          "accessible",
+          {
+            revision: input.boot.revision,
+            exactText: input.boot.output,
+            boundary: input.boot.boundary,
+            retention: "local-save",
+          },
+        ).id;
+        progress.sourceEventId = sourceEventId;
+      }
+      const outcome = await this.#narrate(
+        local,
+        input.interactionId,
+        "narrator",
+        input.boot.output,
+        sourceEventId,
+        signal,
+      );
+      return {
+        result: {
+          interactionId: input.interactionId,
+          outcome,
+          events: local,
+        },
+        sourceEventId,
+      };
+    } finally {
+      this.#activeInteractionId = undefined;
+    }
   }
 
   public recordAudioFailure(input: {
@@ -817,6 +1085,9 @@ export class SemanticTurnCoordinator {
   ): Promise<SemanticTurnResult> {
     if (this.#activeInteractionId !== undefined)
       throw new SemanticTurnBusyError();
+    if (this.#opening?.kind === "pending") {
+      throw new SemanticTurnBusyError();
+    }
     if (signal.aborted) return stored.result;
     this.#activeInteractionId = interactionId;
     const local = [...stored.result.events];
@@ -1002,7 +1273,7 @@ export class SemanticTurnCoordinator {
     text: string,
     sourceEventId: string,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<NarrationPreparationOutcome> {
     const narrationId = this.#requireId(this.#nextNarrationId(), "narration");
     const requested = this.#emit(
       local,
@@ -1037,6 +1308,7 @@ export class SemanticTurnCoordinator {
           role,
         },
       );
+      return "ready";
     } catch {
       if (signal.aborted) {
         this.#emit(
@@ -1051,6 +1323,7 @@ export class SemanticTurnCoordinator {
             reason: "player-cancelled",
           },
         );
+        return "cancelled";
       } else {
         const failed = this.#emit(
           local,
@@ -1078,6 +1351,7 @@ export class SemanticTurnCoordinator {
               role === "narrator" ? "confirmed" : "not-submitted",
           },
         );
+        return "failed";
       }
     }
   }

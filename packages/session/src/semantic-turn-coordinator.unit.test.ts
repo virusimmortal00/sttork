@@ -8,12 +8,15 @@ import {
   type ExecuteResult,
   type PublicEngineState,
   type RestoreResult,
+  type SemanticEvent,
 } from "@zork-voice/contracts";
 import { EventSequence } from "@zork-voice/events";
 import { FakeGuideModel } from "@zork-voice/guide-core";
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_OPENING_OUTPUT_LENGTH,
+  SemanticTurnBusyError,
   SemanticTurnCapacityError,
   SemanticTurnConflictError,
   SemanticTurnCoordinator,
@@ -31,12 +34,15 @@ const compatibility: EngineCompatibility = {
 class FakeEngine implements EnginePort {
   public revision = 0;
   public executeCalls: ExecuteRequest[] = [];
+  public inspectCalls = 0;
   public snapshotCalls = 0;
   public inspectFailure = false;
   public snapshotFailure = false;
   public uncertainOnce = false;
   public cancelBeforeSubmit = false;
   public inspectGate: Promise<void> | undefined;
+  public executeGate: Promise<void> | undefined;
+  public onExecute: (() => void) | undefined;
   public onCommit: (() => void) | undefined;
   readonly #receipts = new Map<string, ExecuteResult>();
 
@@ -52,6 +58,8 @@ class FakeEngine implements EnginePort {
 
   public async execute(input: ExecuteRequest): Promise<ExecuteResult> {
     this.executeCalls.push(input);
+    this.onExecute?.();
+    await this.executeGate;
     if (this.cancelBeforeSubmit) {
       throw Object.assign(new Error("cancelled before worker submission"), {
         commitState: "not-submitted",
@@ -95,6 +103,7 @@ class FakeEngine implements EnginePort {
   }
 
   public async inspectPublicState(): Promise<PublicEngineState> {
+    this.inspectCalls += 1;
     await this.inspectGate;
     if (this.inspectFailure) throw new Error("inspect failed");
     return {
@@ -108,9 +117,13 @@ class FakeEngine implements EnginePort {
 class FakeNarrator implements NarrationPort {
   public readonly requests: NarrationRequest[] = [];
   public failure = false;
+  public prepareGate: Promise<void> | undefined;
+  public onPrepare: (() => void) | undefined;
 
   public async prepare(input: NarrationRequest): Promise<void> {
     this.requests.push(input);
+    this.onPrepare?.();
+    await this.prepareGate;
     if (this.failure) throw new Error("narration failed");
   }
 }
@@ -124,8 +137,9 @@ function coordinator(
     intentSummary: "Move north",
     confidence: 0.99,
   }),
-  publish?: () => void,
+  publish?: (event: SemanticEvent) => void,
   maxTurns?: number,
+  nextNarrationId?: () => string,
 ): SemanticTurnCoordinator {
   let eventId = 0;
   let requestId = 0;
@@ -140,7 +154,7 @@ function coordinator(
       nextId: () => `event-${++eventId}`,
     }),
     nextRequestId: () => `request-${++requestId}`,
-    nextNarrationId: () => `narration-${++narrationId}`,
+    nextNarrationId: nextNarrationId ?? (() => `narration-${++narrationId}`),
     ...(publish === undefined ? {} : { publish }),
     ...(maxTurns === undefined ? {} : { maxTurns }),
   });
@@ -154,6 +168,284 @@ const turn = {
 } as const;
 
 describe("SemanticTurnCoordinator", () => {
+  it("publishes and prepares the exact authenticated opening once", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const subject = coordinator(engine, narrator);
+    const boot = await engine.boot();
+    const input = { interactionId: "story-opening", boot } as const;
+
+    const [first, duplicate] = await Promise.all([
+      subject.prepareOpening(input, new AbortController().signal),
+      subject.prepareOpening(input, new AbortController().signal),
+    ]);
+
+    expect(duplicate).toEqual(first);
+    expect(first.outcome).toBe("ready");
+    expect(first.events.map((event) => event.type)).toEqual([
+      "engine.output",
+      "narration.requested",
+      "narration.ready",
+    ]);
+    expect(first.events[0]).toMatchObject({
+      type: "engine.output",
+      correlationId: "story-opening",
+      payload: {
+        revision: 0,
+        exactText: "boot",
+        boundary: "input-requested",
+        retention: "local-save",
+      },
+    });
+    expect(narrator.requests).toEqual([
+      expect.objectContaining({
+        role: "narrator",
+        text: "boot",
+        sourceEventId: first.events[0]?.id,
+        correlationId: "story-opening",
+      }),
+    ]);
+    expect(engine.executeCalls).toHaveLength(0);
+    expect(engine.snapshotCalls).toBe(0);
+
+    await expect(
+      subject.prepareOpening(input, new AbortController().signal),
+    ).resolves.toEqual(first);
+    expect(narrator.requests).toHaveLength(1);
+  });
+
+  it("rejects an opening that no longer matches authoritative public state", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const published: unknown[] = [];
+    const subject = coordinator(engine, narrator, undefined, (event) => {
+      published.push(event);
+    });
+    const boot = { ...(await engine.boot()), output: "not-the-engine-output" };
+
+    await expect(
+      subject.prepareOpening(
+        { interactionId: "story-opening", boot },
+        new AbortController().signal,
+      ),
+    ).rejects.toBeInstanceOf(SemanticTurnConflictError);
+    expect(published).toHaveLength(0);
+    expect(narrator.requests).toHaveLength(0);
+  });
+
+  it("retries failed opening preparation without duplicating engine output", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    narrator.failure = true;
+    const published: SemanticEvent[] = [];
+    const subject = coordinator(engine, narrator, undefined, (event) => {
+      published.push(event);
+    });
+    const input = {
+      interactionId: "story-opening",
+      boot: await engine.boot(),
+    } as const;
+
+    const failed = await subject.prepareOpening(
+      input,
+      new AbortController().signal,
+    );
+    expect(failed.outcome).toBe("failed");
+    narrator.failure = false;
+    await engine.execute({
+      requestId: "later-gameplay",
+      expectedRevision: 0,
+      command: canonicalizeCommand("north"),
+    });
+    const inspectionCount = engine.inspectCalls;
+    const retried = await subject.prepareOpening(
+      input,
+      new AbortController().signal,
+    );
+
+    expect(retried.outcome).toBe("ready");
+    expect(retried.events.map((event) => event.type)).toEqual([
+      "narration.requested",
+      "narration.ready",
+    ]);
+    expect(
+      published.filter((event) => event.type === "engine.output"),
+    ).toHaveLength(1);
+    expect(
+      published.filter((event) => event.type === "narration.requested"),
+    ).toHaveLength(2);
+    expect(narrator.requests).toHaveLength(2);
+    const output = published.find((event) => event.type === "engine.output");
+    expect(narrator.requests.map((request) => request.sourceEventId)).toEqual([
+      output?.id,
+      output?.id,
+    ]);
+    expect(engine.inspectCalls).toBe(inspectionCount);
+  });
+
+  it("retains emitted opening output when narration setup throws", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const published: SemanticEvent[] = [];
+    let narrationIdAttempt = 0;
+    const subject = coordinator(
+      engine,
+      narrator,
+      undefined,
+      (event) => {
+        published.push(event);
+      },
+      undefined,
+      () => {
+        narrationIdAttempt += 1;
+        if (narrationIdAttempt === 1) {
+          throw new Error("narration id allocation failed");
+        }
+        return `narration-${narrationIdAttempt}`;
+      },
+    );
+    const input = {
+      interactionId: "story-opening",
+      boot: await engine.boot(),
+    } as const;
+
+    await expect(
+      subject.prepareOpening(input, new AbortController().signal),
+    ).rejects.toThrow("narration id allocation failed");
+    const source = published.find((event) => event.type === "engine.output");
+    expect(source).toBeDefined();
+    expect(
+      published.filter((event) => event.type === "engine.output"),
+    ).toHaveLength(1);
+
+    await engine.execute({
+      requestId: "later-gameplay",
+      expectedRevision: 0,
+      command: canonicalizeCommand("north"),
+    });
+    const inspectionCount = engine.inspectCalls;
+    const retried = await subject.prepareOpening(
+      input,
+      new AbortController().signal,
+    );
+
+    expect(retried.outcome).toBe("ready");
+    expect(retried.events.map((event) => event.type)).toEqual([
+      "narration.requested",
+      "narration.ready",
+    ]);
+    expect(
+      published.filter((event) => event.type === "engine.output"),
+    ).toHaveLength(1);
+    expect(narrator.requests).toEqual([
+      expect.objectContaining({ sourceEventId: source?.id }),
+    ]);
+    expect(engine.inspectCalls).toBe(inspectionCount);
+  });
+
+  it("rejects non-opening runtime boot values before inspecting or emitting", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const subject = coordinator(engine, narrator);
+    const boot = await engine.boot();
+    const invalid = [
+      { ...boot, revision: 1 },
+      { ...boot, boundary: "terminated" },
+      { ...boot, output: "x".repeat(MAX_OPENING_OUTPUT_LENGTH + 1) },
+    ];
+
+    for (const candidate of invalid) {
+      await expect(
+        subject.prepareOpening(
+          {
+            interactionId: "story-opening",
+            boot: candidate as unknown as BootResult,
+          },
+          new AbortController().signal,
+        ),
+      ).rejects.toBeInstanceOf(TypeError);
+    }
+    expect(engine.inspectCalls).toBe(0);
+    expect(narrator.requests).toHaveLength(0);
+  });
+
+  it("allows a safe retry when opening cancellation precedes canonical output", async () => {
+    const engine = new FakeEngine();
+    let releaseInspection = (): void => undefined;
+    engine.inspectGate = new Promise<void>((resolve) => {
+      releaseInspection = resolve;
+    });
+    const narrator = new FakeNarrator();
+    const subject = coordinator(engine, narrator);
+    const boot = await engine.boot();
+    const abort = new AbortController();
+    const pending = subject.prepareOpening(
+      { interactionId: "story-opening", boot },
+      abort.signal,
+    );
+    abort.abort(new Error("stop before opening output"));
+
+    await expect(pending).rejects.toThrow("stop before opening output");
+    releaseInspection();
+    engine.inspectGate = undefined;
+    const retried = await subject.prepareOpening(
+      { interactionId: "story-opening", boot },
+      new AbortController().signal,
+    );
+    expect(retried.outcome).toBe("ready");
+    expect(
+      retried.events.filter((event) => event.type === "engine.output"),
+    ).toHaveLength(1);
+    expect(narrator.requests).toHaveLength(1);
+  });
+
+  it("retries narration after a stopped opening without duplicating output", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    let releaseNarration = (): void => undefined;
+    narrator.prepareGate = new Promise<void>((resolve) => {
+      releaseNarration = resolve;
+    });
+    let markPreparing = (): void => undefined;
+    const preparing = new Promise<void>((resolve) => {
+      markPreparing = resolve;
+    });
+    narrator.onPrepare = markPreparing;
+    const subject = coordinator(engine, narrator);
+    const boot = await engine.boot();
+    const abort = new AbortController();
+    const pending = subject.prepareOpening(
+      { interactionId: "story-opening", boot },
+      abort.signal,
+    );
+    await preparing;
+    abort.abort(new Error("stop after opening output"));
+    const stopped = await pending;
+    releaseNarration();
+
+    expect(stopped.outcome).toBe("cancelled");
+    expect(stopped.events.map((event) => event.type)).toEqual([
+      "engine.output",
+      "narration.requested",
+      "narration.cancelled",
+    ]);
+    const retried = await subject.prepareOpening(
+      { interactionId: "story-opening", boot },
+      new AbortController().signal,
+    );
+    expect(retried.outcome).toBe("ready");
+    expect(retried.events.map((event) => event.type)).toEqual([
+      "narration.requested",
+      "narration.ready",
+    ]);
+    expect(narrator.requests).toHaveLength(2);
+    expect(
+      [...stopped.events, ...retried.events].filter(
+        (event) => event.type === "engine.output",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("orders one exact committed turn through checkpoint and narration", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();
@@ -482,6 +774,41 @@ describe("SemanticTurnCoordinator", () => {
     expect(recovered.events.map((event) => event.type)).toContain(
       "system.recovered",
     );
+  });
+
+  it("serializes opening preparation against uncertain receipt recovery", async () => {
+    const engine = new FakeEngine();
+    engine.uncertainOnce = true;
+    const subject = coordinator(engine, new FakeNarrator());
+    const uncertain = await subject.submitTurn(
+      turn,
+      new AbortController().signal,
+    );
+    expect(uncertain.outcome).toBe("uncertain");
+
+    let releaseRecovery = (): void => undefined;
+    engine.executeGate = new Promise<void>((resolve) => {
+      releaseRecovery = resolve;
+    });
+    let markRecoveryStarted = (): void => undefined;
+    const recoveryStarted = new Promise<void>((resolve) => {
+      markRecoveryStarted = resolve;
+    });
+    engine.onExecute = () => {
+      if (engine.executeCalls.length === 2) markRecoveryStarted();
+    };
+    const recovering = subject.submitTurn(turn, new AbortController().signal);
+    await recoveryStarted;
+
+    await expect(
+      subject.prepareOpening(
+        { interactionId: "story-opening", boot: await engine.boot() },
+        new AbortController().signal,
+      ),
+    ).rejects.toBeInstanceOf(SemanticTurnBusyError);
+
+    releaseRecovery();
+    await expect(recovering).resolves.toMatchObject({ outcome: "committed" });
   });
 
   it("cancels during inspection before submitting any engine command", async () => {

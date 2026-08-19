@@ -104,6 +104,34 @@ function fixtureEvents(): readonly SemanticEvent[] {
   ] as readonly SemanticEvent[];
 }
 
+function appendOpeningPreparation(sequence: EventSequence) {
+  const output = sequence.append({
+    type: "engine.output",
+    correlationId: "story-start",
+    visibility: "accessible",
+    payload: {
+      revision: 0,
+      exactText: "ZORK I\n\nWest of House\nYou are standing in an open field.",
+      boundary: "input-requested" as const,
+      retention: "local-save" as const,
+    },
+  });
+  const requested = sequence.append({
+    type: "narration.requested",
+    correlationId: "story-start",
+    causationId: output.id,
+    visibility: "debug",
+    payload: {
+      narrationId: "opening-narration",
+      role: "narrator" as const,
+      text: output.payload.exactText,
+      sourceEventId: output.id,
+      retention: "session-only" as const,
+    },
+  });
+  return { output, requested } as const;
+}
+
 describe("experience projection", () => {
   it("replays exact attributed transcript and audio delivery state", () => {
     const events = fixtureEvents();
@@ -188,6 +216,246 @@ describe("experience projection", () => {
 
     expect(projection.displayState).toBe("ready");
     expect(projection.statusText).toBe("Ready");
+  });
+
+  it.each([
+    {
+      outcome: "complete" as const,
+      expectedState: "ready" as const,
+      expectedStatus: "Ready",
+    },
+    {
+      outcome: "interrupted" as const,
+      expectedState: "ready" as const,
+      expectedStatus: "Ready",
+    },
+    {
+      outcome: "failed" as const,
+      expectedState: "blocked" as const,
+      expectedStatus: "Action needed",
+    },
+  ])(
+    "projects $outcome playback with an actionable terminal state",
+    ({ outcome, expectedState, expectedStatus }) => {
+      let id = 0;
+      const sequence = new EventSequence({
+        sessionId: `playback-${outcome}`,
+        now: () => "2026-08-19T19:00:00.000Z",
+        nextId: () => `playback-${outcome}-event-${++id}`,
+      });
+      const { output, requested } = appendOpeningPreparation(sequence);
+      const ready = sequence.append({
+        type: "narration.ready",
+        correlationId: "story-start",
+        causationId: requested.id,
+        visibility: "debug",
+        payload: {
+          narrationId: "opening-narration",
+          role: "narrator" as const,
+        },
+      });
+      const started = sequence.append({
+        type: "audio.playback.started",
+        correlationId: "story-start",
+        causationId: output.id,
+        visibility: "accessible",
+        payload: {
+          narrationId: "opening-narration",
+          role: "narrator" as const,
+          sourceEventId: output.id,
+        },
+      });
+      const ended = sequence.append({
+        type: "audio.playback.ended",
+        correlationId: "story-start",
+        causationId: output.id,
+        visibility: "accessible",
+        payload: {
+          narrationId: "opening-narration",
+          role: "narrator" as const,
+          outcome,
+        },
+      });
+      const projection = projectExperience([
+        output,
+        requested,
+        ready,
+        started,
+        ended,
+      ]);
+
+      expect(projection.displayState).toBe(expectedState);
+      expect(projection.statusText).toBe(expectedStatus);
+      expect(projection.storyStartPhase).toBe("started");
+    },
+  );
+
+  it.each([
+    {
+      eventType: "narration.cancelled" as const,
+      expectedState: "ready" as const,
+      expectedStatus: "Ready",
+      expectedDelivery: "interrupted" as const,
+    },
+    {
+      eventType: "narration.failed" as const,
+      expectedState: "blocked" as const,
+      expectedStatus: "Action needed",
+      expectedDelivery: "failed" as const,
+    },
+  ])(
+    "ends the opening gate on matching $eventType",
+    ({ eventType, expectedState, expectedStatus, expectedDelivery }) => {
+      let id = 0;
+      const sequence = new EventSequence({
+        sessionId: `opening-${eventType}`,
+        now: () => "2026-08-19T19:10:00.000Z",
+        nextId: () => `opening-${eventType}-event-${++id}`,
+      });
+      const { output, requested } = appendOpeningPreparation(sequence);
+      const active = projectExperience([output, requested]);
+      const terminal =
+        eventType === "narration.cancelled"
+          ? sequence.append({
+              type: eventType,
+              correlationId: "story-start",
+              causationId: requested.id,
+              visibility: "accessible",
+              payload: {
+                narrationId: "opening-narration",
+                role: "narrator" as const,
+                reason: "player-cancelled" as const,
+              },
+            })
+          : sequence.append({
+              type: eventType,
+              correlationId: "story-start",
+              causationId: requested.id,
+              visibility: "accessible",
+              payload: {
+                narrationId: "opening-narration",
+                role: "narrator" as const,
+                recoverable: true as const,
+              },
+            });
+      const projected = reduceExperienceProjection(active, terminal);
+
+      expect(active).toMatchObject({
+        displayState: "processing",
+        statusText: "Preparing story",
+        storyStartPhase: "starting",
+        storyStartSource: {
+          outputEventId: output.id,
+          correlationId: "story-start",
+          narration: {
+            id: "opening-narration",
+            requestEventId: requested.id,
+          },
+        },
+      });
+      expect(projected).toMatchObject({
+        displayState: expectedState,
+        statusText: expectedStatus,
+        storyStartPhase: "started",
+        transcript: [{ delivery: expectedDelivery }],
+      });
+      expect(projectExperience([output, requested, terminal])).toEqual(
+        projected,
+      );
+    },
+  );
+
+  it("does not end the opening gate for an unrelated narrator terminal", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "opening-unrelated-terminal",
+      now: () => "2026-08-19T19:12:00.000Z",
+      nextId: () => `opening-unrelated-event-${++id}`,
+    });
+    const { output, requested } = appendOpeningPreparation(sequence);
+    const active = projectExperience([output, requested]);
+    const projected = reduceExperienceProjection(
+      active,
+      sequence.append({
+        type: "narration.failed",
+        correlationId: "story-start",
+        causationId: requested.id,
+        visibility: "accessible",
+        payload: {
+          narrationId: "different-narration",
+          role: "narrator" as const,
+          recoverable: true as const,
+        },
+      }),
+    );
+
+    expect(projected).toMatchObject({
+      displayState: "processing",
+      statusText: "Preparing story",
+      storyStartPhase: "starting",
+    });
+  });
+
+  it("replays a failed opening narration to the same blocked projection", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "opening-playback-failure",
+      now: () => "2026-08-19T19:15:00.000Z",
+      nextId: () => `opening-event-${++id}`,
+    });
+    const { output, requested } = appendOpeningPreparation(sequence);
+    const ready = sequence.append({
+      type: "narration.ready",
+      correlationId: "story-start",
+      causationId: requested.id,
+      visibility: "debug",
+      payload: {
+        narrationId: "opening-narration",
+        role: "narrator" as const,
+      },
+    });
+    const started = sequence.append({
+      type: "audio.playback.started",
+      correlationId: "story-start",
+      causationId: output.id,
+      visibility: "accessible",
+      payload: {
+        narrationId: "opening-narration",
+        role: "narrator" as const,
+        sourceEventId: output.id,
+      },
+    });
+    const failed = sequence.append({
+      type: "audio.playback.ended",
+      correlationId: "story-start",
+      causationId: output.id,
+      visibility: "accessible",
+      payload: {
+        narrationId: "opening-narration",
+        role: "narrator" as const,
+        outcome: "failed" as const,
+      },
+    });
+    const prefix = [output, requested, ready, started] as const;
+    const incrementallyProjected = reduceExperienceProjection(
+      projectExperience(prefix),
+      failed,
+    );
+    const replayed = projectExperience([...prefix, failed]);
+
+    expect(replayed).toEqual(incrementallyProjected);
+    expect(replayed).toMatchObject({
+      displayState: "blocked",
+      statusText: "Action needed",
+      storyStartPhase: "started",
+    });
+    expect(replayed.transcript).toMatchObject([
+      {
+        role: "game",
+        text: output.payload.exactText,
+        delivery: "failed",
+      },
+    ]);
   });
 
   it("projects a canonical command until matching narrator playback ends", () => {

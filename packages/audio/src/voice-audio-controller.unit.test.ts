@@ -13,6 +13,7 @@ import {
 } from "./scripted-audio.js";
 import {
   VoiceAudioController,
+  VoiceAudioStateError,
   type VoiceAudioState,
   type VoiceTurnPort,
 } from "./voice-audio-controller.js";
@@ -21,6 +22,8 @@ class StubTurns implements VoiceTurnPort {
   public readonly lifecycle: string[] = [];
   public readonly submitted: string[] = [];
   public readonly transcriptConfidences: Array<number | undefined> = [];
+  public submitGate: Promise<void> | undefined;
+  public onSubmit: (() => void) | undefined;
   public constructor(
     private readonly narration: ScriptedNarrationPort,
     private readonly narrationCount = 1,
@@ -33,6 +36,8 @@ class StubTurns implements VoiceTurnPort {
   }): Promise<SemanticTurnResult> {
     this.submitted.push(input.transcript);
     this.transcriptConfidences.push(input.transcriptConfidence);
+    this.onSubmit?.();
+    await this.submitGate;
     for (let index = 0; index < this.narrationCount; index += 1) {
       await this.narration.prepare(
         {
@@ -95,9 +100,9 @@ class StubTurns implements VoiceTurnPort {
   }
 }
 
-function fixture(clips: readonly ScriptedClip[]) {
+function fixture(clips: readonly ScriptedClip[], narrationCount = 1) {
   const narration = new ScriptedNarrationPort();
-  const turns = new StubTurns(narration);
+  const turns = new StubTurns(narration, narrationCount);
   const clock = new VirtualAudioClock();
   const playback = new ScriptedPlaybackPort(clock);
   const states: VoiceAudioState[] = [];
@@ -118,6 +123,238 @@ function fixture(clips: readonly ScriptedClip[]) {
 }
 
 describe("VoiceAudioController", () => {
+  it("plays a prepared story opening once and retains it for repeat", async () => {
+    const subject = fixture([]);
+    expect(subject.controller.hasRepeatablePlayback).toBe(false);
+    await expect(
+      subject.controller.playPrepared("story-opening"),
+    ).resolves.toBe("not-prepared");
+    expect(subject.playback.records).toHaveLength(0);
+    expect(subject.controller.state).toBe("ready");
+    expect(subject.states).toEqual([]);
+
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const clock = new VirtualAudioClock();
+    const playback = new ScriptedPlaybackPort(clock);
+    const states: VoiceAudioState[] = [];
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback,
+      nextInteractionId: () => "unused-interaction",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+      onState: (state) => states.push(state),
+    });
+    await narration.prepare(
+      {
+        narrationId: "opening-narration",
+        role: "narrator",
+        text: "The exact opening",
+        sourceEventId: "opening-output",
+        correlationId: "story-opening",
+      },
+      new AbortController().signal,
+    );
+
+    await expect(controller.playPrepared("story-opening")).resolves.toBe(
+      "complete",
+    );
+    await expect(controller.playPrepared("story-opening")).resolves.toBe(
+      "not-prepared",
+    );
+    expect(playback.records).toEqual([
+      expect.objectContaining({
+        narrationId: "opening-narration",
+        role: "narrator",
+        text: "The exact opening",
+      }),
+    ]);
+    expect(turns.lifecycle).toEqual([
+      "playback-started:narrator",
+      "playback-ended:complete",
+    ]);
+    expect(states).toEqual(["processing", "narrator-speaking", "ready"]);
+    expect(controller.hasRepeatablePlayback).toBe(true);
+
+    await controller.repeat();
+    expect(playback.records).toHaveLength(2);
+  });
+
+  it("returns to ready when a text turn prepares no narration", async () => {
+    const subject = fixture([], 0);
+
+    const result = await subject.controller.submitText("look");
+
+    expect(result.outcome).toBe("committed");
+    expect(subject.turns.submitted).toEqual(["look"]);
+    expect(subject.playback.records).toHaveLength(0);
+    expect(subject.controller.state).toBe("ready");
+    expect(subject.states).toEqual(["processing", "ready"]);
+  });
+
+  it("returns to ready when a captured turn prepares no narration", async () => {
+    const subject = fixture(
+      [
+        {
+          clipId: "silent-narration",
+          durationMs: 500,
+          transcript: { text: "look", confidence: 0.99 },
+        },
+      ],
+      0,
+    );
+
+    await subject.controller.startCapture();
+    const result = await subject.controller.finishCapture();
+
+    expect(result.outcome).toBe("committed");
+    expect(subject.turns.submitted).toEqual(["look"]);
+    expect(subject.playback.records).toHaveLength(0);
+    expect(subject.controller.state).toBe("ready");
+    expect(subject.states).toEqual([
+      "requesting-microphone",
+      "listening",
+      "processing",
+      "ready",
+    ]);
+  });
+
+  it("preserves prepared narration when playback is requested while listening", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const playback = new ScriptedPlaybackPort(new VirtualAudioClock());
+    const clips: ScriptedClip[] = [
+      {
+        clipId: "queued-while-listening",
+        durationMs: 500,
+        transcript: { text: "look", confidence: 0.99 },
+      },
+    ];
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort(clips),
+      transcriber: new ScriptedTranscriber(clips),
+      narration,
+      playback,
+      nextInteractionId: () => "capture-turn",
+      nextCaptureId: () => "capture-id",
+      observedObjects: () => [],
+    });
+    await narration.prepare(
+      {
+        narrationId: "queued-narration",
+        role: "narrator",
+        text: "Retained narration",
+        sourceEventId: "queued-output",
+        correlationId: "queued-interaction",
+      },
+      new AbortController().signal,
+    );
+
+    await controller.startCapture();
+    await expect(
+      controller.playPrepared("queued-interaction"),
+    ).rejects.toBeInstanceOf(VoiceAudioStateError);
+    await controller.stop();
+    await expect(controller.playPrepared("queued-interaction")).resolves.toBe(
+      "complete",
+    );
+    expect(playback.records).toEqual([
+      expect.objectContaining({ text: "Retained narration" }),
+    ]);
+  });
+
+  it("preserves prepared narration while paused", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const playback = new ScriptedPlaybackPort(new VirtualAudioClock());
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback,
+      nextInteractionId: () => "unused-interaction",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+    await narration.prepare(
+      {
+        narrationId: "paused-narration",
+        role: "narrator",
+        text: "Retained while paused",
+        sourceEventId: "paused-output",
+        correlationId: "paused-interaction",
+      },
+      new AbortController().signal,
+    );
+
+    await controller.pause();
+    await expect(
+      controller.playPrepared("paused-interaction"),
+    ).rejects.toBeInstanceOf(VoiceAudioStateError);
+    await controller.resume();
+    await expect(controller.playPrepared("paused-interaction")).resolves.toBe(
+      "complete",
+    );
+    expect(playback.records).toEqual([
+      expect.objectContaining({ text: "Retained while paused" }),
+    ]);
+  });
+
+  it("preserves prepared narration while a semantic turn is active", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    let releaseSubmit = (): void => undefined;
+    turns.submitGate = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    let markSubmitted = (): void => undefined;
+    const submitted = new Promise<void>((resolve) => {
+      markSubmitted = resolve;
+    });
+    turns.onSubmit = markSubmitted;
+    const playback = new ScriptedPlaybackPort(new VirtualAudioClock());
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback,
+      nextInteractionId: () => "active-turn",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+    await narration.prepare(
+      {
+        narrationId: "external-narration",
+        role: "narrator",
+        text: "Retained during turn",
+        sourceEventId: "external-output",
+        correlationId: "external-interaction",
+      },
+      new AbortController().signal,
+    );
+
+    const activeTurn = controller.submitText("look");
+    await submitted;
+    await expect(
+      controller.playPrepared("external-interaction"),
+    ).rejects.toBeInstanceOf(VoiceAudioStateError);
+    releaseSubmit();
+    await activeTurn;
+    await expect(controller.playPrepared("external-interaction")).resolves.toBe(
+      "complete",
+    );
+    expect(playback.records.at(-1)).toMatchObject({
+      text: "Retained during turn",
+    });
+  });
+
   it("drives push-to-talk through transcript, exact playback, and repeat", async () => {
     const subject = fixture([
       {

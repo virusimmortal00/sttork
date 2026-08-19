@@ -26,6 +26,14 @@ import { DorkWorkerEngine } from "../../../spikes/dork-worker/dork-worker-engine
 
 import { applyActionLogPresentation } from "./action-log-presentation.js";
 import {
+  applyStoryStartPresentation,
+  openingActivationFailureDisposition,
+  openingPreparationDisposition,
+  type StoryStartPhase,
+  type StoryStartPresentationElements,
+} from "./story-start-presentation.js";
+import {
+  authoritativeVoiceStatePresentation,
   applyCommandCuePresentation,
   applyVoiceStatePresentation,
   statusTextForVoiceAudioState,
@@ -36,6 +44,7 @@ const STORY_ID = "minimal-zmachine-story";
 const STORY_SHA256 =
   "67d3a47a48227988a29b2f4111da4cf5cd0efec4a8873d717c9e610984fb7389";
 const STORY_URL = "/fixtures/stories/minimal/artifact/minimal.z3";
+const STORY_OPENING_INTERACTION_ID = "story-opening";
 
 const clips: readonly ScriptedClip[] = [
   {
@@ -96,6 +105,7 @@ async function run(): Promise<void> {
   const activityIndicator = required<HTMLElement>("activity-indicator");
   const commandCue = required<HTMLOutputElement>("command-cue");
   const actionLog = required<HTMLOListElement>("action-log");
+  const primaryCue = required<HTMLElement>("primary-cue");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
   const pauseButton = required<HTMLButtonElement>("pause");
@@ -107,9 +117,19 @@ async function run(): Promise<void> {
   const debugPanel = required<HTMLElement>("debug-panel");
   const textForm = required<HTMLFormElement>("text-form");
   const textInput = required<HTMLInputElement>("text-input");
+  const textSubmitButton = required<HTMLButtonElement>("text-submit");
   const voicePresentation: VoiceStatePresentationElements = {
     status,
     activityIndicator,
+  };
+  const storyStartPresentation: StoryStartPresentationElements = {
+    primaryButton: captureButton,
+    stopButton,
+    pauseButton,
+    repeatButton,
+    textInput,
+    textSubmitButton,
+    primaryCue,
   };
 
   function publishEvidence(evidence: SmokeEvidence): void {
@@ -143,7 +163,10 @@ async function run(): Promise<void> {
     binding: DORK_WORKER_BINDING,
     nextMessageId: () => `message-${++message}`,
   });
-  await engine.boot({ storyId: STORY_ID, artifactSha256: STORY_SHA256 });
+  const boot = await engine.boot({
+    storyId: STORY_ID,
+    artifactSha256: STORY_SHA256,
+  });
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
   const canonicalEvents: SemanticEvent[] = [];
@@ -153,16 +176,38 @@ async function run(): Promise<void> {
   let narrationId = 0;
   let interactionId = 0;
   let captureId = 0;
+  let storyStartPhase: StoryStartPhase = "ready";
+  let storyStartPromise: Promise<void> | undefined;
+  let openingAbort: AbortController | undefined;
+  let openingStopRequested = false;
+  let openingPreparationRetry = false;
+  let openingPreparationFailed = false;
+  let openingNarrationRetryActive = false;
+  let openingNarrationRetryPromise: Promise<void> | undefined;
   const narration = new ScriptedNarrationPort();
   const clock = new VirtualAudioClock();
   const playback = new ScriptedPlaybackPort(clock);
 
   function renderProjection(): void {
-    applyVoiceStatePresentation(
-      projection.displayState,
-      projection.statusText,
-      voicePresentation,
-    );
+    if (openingNarrationRetryActive) {
+      applyVoiceStatePresentation(
+        "processing",
+        "Preparing opening narration",
+        voicePresentation,
+      );
+    } else {
+      applyVoiceStatePresentation(
+        projection.displayState,
+        projection.displayState === "ready"
+          ? storyStartPhase === "started"
+            ? projection.statusText
+            : storyStartPhase === "starting"
+              ? "Preparing story"
+              : "Ready to start"
+          : projection.statusText,
+        voicePresentation,
+      );
+    }
     applyCommandCuePresentation(projection.activeCommand, commandCue);
     applyActionLogPresentation(
       projection.actionLog,
@@ -242,21 +287,25 @@ async function run(): Promise<void> {
     nextCaptureId: () => `capture-${++captureId}`,
     observedObjects: () => ["token"],
     onState: (state: VoiceAudioState) => {
-      applyVoiceStatePresentation(
+      const presentation = authoritativeVoiceStatePresentation(
         state,
-        statusTextForVoiceAudioState(state, "Ready"),
+        statusTextForVoiceAudioState(
+          state,
+          storyStartPhase === "started" ? "Ready" : "Ready to start",
+        ),
+        projection,
+      );
+      applyVoiceStatePresentation(
+        presentation.state,
+        presentation.statusText,
         voicePresentation,
       );
-      captureButton.textContent =
-        state === "listening" ? "Finish speaking" : "Start speaking";
-      captureButton.setAttribute("aria-pressed", String(state === "listening"));
-      const busy =
-        state === "requesting-microphone" ||
-        state === "processing" ||
-        state === "guide-speaking" ||
-        state === "narrator-speaking" ||
-        state === "paused";
-      captureButton.disabled = busy;
+      applyStoryStartPresentation(
+        storyStartPhase,
+        state,
+        true,
+        storyStartPresentation,
+      );
       pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
       if (state === "recoverable-error") {
         transcriptPanel.hidden = false;
@@ -287,6 +336,7 @@ async function run(): Promise<void> {
   }
 
   async function toggleCapture(): Promise<void> {
+    if (storyStartPhase !== "started") return;
     if (controller.state === "listening") {
       await controller.finishCapture();
       updateEvidence();
@@ -298,17 +348,203 @@ async function run(): Promise<void> {
     }
   }
 
-  captureButton.addEventListener("click", () => void toggleCapture());
+  function presentControllerState(): void {
+    const state = controller.state;
+    const presentation = authoritativeVoiceStatePresentation(
+      state,
+      statusTextForVoiceAudioState(
+        state,
+        storyStartPhase === "started" ? "Ready" : "Ready to start",
+      ),
+      projection,
+    );
+    applyVoiceStatePresentation(
+      presentation.state,
+      presentation.statusText,
+      voicePresentation,
+    );
+    applyStoryStartPresentation(
+      storyStartPhase,
+      state,
+      true,
+      storyStartPresentation,
+    );
+    pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
+    if (state === "recoverable-error") {
+      transcriptPanel.hidden = false;
+      transcriptButton.setAttribute("aria-expanded", "true");
+      textInput.focus();
+    }
+  }
+
+  function presentOpeningRetryState(): void {
+    presentControllerState();
+    applyVoiceStatePresentation(
+      "blocked",
+      projection.displayState === "blocked"
+        ? projection.statusText
+        : "Action needed",
+      voicePresentation,
+    );
+  }
+
+  async function startStory(): Promise<void> {
+    if (storyStartPhase === "started") return;
+    if (storyStartPromise !== undefined) return storyStartPromise;
+
+    storyStartPhase = "starting";
+    openingStopRequested = false;
+    applyVoiceStatePresentation(
+      "processing",
+      "Preparing story",
+      voicePresentation,
+    );
+    applyStoryStartPresentation(
+      storyStartPhase,
+      controller.state,
+      true,
+      storyStartPresentation,
+    );
+    const abort = new AbortController();
+    openingAbort = abort;
+    const operation = (async () => {
+      const prepared = await coordinator.prepareOpening(
+        { interactionId: STORY_OPENING_INTERACTION_ID, boot },
+        abort.signal,
+      );
+      const disposition = openingPreparationDisposition(prepared.outcome);
+      openingPreparationRetry = disposition.retryAvailable;
+      openingPreparationFailed = disposition.failed;
+      if (prepared.outcome === "ready") {
+        const playing = controller.playPrepared(STORY_OPENING_INTERACTION_ID);
+        if (openingStopRequested) await controller.stop();
+        await playing;
+      }
+      storyStartPhase = "started";
+      if (openingPreparationFailed) presentOpeningRetryState();
+      else presentControllerState();
+      updateEvidence();
+    })();
+    storyStartPromise = operation;
+    try {
+      await operation;
+    } catch (error) {
+      storyStartPromise = undefined;
+      storyStartPhase = "ready";
+      presentControllerState();
+      if (
+        openingActivationFailureDisposition(
+          abort.signal.aborted,
+          openingStopRequested,
+        ) === "player-cancelled"
+      ) {
+        return;
+      }
+      throw error;
+    } finally {
+      if (openingAbort === abort) openingAbort = undefined;
+    }
+  }
+
+  async function primaryAction(): Promise<void> {
+    if (storyStartPhase === "ready") await startStory();
+    else if (storyStartPhase === "started") await toggleCapture();
+  }
+
+  async function repeatLastNarration(): Promise<void> {
+    if (
+      !openingPreparationRetry ||
+      controller.hasRepeatablePlayback ||
+      (controller.state !== "ready" && controller.state !== "recoverable-error")
+    ) {
+      await controller.repeat();
+      updateEvidence();
+      return;
+    }
+    if (openingNarrationRetryPromise !== undefined) {
+      return openingNarrationRetryPromise;
+    }
+
+    openingNarrationRetryActive = true;
+    applyVoiceStatePresentation(
+      "processing",
+      "Preparing opening narration",
+      voicePresentation,
+    );
+    applyStoryStartPresentation(
+      "started",
+      "processing",
+      true,
+      storyStartPresentation,
+    );
+    pauseButton.disabled = true;
+    repeatButton.disabled = true;
+    const abort = new AbortController();
+    openingAbort = abort;
+    const operation = (async () => {
+      const prepared = await coordinator.prepareOpening(
+        { interactionId: STORY_OPENING_INTERACTION_ID, boot },
+        abort.signal,
+      );
+      const disposition = openingPreparationDisposition(prepared.outcome);
+      openingPreparationRetry = disposition.retryAvailable;
+      openingPreparationFailed = disposition.failed;
+      if (prepared.outcome === "ready") {
+        openingNarrationRetryActive = false;
+        const outcome = await controller.playPrepared(
+          STORY_OPENING_INTERACTION_ID,
+        );
+        openingPreparationRetry = outcome === "not-prepared";
+        openingPreparationFailed = outcome === "not-prepared";
+      }
+      openingNarrationRetryActive = false;
+      if (openingPreparationFailed) presentOpeningRetryState();
+      else presentControllerState();
+      updateEvidence();
+    })();
+    openingNarrationRetryPromise = operation;
+    try {
+      await operation;
+    } catch (error) {
+      openingPreparationRetry = true;
+      openingPreparationFailed = true;
+      presentOpeningRetryState();
+      throw error;
+    } finally {
+      openingNarrationRetryActive = false;
+      openingNarrationRetryPromise = undefined;
+      if (openingAbort === abort) openingAbort = undefined;
+    }
+  }
+
+  async function stopActive(): Promise<void> {
+    if (storyStartPhase === "starting" || openingNarrationRetryActive) {
+      openingStopRequested = true;
+      openingAbort?.abort(new Error("Player stopped the story opening."));
+    }
+    await controller.stop();
+    updateEvidence();
+  }
+
+  function runControl(operation: () => Promise<unknown>): void {
+    void operation().catch(() => {
+      applyVoiceStatePresentation("blocked", "Try again", voicePresentation);
+    });
+  }
+
+  captureButton.addEventListener("click", () => runControl(primaryAction));
   stopButton.addEventListener("click", () => {
-    void controller.stop().then(updateEvidence);
+    runControl(stopActive);
   });
   pauseButton.addEventListener("click", () => {
-    void (
-      controller.state === "paused" ? controller.resume() : controller.pause()
-    ).then(updateEvidence);
+    runControl(async () => {
+      if (controller.state === "paused") await controller.resume();
+      else await controller.pause();
+      updateEvidence();
+    });
   });
   repeatButton.addEventListener("click", () => {
-    void controller.repeat().then(updateEvidence);
+    runControl(repeatLastNarration);
   });
   transcriptButton.addEventListener("click", () => {
     transcriptPanel.hidden = !transcriptPanel.hidden;
@@ -325,9 +561,16 @@ async function run(): Promise<void> {
   });
   textForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    if (storyStartPhase !== "started") {
+      captureButton.focus();
+      return;
+    }
     const text = textInput.value;
     textInput.value = "";
-    void controller.submitText(text).then(updateEvidence);
+    runControl(async () => {
+      await controller.submitText(text);
+      updateEvidence();
+    });
   });
   document.addEventListener("keydown", (event) => {
     if (
@@ -336,14 +579,18 @@ async function run(): Promise<void> {
       event.target === document.body
     ) {
       event.preventDefault();
-      void toggleCapture();
+      if (storyStartPhase === "started") runControl(toggleCapture);
     }
-    if (event.code === "Escape") void controller.stop();
+    if (event.code === "Escape") runControl(stopActive);
   });
 
-  projection = { ...projection, displayState: "ready", statusText: "Ready" };
+  projection = {
+    ...projection,
+    displayState: "ready",
+    statusText: "Ready to start",
+  };
   renderProjection();
-  captureButton.disabled = false;
+  presentControllerState();
   publishEvidence({
     status: "ready",
     turns: 0,

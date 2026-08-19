@@ -23,6 +23,9 @@ export type VoiceAudioState =
   | "paused"
   | "recoverable-error";
 
+export type PreparedPlaybackOutcome =
+  "complete" | "interrupted" | "failed" | "not-prepared";
+
 export interface VoiceTurnPort {
   submitTurn(
     input: SemanticTurnInput,
@@ -122,6 +125,10 @@ export class VoiceAudioController {
 
   public get state(): VoiceAudioState {
     return this.#state;
+  }
+
+  public get hasRepeatablePlayback(): boolean {
+    return this.#lastPlayed !== undefined;
   }
 
   public async startCapture(): Promise<void> {
@@ -244,20 +251,8 @@ export class VoiceAudioController {
     }
 
     this.#onTurn?.(result);
-    const prepared = this.#narration.takePrepared(active.interactionId);
-    const playbackEpoch = this.#lifecycleEpoch;
-    for (const request of prepared) {
-      if (
-        this.#lifecycleEpoch !== playbackEpoch ||
-        this.#isPaused() ||
-        this.#isRecoverableError()
-      ) {
-        break;
-      }
-      await this.#play(request);
-    }
-    if (!this.#isPaused() && !this.#isRecoverableError()) {
-      this.#setState("ready");
+    if (this.#preparedPlaybackAllowed()) {
+      await this.playPrepared(active.interactionId);
     }
     return result;
   }
@@ -349,24 +344,56 @@ export class VoiceAudioController {
       this.#turnAbort = undefined;
     }
     this.#onTurn?.(result);
+    if (this.#preparedPlaybackAllowed()) {
+      await this.playPrepared(interactionId);
+    }
+    return result;
+  }
+
+  public async playPrepared(
+    interactionId: string,
+  ): Promise<PreparedPlaybackOutcome> {
+    const boundedInteractionId = this.#boundedId(interactionId, "interaction");
+    if (this.#state !== "ready" && this.#state !== "processing") {
+      throw new VoiceAudioStateError(
+        `Cannot play prepared narration while ${this.#state}.`,
+      );
+    }
+    if (
+      this.#active !== undefined ||
+      this.#turnAbort !== undefined ||
+      this.#playbackAbort !== undefined
+    ) {
+      throw new VoiceAudioStateError(
+        "Cannot play prepared narration while another audio operation is active.",
+      );
+    }
+
+    const prepared = this.#narration.takePrepared(boundedInteractionId);
+    if (prepared.length === 0) {
+      if (this.#state === "processing") this.#setState("ready");
+      return "not-prepared";
+    }
+
     const playbackEpoch = this.#lifecycleEpoch;
-    for (const request of this.#narration.takePrepared(interactionId)) {
+    for (const request of prepared) {
       if (
         this.#lifecycleEpoch !== playbackEpoch ||
         this.#isPaused() ||
         this.#isRecoverableError()
       ) {
-        break;
+        return "interrupted";
       }
-      await this.#play(request);
+      const outcome = await this.#play(request);
+      if (outcome !== "complete") return outcome;
     }
     if (!this.#isPaused() && !this.#isRecoverableError()) {
       this.#setState("ready");
     }
-    return result;
+    return "complete";
   }
 
-  async #play(request: NarrationRequest): Promise<void> {
+  async #play(request: NarrationRequest): Promise<PreparedPlaybackOutcome> {
     const controller = new AbortController();
     this.#playbackAbort = controller;
     if (this.#state !== "processing") this.#setState("processing");
@@ -399,15 +426,18 @@ export class VoiceAudioController {
         sourceEventId: request.sourceEventId,
         outcome: "complete",
       });
+      return "complete";
     } catch {
+      const outcome = controller.signal.aborted ? "interrupted" : "failed";
       this.#turns.recordPlaybackEnded({
         interactionId: request.correlationId,
         narrationId: request.narrationId,
         role: request.role,
         sourceEventId: request.sourceEventId,
-        outcome: controller.signal.aborted ? "interrupted" : "failed",
+        outcome,
       });
       if (!controller.signal.aborted) this.#setState("recoverable-error");
+      return outcome;
     } finally {
       if (this.#playbackAbort === controller) this.#playbackAbort = undefined;
     }
@@ -434,6 +464,10 @@ export class VoiceAudioController {
 
   #isRecoverableError(): boolean {
     return this.#state === "recoverable-error";
+  }
+
+  #preparedPlaybackAllowed(): boolean {
+    return this.#state === "ready" || this.#state === "processing";
   }
 
   #boundedId(value: string, kind: string): string {

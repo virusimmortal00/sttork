@@ -27,6 +27,8 @@ const STORY_SHA256 =
 const ZORK_STORY_ID = "zork1-release-119";
 const ZORK_STORY_SHA256 =
   "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79";
+const ZORK_RELEASE_119_OPENING =
+  "ZORK I: The Great Underground Empire\nInfocom interactive fiction - a fantasy story\nCopyright (c) 1981, 1982, 1983, 1984, 1985, 1986 Infocom, Inc. All rights reserved.\nZORK is a registered trademark of Infocom, Inc.\nRelease 119 / Serial number 880429\n\nWest of House\nYou are standing in an open field west of a white house, with a boarded front door.\nThere is a small mailbox here.\n\n>";
 const storyUrl = new URL(
   "../fixtures/stories/minimal/artifact/minimal.z3",
   import.meta.url,
@@ -58,6 +60,124 @@ class RuntimeFactory implements DorkWorkerLeaseFactory {
 }
 
 describe("semantic turn through the isolated Dork engine", () => {
+  it("presents the exact Zork I opening at revision zero before the first turn", async () => {
+    let messageId = 0;
+    const engine = new DorkWorkerEngine({
+      factory: new RuntimeFactory(),
+      storyBytes: new Uint8Array(await readFile(zorkStoryUrl)),
+      binding: DORK_WORKER_BINDING,
+      nextMessageId: () => `opening-message-${++messageId}`,
+    });
+    const boot = await engine.boot({
+      storyId: ZORK_STORY_ID,
+      artifactSha256: ZORK_STORY_SHA256,
+    });
+    expect(boot).toMatchObject({
+      revision: 0,
+      output: ZORK_RELEASE_119_OPENING,
+      turnComplete: true,
+      boundary: "input-requested",
+    });
+
+    const published: SemanticEvent[] = [];
+    const narration: NarrationRequest[] = [];
+    let eventId = 0;
+    let narrationId = 0;
+    const subject = new SemanticTurnCoordinator({
+      engine,
+      guide: FakeGuideModel.returning({
+        kind: "execute",
+        command: "look",
+        intentSummary: "Observe the current surroundings",
+        confidence: 0.99,
+      }),
+      narrator: {
+        prepare: (request) => {
+          narration.push(request);
+          return Promise.resolve();
+        },
+      },
+      events: new EventSequence({
+        sessionId: "zork-opening-session",
+        now: () => "2026-08-19T20:00:00.000Z",
+        nextId: () => `opening-event-${++eventId}`,
+      }),
+      nextRequestId: () => "opening-look-request",
+      nextNarrationId: () => `opening-narration-${++narrationId}`,
+      publish: (event) => published.push(event),
+    });
+    const openingInput = {
+      interactionId: "story-opening",
+      boot,
+    } as const;
+
+    const [opening, duplicate] = await Promise.all([
+      subject.prepareOpening(openingInput, new AbortController().signal),
+      subject.prepareOpening(openingInput, new AbortController().signal),
+    ]);
+    expect(duplicate).toEqual(opening);
+    expect(opening.events.map((event) => event.type)).toEqual([
+      "engine.output",
+      "narration.requested",
+      "narration.ready",
+    ]);
+    const openingOutput = opening.events[0];
+    expect(openingOutput).toMatchObject({
+      type: "engine.output",
+      correlationId: "story-opening",
+      payload: {
+        revision: 0,
+        exactText: ZORK_RELEASE_119_OPENING,
+        boundary: "input-requested",
+        retention: "local-save",
+      },
+    });
+    expect(
+      published.filter((event) => event.type === "engine.output"),
+    ).toHaveLength(1);
+    expect(
+      published.filter((event) => event.type.startsWith("engine.command.")),
+    ).toHaveLength(0);
+    expect(
+      published.filter((event) => event.type === "save.checkpointed"),
+    ).toHaveLength(0);
+    expect(narration).toEqual([
+      {
+        narrationId: "opening-narration-1",
+        role: "narrator",
+        text: ZORK_RELEASE_119_OPENING,
+        sourceEventId: openingOutput?.id,
+        correlationId: "story-opening",
+      },
+    ]);
+    expect(await engine.inspectPublicState()).toMatchObject({
+      revision: 0,
+      lastOutput: ZORK_RELEASE_119_OPENING,
+      boundary: "input-requested",
+    });
+
+    const look = await subject.submitTurn(
+      {
+        interactionId: "first-look",
+        transcript: "What do I see around me?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(look).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        status: "committed",
+        previousRevision: 0,
+        revision: 1,
+        command: "look",
+        output: expect.stringContaining("West of House"),
+      },
+    });
+    expect(await engine.inspectPublicState()).toMatchObject({ revision: 1 });
+  });
+
   it("commits, checkpoints, and requests exact narration once", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({

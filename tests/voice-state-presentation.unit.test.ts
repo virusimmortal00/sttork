@@ -5,11 +5,28 @@ import {
   activityStateForVoiceState,
   applyCommandCuePresentation,
   applyVoiceStatePresentation,
+  authoritativeVoiceStatePresentation,
   commandCueText,
   statusTextForVoiceAudioState,
 } from "../apps/web/src/voice-state-presentation.js";
 
 describe("voice state presentation", () => {
+  it("keeps a canonical blocked projection authoritative over generic controller recovery text", () => {
+    expect(
+      authoritativeVoiceStatePresentation(
+        "recoverable-error",
+        "Try again or use text input",
+        { displayState: "blocked", statusText: "Action needed" },
+      ),
+    ).toEqual({ state: "blocked", statusText: "Action needed" });
+    expect(
+      authoritativeVoiceStatePresentation("ready", "Ready", {
+        displayState: "ready",
+        statusText: "Ready",
+      }),
+    ).toEqual({ state: "ready", statusText: "Ready" });
+  });
+
   it("maps active controller states to stable visual activity states", () => {
     expect(activityStateForVoiceState("requesting-microphone")).toBe(
       "requesting",

@@ -12,6 +12,8 @@ export type ExperienceDisplayState =
   | "blocked"
   | "ended";
 
+export type StoryStartPhase = "ready" | "starting" | "started";
+
 export type TranscriptRole = "player" | "guide" | "game" | "system";
 export type TranscriptDelivery =
   "pending" | "speaking" | "interrupted" | "complete" | "failed";
@@ -48,9 +50,20 @@ export interface ActionLogItemProjection {
   readonly throughSequence: number;
 }
 
+export interface StoryStartSourceProjection {
+  readonly outputEventId: string;
+  readonly correlationId: string;
+  readonly narration?: {
+    readonly id: string;
+    readonly requestEventId: string;
+  };
+}
+
 export interface ExperienceProjectionState {
   readonly displayState: ExperienceDisplayState;
   readonly statusText: string;
+  readonly storyStartPhase: StoryStartPhase;
+  readonly storyStartSource?: StoryStartSourceProjection;
   readonly activeCommand?: CommandCueProjection;
   readonly actionLog: readonly ActionLogItemProjection[];
   readonly throughSequence: number;
@@ -68,12 +81,43 @@ export function initialExperienceProjection(): ExperienceProjectionState {
   return {
     displayState: "booting",
     statusText: "Starting",
+    storyStartPhase: "ready",
     actionLog: [],
     throughSequence: 0,
     sourceEventIds: [],
     transcript: [],
     debug: [],
   };
+}
+
+function matchesActiveStoryStartNarration(
+  state: ExperienceProjectionState,
+  event: SemanticEvent<"narration.cancelled" | "narration.failed">,
+): boolean {
+  const source = state.storyStartSource;
+  return (
+    state.storyStartPhase === "starting" &&
+    source !== undefined &&
+    event.payload.role === "narrator" &&
+    event.correlationId === source.correlationId &&
+    event.payload.narrationId === source.narration?.id &&
+    event.causationId === source.narration?.requestEventId
+  );
+}
+
+function matchesActiveStoryStartPlayback(
+  state: ExperienceProjectionState,
+  event: SemanticEvent<"audio.playback.ended">,
+): boolean {
+  const source = state.storyStartSource;
+  return (
+    state.storyStartPhase === "starting" &&
+    source !== undefined &&
+    event.payload.role === "narrator" &&
+    event.correlationId === source.correlationId &&
+    event.payload.narrationId === source.narration?.id &&
+    event.causationId === source.outputEventId
+  );
 }
 
 function matchesAction(
@@ -173,6 +217,8 @@ export function reduceExperienceProjection(
   }
   let displayState = previous.displayState;
   let statusText = previous.statusText;
+  let storyStartPhase = previous.storyStartPhase;
+  let storyStartSource = previous.storyStartSource;
   let activeCommand = previous.activeCommand;
   let actionLog = previous.actionLog;
   let transcript = previous.transcript;
@@ -296,6 +342,15 @@ export function reduceExperienceProjection(
       }
       break;
     case "engine.output":
+      if (event.payload.revision === 0 && storyStartPhase === "ready") {
+        storyStartPhase = "starting";
+        storyStartSource = {
+          outputEventId: event.id,
+          correlationId: event.correlationId,
+        };
+        displayState = "processing";
+        statusText = "Preparing story";
+      }
       if (
         activeCommand?.phase === "committed" &&
         activeCommand.correlationId === event.correlationId
@@ -325,8 +380,20 @@ export function reduceExperienceProjection(
         transcriptItem(event, "system", `Error: ${event.payload.code}`),
       ];
       break;
-    case "narration.cancelled":
-    case "narration.failed":
+    case "narration.cancelled": {
+      if (matchesActiveStoryStartNarration(previous, event)) {
+        storyStartPhase = "started";
+        displayState = "ready";
+        statusText = "Ready";
+        if (event.causationId !== undefined) {
+          transcript = updateDelivery(
+            transcript,
+            event.causationId,
+            "interrupted",
+            event,
+          );
+        }
+      }
       if (
         activeCommand?.correlationId === event.correlationId &&
         event.payload.role === "narrator" &&
@@ -335,7 +402,46 @@ export function reduceExperienceProjection(
         activeCommand = undefined;
       }
       break;
+    }
+    case "narration.failed": {
+      if (matchesActiveStoryStartNarration(previous, event)) {
+        storyStartPhase = "started";
+        displayState = "blocked";
+        statusText = "Action needed";
+        if (event.causationId !== undefined) {
+          transcript = updateDelivery(
+            transcript,
+            event.causationId,
+            "failed",
+            event,
+          );
+        }
+      }
+      if (
+        activeCommand?.correlationId === event.correlationId &&
+        event.payload.role === "narrator" &&
+        activeCommand.narrationId === event.payload.narrationId
+      ) {
+        activeCommand = undefined;
+      }
+      break;
+    }
     case "narration.requested":
+      if (
+        storyStartPhase === "starting" &&
+        storyStartSource !== undefined &&
+        event.payload.role === "narrator" &&
+        event.correlationId === storyStartSource.correlationId &&
+        event.payload.sourceEventId === storyStartSource.outputEventId
+      ) {
+        storyStartSource = {
+          ...storyStartSource,
+          narration: {
+            id: event.payload.narrationId,
+            requestEventId: event.id,
+          },
+        };
+      }
       if (
         activeCommand?.correlationId === event.correlationId &&
         event.payload.role === "narrator" &&
@@ -366,7 +472,12 @@ export function reduceExperienceProjection(
       );
       break;
     case "audio.playback.ended": {
-      if (displayState !== "paused") {
+      const endsStoryStart = matchesActiveStoryStartPlayback(previous, event);
+      if (endsStoryStart) storyStartPhase = "started";
+      if (event.payload.outcome === "failed") {
+        displayState = "blocked";
+        statusText = "Action needed";
+      } else if (endsStoryStart || displayState !== "paused") {
         displayState = "ready";
         statusText = "Ready";
       }
@@ -403,6 +514,8 @@ export function reduceExperienceProjection(
   return {
     displayState,
     statusText,
+    storyStartPhase,
+    ...(storyStartSource === undefined ? {} : { storyStartSource }),
     ...(activeCommand === undefined ? {} : { activeCommand }),
     actionLog,
     throughSequence: event.sequence,
