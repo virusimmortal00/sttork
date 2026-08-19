@@ -6,6 +6,7 @@ import type {
   ProviderTranscription,
 } from "@zork-voice/providers";
 import { ProviderAdapterError } from "@zork-voice/providers";
+import { parseOpenAiLiveOrigin } from "./local-live-harness.js";
 
 export interface OpenAiLiveProviderPort {
   transcribe(
@@ -138,18 +139,9 @@ function safeUsage(usage: ProviderTranscription["usage"]): object {
 }
 
 export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
-  const origin = new URL(options.allowedOrigin);
-  if (origin.origin !== options.allowedOrigin || origin.protocol !== "http:") {
-    throw new TypeError(
-      "Local live-smoke origin must be an exact HTTP origin.",
-    );
-  }
-  if (
-    !/^(?:127\.0\.0\.1|localhost)$/u.test(origin.hostname) ||
-    options.sessionToken.length < 32 ||
-    options.sessionToken.length > 160
-  ) {
-    throw new TypeError("Local live-smoke origin or session token is invalid.");
+  parseOpenAiLiveOrigin(options.allowedOrigin);
+  if (options.sessionToken.length < 32 || options.sessionToken.length > 160) {
+    throw new TypeError("Local live-smoke session token is invalid.");
   }
 
   return async function handle(request: Request): Promise<Response> {

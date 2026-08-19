@@ -224,7 +224,13 @@ describe("OpenAI local live harness", () => {
       handleApi: api,
     });
 
-    const page = await invoke(listener, incomingRequest({ url: "/" }));
+    const page = await invoke(
+      listener,
+      incomingRequest({
+        url: "/",
+        headers: { host: "127.0.0.1:4319" },
+      }),
+    );
     expect(page.status).toBe(200);
     expect(page.headers.get("cache-control")).toBe("no-store");
     expect(page.headers.get("content-security-policy")).toContain(
@@ -238,9 +244,22 @@ describe("OpenAI local live harness", () => {
       `<meta name="zork-voice-live-session" content="${token}">`,
     );
 
+    const wrongHostPage = await invoke(
+      listener,
+      incomingRequest({
+        url: "/",
+        headers: { host: "192.168.1.25:4319" },
+      }),
+    );
+    expect(wrongHostPage.status).toBe(403);
+    expect(new TextDecoder().decode(wrongHostPage.body)).not.toContain(token);
+
     const story = await invoke(
       listener,
-      incomingRequest({ url: "/vendor/zork1/zork1.z3" }),
+      incomingRequest({
+        url: "/vendor/zork1/zork1.z3",
+        headers: { host: "127.0.0.1:4319" },
+      }),
     );
     expect([...story.body]).toEqual([3, 1, 4]);
     expect(story.headers.get("content-type")).toBe("application/octet-stream");
@@ -251,6 +270,7 @@ describe("OpenAI local live harness", () => {
         url: "/api/live/openai/guide",
         method: "POST",
         headers: {
+          host: "127.0.0.1:4319",
           origin,
           "content-type": "application/json",
           "x-zork-voice-live-session": token,
@@ -271,6 +291,7 @@ describe("OpenAI local live harness", () => {
         url: "/api/live/openai/guide",
         method: "POST",
         headers: {
+          host: "127.0.0.1:4319",
           origin,
           "content-type": "application/json",
           "x-zork-voice-live-session": token,
@@ -285,8 +306,95 @@ describe("OpenAI local live harness", () => {
     expect(api).toHaveBeenCalledTimes(1);
 
     expect(
-      (await invoke(listener, incomingRequest({ url: "/package.json" })))
-        .status,
+      (
+        await invoke(
+          listener,
+          incomingRequest({
+            url: "/package.json",
+            headers: { host: "127.0.0.1:4319" },
+          }),
+        )
+      ).status,
     ).toBe(404);
+  });
+
+  it("permits an exact HTTPS proxy origin and requires its raw Host", async () => {
+    const publicOrigin = "https://voice.home.example:8443";
+    const token = createEphemeralLiveSessionToken();
+    const api = vi.fn(async () => Response.json({ accepted: true }));
+    const listener = createOpenAiLocalLiveRequestListener({
+      allowedOrigin: publicOrigin,
+      sessionToken: token,
+      paths: {
+        htmlPath: "/does/not/exist.html",
+        cssPath: "/does/not/exist.css",
+        storyPath: "/does/not/exist.z3",
+        appRoot: "/does/not/exist-app",
+        workerRoot: "/does/not/exist-worker",
+      },
+      handleApi: api,
+    });
+
+    const accepted = await invoke(
+      listener,
+      incomingRequest({
+        url: "/api/live/openai/guide",
+        method: "POST",
+        headers: {
+          host: "voice.home.example:8443",
+          origin: publicOrigin,
+          "content-type": "application/json",
+          "x-zork-voice-live-session": token,
+        },
+        body: "{}",
+      }),
+    );
+    expect(accepted.status).toBe(200);
+    expect(api).toHaveBeenCalledTimes(1);
+
+    const wrongHost = await invoke(
+      listener,
+      incomingRequest({
+        url: "/api/live/openai/guide",
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:4175",
+          origin: publicOrigin,
+          "content-type": "application/json",
+          "x-zork-voice-live-session": token,
+        },
+        body: "{}",
+      }),
+    );
+    expect(wrongHost.status).toBe(403);
+    expect(JSON.parse(new TextDecoder().decode(wrongHost.body))).toEqual({
+      error: { code: "forbidden" },
+    });
+    expect(api).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "http://192.168.1.25:4175",
+    "https://*.home.example",
+    "https://voice.home.example/",
+    "https://voice.home.example/path",
+    "https://voice.home.example?mode=live",
+    "https://voice.home.example#live",
+    "https://player@voice.home.example",
+  ])("rejects an unsafe configured origin: %s", (allowedOrigin) => {
+    expect(() =>
+      createOpenAiLocalLiveRequestListener({
+        allowedOrigin,
+        sessionToken: createEphemeralLiveSessionToken(),
+        paths: {
+          htmlPath: "/does/not/exist.html",
+          cssPath: "/does/not/exist.css",
+          storyPath: "/does/not/exist.z3",
+          appRoot: "/does/not/exist-app",
+          workerRoot: "/does/not/exist-worker",
+        },
+        handleApi: async () => Response.json({}),
+      }),
+    ).toThrow("exact loopback HTTP or HTTPS origin");
   });
 });

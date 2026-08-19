@@ -30,9 +30,45 @@ const STORY_ID = "zork1-release-119";
 const STORY_SHA256 =
   "37084966477dff679282de42974b2077156b1bd68fad92a65d4ea94d8eb64d79";
 const STORY_URL = "/vendor/zork1/zork1.z3";
+const LIVE_CAPTURE_MEDIA_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+] as const;
+
+export type LiveStartupErrorCode =
+  | "secure-context-required"
+  | "browser-cryptography-unavailable"
+  | "microphone-unavailable"
+  | "audio-recording-unavailable"
+  | "startup-failed";
+
+export interface LiveBrowserCapabilities {
+  readonly isSecureContext: boolean;
+  readonly subtle: unknown;
+  readonly getUserMedia: unknown;
+  readonly mediaRecorder: unknown;
+  readonly supportedCaptureMediaType: boolean;
+}
+
+export interface LiveBrowserPreflight {
+  readonly readiness: "ready" | "degraded" | "failed";
+  readonly secureContext: boolean;
+  readonly voiceAvailable: boolean;
+  readonly storyAuthenticationAvailable: boolean;
+  readonly audioRecordingAvailable: boolean;
+  readonly errorCode?: Exclude<LiveStartupErrorCode, "startup-failed">;
+  readonly statusText: string;
+}
 
 interface LiveSmokeEvidence {
-  status: "starting" | "ready" | "failed";
+  status: "starting" | "ready" | "degraded" | "failed";
+  secureContext: boolean;
+  voiceAvailable: boolean;
+  storyAuthenticationAvailable: boolean;
+  audioRecordingAvailable: boolean;
   turns: number;
   finalRevision: number;
   eventTypes: readonly string[];
@@ -43,7 +79,7 @@ interface LiveSmokeEvidence {
     readonly documentAbsent: boolean;
     readonly windowAbsent: boolean;
   };
-  errorCode?: string;
+  errorCode?: LiveStartupErrorCode;
 }
 
 declare global {
@@ -52,10 +88,171 @@ declare global {
   }
 }
 
+interface DisableableControl {
+  disabled: boolean;
+}
+
+interface LiveStatusElement {
+  textContent: string | null;
+  setAttribute(name: string, value: string): void;
+}
+
+export interface LivePreflightPresentationElements {
+  readonly status: LiveStatusElement;
+  readonly captureButton: DisableableControl;
+  readonly transcriptPanel: { hidden: boolean | string };
+  readonly transcriptButton: {
+    setAttribute(name: string, value: string): void;
+  };
+  readonly textForm: { hidden: boolean | string };
+  readonly textInput: DisableableControl;
+  readonly allControls: readonly DisableableControl[];
+}
+
 function required<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (element === null) throw new Error(`Missing element #${id}`);
   return element as T;
+}
+
+function hasSubtleCrypto(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "digest" in value &&
+    typeof value.digest === "function"
+  );
+}
+
+export function evaluateLiveBrowserPreflight(
+  capabilities: LiveBrowserCapabilities,
+): LiveBrowserPreflight {
+  const storyAuthenticationAvailable = hasSubtleCrypto(capabilities.subtle);
+  const audioRecordingAvailable =
+    typeof capabilities.mediaRecorder === "function" &&
+    capabilities.supportedCaptureMediaType;
+  if (!capabilities.isSecureContext) {
+    return {
+      readiness: storyAuthenticationAvailable ? "degraded" : "failed",
+      secureContext: false,
+      voiceAvailable: false,
+      storyAuthenticationAvailable,
+      audioRecordingAvailable,
+      errorCode: "secure-context-required",
+      statusText: storyAuthenticationAvailable
+        ? "Secure connection required for microphone. Use accessible text input."
+        : "Secure connection required. Open this page over HTTPS in a supported browser.",
+    };
+  }
+  if (!storyAuthenticationAvailable) {
+    return {
+      readiness: "failed",
+      secureContext: true,
+      voiceAvailable: false,
+      storyAuthenticationAvailable: false,
+      audioRecordingAvailable,
+      errorCode: "browser-cryptography-unavailable",
+      statusText:
+        "Browser cryptography unavailable. Open this page in a supported browser.",
+    };
+  }
+  if (typeof capabilities.getUserMedia !== "function") {
+    return {
+      readiness: "degraded",
+      secureContext: true,
+      voiceAvailable: false,
+      storyAuthenticationAvailable: true,
+      audioRecordingAvailable,
+      errorCode: "microphone-unavailable",
+      statusText: "Microphone unavailable. Use accessible text input.",
+    };
+  }
+  if (!audioRecordingAvailable) {
+    return {
+      readiness: "degraded",
+      secureContext: true,
+      voiceAvailable: false,
+      storyAuthenticationAvailable: true,
+      audioRecordingAvailable: false,
+      errorCode: "audio-recording-unavailable",
+      statusText: "Audio recording unavailable. Use accessible text input.",
+    };
+  }
+  return {
+    readiness: "ready",
+    secureContext: true,
+    voiceAvailable: true,
+    storyAuthenticationAvailable: true,
+    audioRecordingAvailable: true,
+    statusText: "Ready",
+  };
+}
+
+export function applyFatalLiveStartupPresentation(
+  statusText: string,
+  status: LiveStatusElement | null,
+  controls: readonly DisableableControl[],
+): void {
+  if (status !== null) {
+    status.textContent = statusText;
+    status.setAttribute("role", "alert");
+  }
+  for (const control of controls) control.disabled = true;
+}
+
+export function applyLivePreflightPresentation(
+  preflight: LiveBrowserPreflight,
+  elements: LivePreflightPresentationElements,
+): boolean {
+  if (!preflight.storyAuthenticationAvailable) {
+    applyFatalLiveStartupPresentation(
+      preflight.statusText,
+      elements.status,
+      elements.allControls,
+    );
+    return false;
+  }
+
+  elements.status.textContent = preflight.statusText;
+  elements.captureButton.disabled = !preflight.voiceAvailable;
+  if (!preflight.voiceAvailable) {
+    elements.transcriptPanel.hidden = false;
+    elements.transcriptButton.setAttribute("aria-expanded", "true");
+    elements.textForm.hidden = false;
+    elements.textInput.disabled = false;
+  }
+  return true;
+}
+
+function hasSupportedCaptureMediaType(value: unknown): boolean {
+  if (typeof value !== "function" || !("isTypeSupported" in value)) {
+    return false;
+  }
+  const isTypeSupported = value.isTypeSupported;
+  if (typeof isTypeSupported !== "function") return false;
+  return LIVE_CAPTURE_MEDIA_TYPES.some((mediaType) => {
+    try {
+      return isTypeSupported.call(value, mediaType) === true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function liveBrowserPreflight(): LiveBrowserPreflight {
+  const scope = globalThis as typeof globalThis & {
+    readonly isSecureContext?: boolean;
+    readonly MediaRecorder?: unknown;
+  };
+  return evaluateLiveBrowserPreflight({
+    isSecureContext: scope.isSecureContext === true,
+    subtle: scope.crypto?.subtle,
+    getUserMedia: scope.navigator?.mediaDevices?.getUserMedia,
+    mediaRecorder: scope.MediaRecorder,
+    supportedCaptureMediaType: hasSupportedCaptureMediaType(
+      scope.MediaRecorder,
+    ),
+  });
 }
 
 function sessionToken(): string {
@@ -81,7 +278,6 @@ async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 async function run(): Promise<void> {
-  const token = sessionToken();
   const status = required<HTMLElement>("status");
   const captureButton = required<HTMLButtonElement>("capture");
   const stopButton = required<HTMLButtonElement>("stop");
@@ -94,11 +290,48 @@ async function run(): Promise<void> {
   const debugPanel = required<HTMLElement>("debug-panel");
   const textForm = required<HTMLFormElement>("text-form");
   const textInput = required<HTMLInputElement>("text-input");
+  const allControls = Array.from(
+    document.querySelectorAll<
+      | HTMLButtonElement
+      | HTMLInputElement
+      | HTMLSelectElement
+      | HTMLTextAreaElement
+    >("button, input, select, textarea"),
+  );
+  const presentation: LivePreflightPresentationElements = {
+    status,
+    captureButton,
+    transcriptPanel,
+    transcriptButton,
+    textForm,
+    textInput,
+    allControls,
+  };
+  const preflight = liveBrowserPreflight();
 
   function publishEvidence(evidence: LiveSmokeEvidence): void {
     window.__OPENAI_LIVE_SMOKE__ = evidence;
     document.body.dataset.smokeEvidence = JSON.stringify(evidence);
   }
+
+  if (!preflight.storyAuthenticationAvailable) {
+    applyLivePreflightPresentation(preflight, presentation);
+    publishEvidence({
+      status: "failed",
+      secureContext: preflight.secureContext,
+      voiceAvailable: false,
+      storyAuthenticationAvailable: false,
+      audioRecordingAvailable: preflight.audioRecordingAvailable,
+      turns: 0,
+      finalRevision: 0,
+      eventTypes: [],
+      transcriptHidden: transcriptPanel.hidden !== false,
+      debugHidden: debugPanel.hidden !== false,
+      errorCode: preflight.errorCode ?? "secure-context-required",
+    });
+    return;
+  }
+  const token = sessionToken();
 
   const storyResponse = await fetch(STORY_URL, { cache: "no-store" });
   if (!storyResponse.ok) throw new Error("Story fetch failed.");
@@ -202,13 +435,14 @@ async function run(): Promise<void> {
         state === "listening" ? "Finish speaking" : "Start speaking";
       captureButton.setAttribute("aria-pressed", String(state === "listening"));
       captureButton.disabled =
+        !preflight.voiceAvailable ||
         state === "requesting-microphone" ||
         state === "processing" ||
         state === "guide-speaking" ||
         state === "narrator-speaking" ||
         state === "paused";
       pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
-      if (state === "ready") status.textContent = "Ready";
+      if (state === "ready") status.textContent = preflight.statusText;
       if (state === "requesting-microphone") {
         status.textContent = "Requesting microphone";
       }
@@ -231,7 +465,11 @@ async function run(): Promise<void> {
   async function updateEvidence(): Promise<void> {
     const state = await engine.inspectPublicState();
     publishEvidence({
-      status: "ready",
+      status: preflight.readiness,
+      secureContext: preflight.secureContext,
+      voiceAvailable: preflight.voiceAvailable,
+      storyAuthenticationAvailable: preflight.storyAuthenticationAvailable,
+      audioRecordingAvailable: preflight.audioRecordingAvailable,
       turns,
       finalRevision: state.revision,
       eventTypes: canonicalEvents.map((event) => event.type),
@@ -240,10 +478,18 @@ async function run(): Promise<void> {
       ...(factory.lastEnvironment === undefined
         ? {}
         : { workerEnvironment: factory.lastEnvironment }),
+      ...(preflight.errorCode === undefined
+        ? {}
+        : { errorCode: preflight.errorCode }),
     });
   }
 
   async function toggleCapture(): Promise<void> {
+    if (!preflight.voiceAvailable) {
+      applyLivePreflightPresentation(preflight, presentation);
+      textInput.focus();
+      return;
+    }
     if (controller.state === "listening") {
       await controller.finishCapture();
       await updateEvidence();
@@ -260,6 +506,15 @@ async function run(): Promise<void> {
       status.textContent = "Try again";
     });
   }
+
+  projection = {
+    ...projection,
+    displayState: "ready",
+    statusText: preflight.statusText,
+  };
+  renderProjection();
+  applyLivePreflightPresentation(preflight, presentation);
+  await updateEvidence();
 
   captureButton.addEventListener("click", () => runControl(toggleCapture));
   stopButton.addEventListener("click", () =>
@@ -314,25 +569,39 @@ async function run(): Promise<void> {
     }
     if (event.code === "Escape") runControl(() => controller.stop());
   });
-
-  projection = { ...projection, displayState: "ready", statusText: "Ready" };
-  renderProjection();
-  captureButton.disabled = false;
-  await updateEvidence();
 }
 
-void run().catch(() => {
+function publishStartupFailure(): void {
+  const preflight = liveBrowserPreflight();
   const status = document.getElementById("status");
-  if (status !== null) status.textContent = "Unable to start";
+  const controls = Array.from(
+    document.querySelectorAll<
+      | HTMLButtonElement
+      | HTMLInputElement
+      | HTMLSelectElement
+      | HTMLTextAreaElement
+    >("button, input, select, textarea"),
+  );
+  applyFatalLiveStartupPresentation("Unable to start", status, controls);
+  const transcriptPanel = document.getElementById("transcript-panel");
+  const debugPanel = document.getElementById("debug-panel");
   const evidence: LiveSmokeEvidence = {
     status: "failed",
+    secureContext: preflight.secureContext,
+    voiceAvailable: preflight.voiceAvailable,
+    storyAuthenticationAvailable: preflight.storyAuthenticationAvailable,
+    audioRecordingAvailable: preflight.audioRecordingAvailable,
     turns: 0,
     finalRevision: 0,
     eventTypes: [],
-    transcriptHidden: true,
-    debugHidden: true,
+    transcriptHidden: transcriptPanel?.hidden !== false,
+    debugHidden: debugPanel?.hidden !== false,
     errorCode: "startup-failed",
   };
   window.__OPENAI_LIVE_SMOKE__ = evidence;
   document.body.dataset.smokeEvidence = JSON.stringify(evidence);
-});
+}
+
+if (typeof window !== "undefined" && typeof document !== "undefined") {
+  void run().catch(publishStartupFailure);
+}

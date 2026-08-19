@@ -169,15 +169,26 @@ export function injectEphemeralLiveSessionToken(
   return `${pieces[0]}${sessionToken}${pieces[1]}`;
 }
 
-function assertLocalOrigin(value: string): URL {
-  const origin = new URL(value);
+export function parseOpenAiLiveOrigin(value: string): URL {
+  let origin: URL;
+  try {
+    origin = new URL(value);
+  } catch {
+    throw new TypeError(
+      "The live harness origin must be an exact loopback HTTP or HTTPS origin.",
+    );
+  }
+  const isLoopbackHttp =
+    origin.protocol === "http:" &&
+    /^(?:127\.0\.0\.1|localhost)$/u.test(origin.hostname);
+  const isHttps = origin.protocol === "https:";
   if (
     origin.origin !== value ||
-    origin.protocol !== "http:" ||
-    !/^(?:127\.0\.0\.1|localhost)$/u.test(origin.hostname)
+    origin.hostname.includes("*") ||
+    (!isLoopbackHttp && !isHttps)
   ) {
     throw new TypeError(
-      "The live harness origin must be an exact loopback URL.",
+      "The live harness origin must be an exact loopback HTTP or HTTPS origin.",
     );
   }
   return origin;
@@ -440,11 +451,15 @@ async function serveApi(
 export function createOpenAiLocalLiveRequestListener(
   options: OpenAiLocalLiveHarnessOptions,
 ): RequestListener {
-  const origin = assertLocalOrigin(options.allowedOrigin);
+  const origin = parseOpenAiLiveOrigin(options.allowedOrigin);
   if (!isLiveSessionToken(options.sessionToken)) {
     throw new TypeError("The live session token is invalid.");
   }
   return (request, response) => {
+    if (request.headers.host !== origin.host) {
+      writeFailure(response, 403, "forbidden");
+      return;
+    }
     void (async () => {
       const pathname = new URL(request.url ?? "/", origin).pathname;
       if (pathname.startsWith("/api/live/openai/")) {

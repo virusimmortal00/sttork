@@ -312,8 +312,11 @@ interpreter, provider, or product is release-qualified.
   a strict `gpt-5.6-luna` Responses decision, provider-neutral guide policy and
   the semantic coordinator, the authenticated Zork I Dork Worker, exact
   multiline engine prose, and role-specific `tts-1` playback.
-- The long-lived provider key remains in the loopback server. Browser code
-  receives only a random process-lifetime session token. Same-origin checks,
+- The long-lived provider key remains in the trusted local server. Browser code
+  receives only a random process-lifetime session token. The default is
+  loopback-only; an opt-in remote-device smoke keeps the upstream listener on
+  loopback and requires one exact HTTPS public origin through a private,
+  authenticated proxy and encrypted tunnel. Same-origin and exact-host checks,
   restrictive CSP, microphone Permissions Policy, `no-store`, bounded request
   and response bodies, cancellation, and one-shot audio disposal are enforced.
 - One provider instance enforces a global 12-request ceiling. The ordinary
@@ -331,3 +334,6 @@ interpreter, provider, or product is release-qualified.
 - Preserve browser version, CSP/console result, request-count evidence, and a
   redaction check showing that neither the key nor raw audio entered persisted
   diagnostics. Until those checks pass, the Slice 5 checkpoint remains open.
+- If the checkpoint runs from another device, also preserve secure-context,
+  TLS/proxy/tunnel, access-denial, header-preservation, cache/log-redaction, and
+  raw-upstream-unreachability evidence without publishing private topology.

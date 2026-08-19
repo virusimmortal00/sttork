@@ -92,14 +92,71 @@ remains available for deployment-focused diagnosis.
 
 The Slice 5 OpenAI harness is opt-in developer evidence. First run
 `pnpm openai:live:build`, then `pnpm openai:live:serve`, and open the printed
-loopback URL. The server accepts `OPENAI_API_KEY` from its process environment
-or from an ignored, regular, current-user-owned, nonempty mode-0600
-`.env.local`; it never injects that key into browser code. The browser receives
-only a random session token that expires when the local server stops.
-Push-to-talk audio is bounded, kept only in memory, consumed once by
-transcription, and not logged or placed in test fixtures. The serve script uses
-port 4175 by default; an optional positional port may be `0` (allocate one) or
-an integer from 1024 through 65535.
+Browser URL, which is loopback by default. The server accepts `OPENAI_API_KEY`
+from its process environment or from an ignored, regular, current-user-owned,
+nonempty mode-0600 `.env.local`; it never injects that key into browser code.
+The browser receives only a random session token that expires when the local
+server stops. Push-to-talk audio is bounded, kept only in memory, consumed once
+by transcription, and not logged or placed in test fixtures. The serve script
+uses port 4175 by default; an optional positional port may be `0` (allocate one)
+or an integer from 1024 through 65535.
+
+### Testing live voice from another device
+
+Loopback remains the safe default. With `ZORK_VOICE_PUBLIC_ORIGIN` unset, the
+harness listens on `127.0.0.1` and its browser and upstream origin is
+`http://127.0.0.1:<port>`. Loopback HTTP is treated as a potentially trustworthy
+browser origin, so microphone capture can work without adding a TLS proxy.
+
+An opt-in remote-device smoke keeps that listener on loopback but gives the
+browser an exact HTTPS origin served through a trusted reverse proxy. For
+example:
+
+```sh
+pnpm openai:live:build
+ZORK_VOICE_PUBLIC_ORIGIN=https://voice-dev.example.test \
+  pnpm openai:live:serve
+```
+
+For remote-device mode, the value must be one exact, serialized HTTPS origin:
+scheme, hostname, and an optional non-default port only. Credentials, a path
+(including a trailing slash), query, fragment, and wildcard host are rejected.
+An explicit exact loopback HTTP origin is also accepted for same-device use, but
+it does not make the harness reachable from another device. The launcher prints
+separate Browser and Upstream URLs. Open the Browser URL on the test device;
+configure the proxy to forward it to the loopback Upstream URL printed by this
+specific process.
+
+The supported topology has either a same-machine proxy or a private,
+authenticated proxy connected to the developer machine by an encrypted tunnel.
+The backend's HTTP port remains loopback-only in both cases. Do not bind or
+forward that port directly onto the LAN or public internet. The proxy must:
+
+- terminate HTTPS with a certificate trusted by the test device and restrict
+  every path to explicitly authorized users/devices on the private network;
+- preserve the original raw `Host` header exactly, including any non-default
+  port, and preserve the browser's `Origin` and `x-zork-voice-live-session`
+  headers without rewriting or stripping them; `X-Forwarded-Host` is ignored and
+  cannot substitute for the raw header;
+- forward the origin at `/` without a host-changing redirect, path prefix, or
+  alternate origin;
+- honor `Cache-Control: no-store`, disable intermediary/CDN caching, and avoid
+  request/response-body, transcript, audio, credential, cookie, and live-session
+  header logging;
+- retain bounded uploads. The harness rejects transcription bodies over 2 MiB
+  and guide/speech JSON bodies over 16 KiB; a proxy may enforce equal or tighter
+  per-route limits but must not buffer accepted bodies to persistent storage.
+
+The injected process-lifetime session value is a same-origin request control,
+not user authentication: anyone allowed to load the page receives it. External
+access control therefore belongs in front of the entire origin, not only the API
+paths. Stop the process and close or revoke the tunnel after the smoke.
+
+Plain `http://<LAN-IP>:<port>` is intentionally unsupported. Unlike loopback, an
+ordinary LAN HTTP origin is not a secure browser context, so microphone APIs are
+unavailable or rejected; the harness also rejects it as a configured public
+origin. HTTPS is required even when the test device and developer machine share
+a trusted home network.
 
 The 2026-08-19 smoke profile uses `gpt-4o-mini-transcribe`, `gpt-5.6-luna`, and
 `tts-1`, with one global maximum of 12 provider requests for the server process.
@@ -118,6 +175,16 @@ attribution, Worker isolation, and absence of sensitive audio or credentials.
 Record the browser version and console/CSP result. The harness implementation
 and its hermetic tests are present, but Slice 5 is not complete until this real
 microphone evidence is recorded.
+
+For a remote-device run, additionally record the device operating system and
+browser, that `window.isSecureContext` is true, the exact configured origin and
+proxy/tunnel class, and successful microphone permission. Confirm that an
+unauthenticated client cannot load any path, the raw upstream port is not
+reachable from the LAN, all browser API requests retain the one public origin,
+and a missing or mismatched `Host` receives `403` before content is served.
+Proxy/cache/log inspection must contain no API key, live-session header value,
+transcript, or raw audio. Evidence may redact a private hostname, but it must
+retain enough configuration detail to reproduce the trust and routing model.
 
 \* The story build commands are local after the exact Inform 6.44 compiler is
 available. Obtaining its pinned source revision requires network access; the

@@ -113,6 +113,67 @@ describe("OpenAI local live service", () => {
     expect(provider.synthesize).not.toHaveBeenCalled();
   });
 
+  it("accepts an exact HTTPS proxy origin without weakening Origin checks", async () => {
+    const provider = new FakeProvider();
+    const publicOrigin = "https://voice.home.example:8443";
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: publicOrigin,
+      sessionToken: token,
+    });
+    const body = JSON.stringify({
+      interactionId: "proxied-live-1",
+      playerUtterance: "north",
+      observedObjects: [],
+    });
+
+    const accepted = await handle(
+      new Request(`${publicOrigin}/api/live/openai/guide`, {
+        method: "POST",
+        headers: {
+          origin: publicOrigin,
+          "content-type": "application/json",
+          "x-zork-voice-live-session": token,
+        },
+        body,
+      }),
+    );
+    expect(accepted.status).toBe(200);
+    expect(provider.decideWithUsage).toHaveBeenCalledTimes(1);
+
+    const wrongOrigin = await handle(
+      new Request(`${publicOrigin}/api/live/openai/guide`, {
+        method: "POST",
+        headers: {
+          origin: "https://other.home.example:8443",
+          "content-type": "application/json",
+          "x-zork-voice-live-session": token,
+        },
+        body,
+      }),
+    );
+    expect(wrongOrigin.status).toBe(403);
+    expect(provider.decideWithUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "http://192.168.1.25:4175",
+    "https://*.home.example",
+    "https://voice.home.example/",
+    "https://voice.home.example/path",
+    "https://voice.home.example?mode=live",
+    "https://voice.home.example#live",
+    "https://player@voice.home.example",
+  ])("rejects an unsafe service origin: %s", (allowedOrigin) => {
+    expect(() =>
+      createOpenAiLiveService({
+        provider: new FakeProvider(),
+        allowedOrigin,
+        sessionToken: token,
+      }),
+    ).toThrow("exact loopback HTTP or HTTPS origin");
+  });
+
   it("bounds and normalizes live transcription", async () => {
     const provider = new FakeProvider();
     const handle = createOpenAiLiveService({

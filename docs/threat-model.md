@@ -1,7 +1,7 @@
 # Threat model and data flows
 
 Status: M0 security baseline  
-Last reviewed: 2026-08-17
+Last reviewed: 2026-08-19
 
 ## Scope and security objectives
 
@@ -30,6 +30,7 @@ flowchart LR
     Worker["Isolated Z-machine worker"]
     Local["IndexedDB checkpoint store"]
     BFF["Session backend / BFF"]
+    Ingress["Optional private developer HTTPS ingress"]
     Vault["Encrypted credential store"]
     Provider["Selected inference provider"]
     Metrics["Redacted metrics sink"]
@@ -38,17 +39,21 @@ flowchart LR
     Browser -->|"validated command; lifecycle request"| Worker
     Worker -->|"exact output; revision; snapshot"| Browser
     Browser -->|"versioned save bundle"| Local
-    Browser -->|"session request; audio or transcript by profile"| BFF
+    Browser -->|"session request; audio or transcript by profile"| Ingress
+    Ingress -->|"direct hosted route or encrypted tunnel to loopback"| BFF
     BFF -->|"OAuth exchange; inference; ephemeral session"| Provider
     BFF <-->|"encrypted long-lived credential"| Vault
     Browser -->|"allowlisted spans; no prose by default"| Metrics
     BFF -->|"allowlisted spans; no secrets or prose"| Metrics
 ```
 
-The browser/worker protocol, browser/backend session, backend/provider call, and
-backend/credential store are separate trust boundaries. A provider response is
-untrusted `unknown` until normalized and validated. Story and engine output are
-data, never model instructions.
+The browser/worker protocol, browser/HTTPS ingress, browser/backend session,
+backend/provider call, and backend/credential store are separate trust
+boundaries. The optional remote-device developer ingress is trusted only when it
+authenticates or restricts the complete origin, terminates device-trusted TLS,
+and reaches the loopback-only harness through an authenticated encrypted tunnel.
+A provider response is untrusted `unknown` until normalized and validated. Story
+and engine output are data, never model instructions.
 
 ## Data inventory and default handling
 
@@ -103,6 +108,14 @@ initial release and require a new data-flow review.
 
 - Deploy with a restrictive CSP, output encoding, size limits, origin checks,
   rate limits, and no secrets in client bundles.
+- Remote-device developer smoke uses one exact HTTPS origin, requires the raw
+  `Host` and browser `Origin` to match it, and keeps the API-key-backed upstream
+  on loopback. Plain LAN HTTP and a directly exposed upstream port are not
+  supported.
+- The private developer proxy protects every static and API path, disables
+  caching and sensitive-body/header logging, and uses an encrypted tunnel when
+  it is not on the developer machine. The injected live-session value is a
+  same-origin request control, not user authentication.
 - Treat imported save metadata and all displayed prose as untrusted strings.
 - Isolate the interpreter in a worker and use copied messages rather than shared
   mutable memory.
@@ -134,6 +147,9 @@ initial release and require a new data-flow review.
   indefinitely.
 - Provider/model kill switches stop new sessions without altering confirmed
   local saves.
+- The live developer proxy restricts who can load the token-bearing page, while
+  the server retains its global request ceiling and body limits. Closing the
+  process and tunnel revokes the temporary access path.
 
 ## Deletion and incident response
 
@@ -153,5 +169,8 @@ committed, add a hermetic regression, and follow the severity workflow in
 - Security tests listed in `docs/testing.md` section 10.
 - Engine idempotency and cancellation fixtures before M1 exits.
 - OAuth, token-placement, log-redaction, and deletion tests per provider.
+- Remote-device voice evidence verifies a secure context, exact Host/Origin
+  handling, private access denial, upstream unreachability, cache/log redaction,
+  and microphone behavior on the named browser/device.
 - A release threat-model review whenever a new processor, persistence path,
   browser capability, imported asset class, or guide tool is introduced.

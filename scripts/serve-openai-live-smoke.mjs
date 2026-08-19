@@ -76,6 +76,10 @@ const [harness, service, providers] = await Promise.all([
   import(pathToFileURL(servicePath).href),
   import(pathToFileURL(providerPath).href),
 ]);
+const configuredPublicOrigin = process.env.ZORK_VOICE_PUBLIC_ORIGIN;
+if (configuredPublicOrigin !== undefined) {
+  harness.parseOpenAiLiveOrigin(configuredPublicOrigin);
+}
 const apiKey = await harness.loadOpenAiApiKey({ repositoryRoot });
 const sessionToken = harness.createEphemeralLiveSessionToken();
 let listener;
@@ -96,7 +100,8 @@ server.listen(port, "127.0.0.1", () => {
     server.close();
     throw new Error("The live server did not receive a TCP address.");
   }
-  const allowedOrigin = `http://127.0.0.1:${address.port}`;
+  const upstreamOrigin = `http://127.0.0.1:${address.port}`;
+  const allowedOrigin = configuredPublicOrigin ?? upstreamOrigin;
   const provider = new providers.OpenAiChainedProvider({
     apiKey,
     safetyIdentifier: sessionToken,
@@ -112,5 +117,8 @@ server.listen(port, "127.0.0.1", () => {
     paths,
     handleApi,
   });
-  process.stdout.write(`OpenAI live voice smoke: ${allowedOrigin}/\n`);
+  process.stdout.write(`OpenAI live voice smoke browser: ${allowedOrigin}/\n`);
+  process.stdout.write(
+    `OpenAI live voice smoke upstream: ${upstreamOrigin}/\n`,
+  );
 });
