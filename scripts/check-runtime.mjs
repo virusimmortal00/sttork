@@ -1,4 +1,4 @@
-const expectedNode = "24.19.0";
+const expectedNode = "26.7.0";
 const expectedPnpm = "11.19.0";
 
 if (process.versions.node !== expectedNode) {

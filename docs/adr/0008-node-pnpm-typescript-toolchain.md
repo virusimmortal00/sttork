@@ -1,6 +1,6 @@
 # ADR-0008: Pinned Node, pnpm, and TypeScript foundation
 
-- Status: accepted
+- Status: superseded by [ADR-0010](0010-node-26-current-toolchain.md)
 - Date: 2026-08-17
 - Owners: maintainers
 

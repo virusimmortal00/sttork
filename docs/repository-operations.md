@@ -12,7 +12,7 @@ protect its own branch, grant a review, or make a release trustworthy by itself.
 - has read-only repository contents permission;
 - checks out without persisting a credential;
 - pins GitHub Actions by full commit SHA;
-- installs Node 24.19.0 and pnpm 11.19.0 exactly;
+- installs Node 26.7.0 and pnpm 11.19.0 exactly;
 - installs only the committed lockfile;
 - runs `pnpm run ci`, which is the hermetic source gate followed by the
   TypeScript build (the explicit `run` avoids pnpm's unrelated built-in clean

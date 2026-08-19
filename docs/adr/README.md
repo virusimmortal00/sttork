@@ -31,9 +31,11 @@ decision with a new ADR and link both records.
 - [ADR-0007: Deterministic minimal Z-machine fixture](0007-deterministic-minimal-z-machine-fixture.md)
   — accepted.
 - [ADR-0008: Pinned Node, pnpm, and TypeScript foundation](0008-node-pnpm-typescript-toolchain.md)
-  — accepted.
+  — superseded by ADR-0010.
 - [ADR-0009: Pinned Dork TypeScript interpreter candidate](0009-dork-typescript-interpreter-candidate.md)
   — proposed; acceptance depends on the reset M0 evidence ledger.
+- [ADR-0010: Pin the workspace to Node 26 Current](0010-node-26-current-toolchain.md)
+  — accepted; supersedes ADR-0008.
 
 ## Template
 

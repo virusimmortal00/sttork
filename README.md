@@ -99,7 +99,7 @@ checkpoint.
 
 ## Development
 
-Use Node 24.19.0 and pnpm 11.19.0, then run:
+Use Node 26.7.0 and pnpm 11.19.0, then run:
 
 ```sh
 pnpm install --frozen-lockfile

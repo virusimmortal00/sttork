@@ -7,7 +7,7 @@ provider.
 
 ## Prerequisites
 
-- Node.js 24.19.0, pinned by `.node-version` and `.nvmrc`.
+- Node.js 26.7.0, pinned by `.node-version` and `.nvmrc`.
 - pnpm 11.19.0, pinned by `package.json`.
 
 The runtime check rejects a different Node patch or pnpm major/minor. This is

@@ -39,7 +39,7 @@ jobs:
 
       - name: Verify runtime versions
         run: |
-          test "$(node --version)" = "v24.19.0"
+          test "$(node --version)" = "v26.7.0"
           test "$(pnpm --version)" = "11.19.0"
 
       - name: Install locked dependencies
