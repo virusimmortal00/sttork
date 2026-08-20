@@ -9,14 +9,18 @@ import {
   identifyNonlexicalOpeningReadExamineAmbiguity,
   identifyOpeningReadExamineClarificationChoice,
   inferPendingOpeningObjectIntent,
+  isOpeningSceneProjection,
   isPendingOpeningObjectIntent,
   openingCommandHelp,
   openingObjectObservationDirectlyRequested,
+  openingSceneCurrentObjectLabels,
+  resolveOpeningSceneGuidance,
   resolvePendingOpeningContentObjectReply,
   resolveOpeningCommandComparisonQuestion,
   resolveOpeningCommandIntent,
   type OpeningCommandKnowledge,
   type OpeningObservedObjectOption,
+  type OpeningSceneProjection,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
 import type {
@@ -38,9 +42,13 @@ export interface InitialGuideInput {
   readonly transcriptConfidence?: number;
   readonly observedObjects: readonly string[];
   readonly pendingIntent?: PendingOpeningObjectIntent;
+  readonly scene?: OpeningSceneProjection;
 }
 
-export interface InitialGuideModelInput extends InitialGuideInput {
+export interface InitialGuideModelInput extends Omit<
+  InitialGuideInput,
+  "scene"
+> {
   readonly knowledge: OpeningCommandKnowledge;
 }
 
@@ -189,6 +197,16 @@ export async function decideInitialGuideTurn(
     knowledge = createOpeningCommandKnowledge({
       observedObjects: input.observedObjects,
     });
+    if (
+      input.scene !== undefined &&
+      (!isOpeningSceneProjection(input.scene) ||
+        JSON.stringify(openingSceneCurrentObjectLabels(input.scene)) !==
+          JSON.stringify(knowledge.observedObjects))
+    ) {
+      throw new TypeError(
+        "Initial guide scene does not match current objects.",
+      );
+    }
   } catch {
     return {
       kind: "rejected",
@@ -246,6 +264,24 @@ export async function decideInitialGuideTurn(
       "What single action would you like me to perform instead?",
       "The utterance contains a negation, so executing the proposed command would be unsafe.",
     );
+  }
+
+  if (input.scene !== undefined) {
+    const sceneGuidance = resolveOpeningSceneGuidance(
+      input.playerUtterance,
+      input.scene,
+    );
+    if (sceneGuidance !== undefined) {
+      return {
+        kind: "explain",
+        decision: {
+          kind: "explain",
+          response: sceneGuidance.response,
+          basis: sceneGuidance.basis,
+          sourceIds: sceneGuidance.sourceIds,
+        },
+      };
+    }
   }
 
   if (input.pendingIntent !== undefined) {
@@ -340,7 +376,9 @@ export async function decideInitialGuideTurn(
 
   let unknownDecision: unknown;
   try {
-    unknownDecision = await model.decide({ ...input, knowledge }, signal);
+    const { scene: _localScene, ...modelInput } = input;
+    void _localScene;
+    unknownDecision = await model.decide({ ...modelInput, knowledge }, signal);
   } catch (error) {
     if (signal.aborted) {
       throw signal.reason ?? error;

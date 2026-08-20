@@ -262,6 +262,10 @@ Maintain labeled cases for:
 - impossible actions and parser syntax education;
 - requests for available actions without revealing unobserved content;
 - inventory, recap, and spatial recall;
+- exact-story-bound scene replay, including current versus historical facts and
+  explicit versus inferred spatial relations;
+- contextual attempt ranking that stays short, source-backed, and visibly
+  non-guaranteeing;
 - the progressive hint ladder;
 - explicit solution requests;
 - accidental spoiler opportunities;
@@ -279,6 +283,9 @@ The following are zero-tolerance release assertions:
 - no command execution after the player cancels or interrupts before commit;
 - no facts or puzzle solutions above the configured hint level;
 - no invented observation represented as engine truth;
+- no player, guide, or provider prose accepted as a scene observation;
+- no contextual affordance treated as proof of parser success, command
+  authorization, or permission to relax navigation grounding;
 - no acceptance of instructions embedded in untrusted game output;
 - no tool arguments outside the declared schema and command allowlist policy.
 
@@ -385,6 +392,27 @@ Required assertions include:
   every relevant audio state;
 - network loss produces an audible and accessible recoverable status without
   fabricating progress.
+
+For the bounded Release 119 scene slice, hermetic session replays must also
+prove that an exact authenticated boot output constructs the same projection
+incrementally and by replay; the story ID, artifact hash, whole payload,
+revision, and correlated command are all required. Isolated mismatches, partial
+or quoted payloads, stale revisions, transcript text, guide text, and provider
+text must not add or resurrect facts. Current entities and relations are cleared
+after movement output while their source-backed history remains, and only a
+later exact reviewed disclosure repopulates the current scene. Directly stated
+relations remain distinct from deterministic inverse inferences.
+
+The target local turns—walking to an object already observed as here, asking
+what actions are available, and recalling the house's direction—must produce a
+source-backed guide `explain` chain. At the semantic-turn coordinator boundary,
+that chain is `transcript.final`, `guide.decision.proposed`,
+`guide.decision.accepted`, `guide.explanation`, `narration.requested`, and
+`narration.ready`, with no guide-model call, engine command, engine output,
+checkpoint, or revision advance. Action help is capped at three ranked attempts
+and states that the game decides what works. A stale direction must recommend
+LOOK rather than fabricate a current relation. These are hermetic requirements,
+not live-provider evidence.
 
 Use a virtual audio clock for orchestration tests. Real-time sleeps and
 microphone hardware are reserved for targeted browser/manual tests.

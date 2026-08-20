@@ -147,6 +147,9 @@ importers:
 
   packages/session:
     dependencies:
+      '@zork-voice/command-knowledge':
+        specifier: workspace:*
+        version: link:../command-knowledge
       '@zork-voice/contracts':
         specifier: workspace:*
         version: link:../contracts

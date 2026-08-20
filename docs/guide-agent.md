@@ -77,6 +77,14 @@ The default per-utterance action limit is three engine turns. The player can
 continue a longer plan with “continue.” This bounds cost and prevents a mistaken
 interpretation from cascading through the game.
 
+Before a provider request, deterministic policy may resolve a bounded
+current-scene help or recall question from an authenticated, replay-derived
+scene projection. This fast path returns the same source-backed `explain`
+decision used by provider-routed help and emits no engine turn. If the local
+resolver has no exact supported interpretation, the ordinary provider and
+clarification policy continues; the projection is never treated as a general
+language allowlist.
+
 ## Runtime contracts
 
 The examples below are language-level contracts. The implementation should
@@ -362,6 +370,15 @@ The engine response is final. A parser error is not rewritten as success. The
 guide may explain the error, present up to three grounded alternatives, or ask
 what the player meant.
 
+Requests for available actions are contextual help, not requests for the full
+parser catalog. When a current scene projection is available, the guide offers
+at most three ranked, source-backed attempts relevant to that scene and says
+that the game will decide what works. A contextual affordance is neither a
+guarantee nor execution authorization. A request to walk to an object already
+observed as here may instead explain that it is already present and suggest
+relevant observations or interactions. This does not invent object-relative
+movement or relax navigation grounding.
+
 For the bounded opening-area profile, a nonlexical request to discover writing,
 an inscription, or other content on one explicitly named, currently offered
 observed object is ambiguous between EXAMINE and READ. It always produces a
@@ -472,9 +489,21 @@ game state.
 - Every fact includes source event IDs.
 - Exact engine statements are stored as `explicit`; model-derived summaries are
   stored as `inferred`.
-- The bounded opening-area projector learns reviewed object names only from
-  exact canonical engine output. Player or guide prose cannot add an observed
-  object, and repeated output is idempotent.
+- The bounded opening-area projector is enabled only for the exact authenticated
+  Zork I Release 119 story ID and artifact hash. It learns reviewed entities,
+  locations, and relations only from exact, complete canonical `engine.output`
+  payloads at a newer engine revision. Player transcripts, guide or provider
+  prose, partial matches, and quoted game text cannot add facts, and repeated
+  output is idempotent.
+- Facts retained in history are distinct from entities, locations, and relations
+  that are current. Output correlated with a movement command clears the prior
+  current scene even when the command did not move the player; an exact later
+  location disclosure is required to repopulate it.
+- Relations stated by the engine remain explicit (`observed` in the bounded
+  scene projection). A deterministic inverse such as “the house is east of you”
+  may be retained as inferred only when its explicit source says the player is
+  west of the house, and it cites that same event. Inferred relations are for
+  recall, not for compiling a navigation command.
 - Contradictory later observations supersede rather than erase earlier facts.
 - Inventory and location claims should be re-confirmed from recent engine output
   before a consequential command.
@@ -487,6 +516,12 @@ game state.
 
 The guide must phrase uncertain recall as uncertainty. It must not promote an
 inference to an engine fact.
+
+The opening scene projection is bounded, replay-derived guide memory. It does
+not expose a hidden map, accept provider-authored observations, change the
+provider-neutral event contract, or add a save field. If the story binding,
+payload signature, revision, or current relation is unavailable, the guide falls
+back or asks the player to use LOOK rather than guessing.
 
 ## Hint and spoiler policy
 
@@ -630,6 +665,13 @@ The guide contract is not complete until automated fixtures cover at least:
     checkpoint unchanged.
 11. Restore returns both engine state and observed memory to the same branch.
 12. Meta controls never reach the Z-machine as parser commands.
+13. The exact Release 119 opening replay can answer that the already-current
+    mailbox need not be walked to, provide no more than three ranked things to
+    try, and recall the house's inferred eastward relation as non-mutating,
+    source-backed guide explanations. The same wording with a mismatched story,
+    inexact output, stale current scene, player-authored fact, or
+    provider-authored fact cannot create or resurrect scene state. Contextual
+    suggestions never guarantee success or authorize navigation.
 
 ## Initial implementation sequence
 

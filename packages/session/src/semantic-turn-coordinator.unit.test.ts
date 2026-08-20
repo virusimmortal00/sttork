@@ -1,4 +1,9 @@
 import {
+  OPENING_SCENE_BOOT_OUTPUT,
+  OPENING_SCENE_STORY_ID,
+  OPENING_SCENE_STORY_SHA256,
+} from "@zork-voice/command-knowledge";
+import {
   canonicalizeCommand,
   type BootResult,
   type EngineCompatibility,
@@ -213,6 +218,91 @@ describe("SemanticTurnCoordinator", () => {
       subject.prepareOpening(input, new AbortController().signal),
     ).resolves.toEqual(first);
     expect(narrator.requests).toHaveLength(1);
+  });
+
+  it("answers scene-local navigation, action-help, and spatial questions without consulting the model or engine", async () => {
+    const engine = new FakeEngine();
+    engine.openingOutput = OPENING_SCENE_BOOT_OUTPUT;
+    const narrator = new FakeNarrator();
+    const guide = new FakeGuideModel(() => {
+      throw new Error("scene-local guidance must not call the provider");
+    });
+    const subject = coordinator(engine, narrator, guide);
+    const originalBoot = await engine.boot();
+    await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot: {
+          ...originalBoot,
+          compatibility: {
+            ...originalBoot.compatibility,
+            story: {
+              id: OPENING_SCENE_STORY_ID,
+              artifactSha256: OPENING_SCENE_STORY_SHA256,
+            },
+          },
+        },
+      },
+      new AbortController().signal,
+    );
+
+    const cases = [
+      {
+        transcript: "Walk to the mailbox.",
+        response:
+          "The mailbox is already here. You can try examining it or opening it.",
+        sourceIds: ["event-1", "grammar.examine", "grammar.open"],
+      },
+      {
+        transcript: "What actions are available?",
+        response:
+          "You can try examining the mailbox, opening the mailbox, or examining the boarded door. The game will decide what works.",
+        sourceIds: ["grammar.examine", "event-1", "grammar.open"],
+      },
+      {
+        transcript: "In which direction was the house again?",
+        response:
+          "The game said you were west of the house, so the house is east of you.",
+        sourceIds: ["event-1"],
+      },
+    ] as const;
+
+    for (const [index, testCase] of cases.entries()) {
+      const result = await subject.submitTurn(
+        {
+          interactionId: `scene-turn-${index + 1}`,
+          transcript: testCase.transcript,
+          transcriptConfidence: 0.99,
+          // Once the authenticated scene exists, caller-supplied object prose
+          // is not the source of guide facts.
+          observedObjects: ["untrusted object"],
+        },
+        new AbortController().signal,
+      );
+      expect(result.outcome).toBe("explained");
+      expect(result.events.map((event) => event.type)).toEqual([
+        "transcript.final",
+        "guide.decision.proposed",
+        "guide.decision.accepted",
+        "guide.explanation",
+        "narration.requested",
+        "narration.ready",
+      ]);
+      expect(
+        result.events.find((event) => event.type === "guide.explanation"),
+      ).toMatchObject({
+        payload: {
+          response: testCase.response,
+          sourceIds: testCase.sourceIds,
+        },
+      });
+    }
+
+    expect(guide.calls).toBe(0);
+    expect(engine.executeCalls).toEqual([]);
+    expect(engine.inspectCalls).toBe(1);
+    expect(engine.snapshotCalls).toBe(0);
+    expect(engine.revision).toBe(0);
   });
 
   it("narrates a bounded exact-line excerpt while retaining full opening output", async () => {

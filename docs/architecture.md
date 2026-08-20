@@ -224,6 +224,14 @@ first vertical slice. Its curated opening grammar and caller-supplied observed
 object names are a narrow bootstrap view, not the complete generated grammar,
 memory model, or hint registry described below.
 
+For the exact authenticated Zork I Release 119 opening tuple, the session may
+also supply the guide with a replay-derived `OpeningSceneProjection`. A bounded
+local resolver can answer current-scene command help and observed-memory
+questions from that projection without asking a provider. The result is still a
+normal non-mutating `explain` decision with source IDs and the existing guide
+event sequence; it does not create a new decision, event, or save shape. A local
+answer cannot execute a command or claim that an attempted action will work.
+
 An execute decision contains one command. A multi-step player request is stored
 as a pending goal and advanced through successive decisions, one command per
 engine revision. Each intermediate response is observed and revalidated before
@@ -258,6 +266,36 @@ committed movement invalidates the prior scene's object slots when its engine
 output arrives, while historical observations remain available for bounded
 memory and explanation. Reviewed disclosures in later authenticated engine
 output repopulate the current slot set.
+
+The first scene-model slice makes that distinction concrete for the exact Zork I
+Release 119 story ID and artifact hash. The session creates a versioned
+`OpeningSceneProjection` from authenticated boot compatibility and folds
+canonical semantic events into it only after they have been appended. Reviewed
+facts are learned only from exact, complete `engine.output` payloads at a newer
+engine revision and, for command results, their correlated committed command.
+Player transcripts, guide prose, provider output, and partial or merely similar
+game text cannot add scene facts.
+
+The projection keeps source-backed entity, location, and relation history
+separate from the IDs that are current. A relation directly stated by the game
+is explicit (`observed` in this projection); a reviewed inverse such as “the
+house is east of you,” derived from “you are west of the house,” remains labeled
+`inferred` and cites the same engine event. A committed command records only a
+pending command—it is not evidence that an action succeeded. When output for a
+movement command arrives, the prior current scene is invalidated even if
+movement was blocked; only a later exact reviewed location disclosure may
+repopulate it. Historical facts remain available for carefully phrased recall.
+
+Contextual affordances derived from this projection are a short ranked list of
+things the player can try, with command-knowledge and observation source IDs.
+They are not parser guarantees, command authorization, or predicted outcomes;
+the Z-machine still decides what works. The projection supports concise local
+help such as explaining that an already-current mailbox need not be walked to,
+offering up to three relevant attempts instead of the complete command catalog,
+or recalling the source-backed direction of the house. It is not a hidden map or
+navigation planner, and a remembered relation may never be compiled into a
+movement command on the player's behalf. This bounded projection does not relax
+navigation grounding or introduce a new event or save schema.
 
 The normal guide context never includes the complete object table, map, puzzle
 solutions, or engine memory. `inspectPublicState` exposes only supported public
@@ -492,6 +530,12 @@ Three state domains remain separate:
    and rebuildable.
 3. **Preferences:** provider profile, voices, rate, caption/debug settings, and
    consent/retention choices; never embedded in engine memory.
+
+`OpeningSceneProjection` is a bounded, rebuildable guide-memory projection, not
+game state. In this slice it is reconstructed by replaying canonical events
+against the authenticated story binding and is not added to the save manifest.
+Its failure or absence therefore removes contextual help rather than changing
+the engine, authorizing a command, or making a save incompatible.
 
 A save manifest is versioned and hash-addressed:
 

@@ -9,7 +9,14 @@ import type {
   SemanticEventPayloads,
   SemanticEventType,
 } from "../../contracts/src/index.js";
-import type { PendingOpeningObjectIntent } from "../../command-knowledge/src/index.js";
+import {
+  createOpeningSceneProjection,
+  OPENING_SCENE_PROFILE_ID,
+  openingSceneCurrentObjectLabels,
+  projectOpeningSceneFromEvent,
+  type OpeningSceneProjection,
+  type PendingOpeningObjectIntent,
+} from "../../command-knowledge/src/index.js";
 import type { EventSequence } from "../../events/src/index.js";
 import {
   decideInitialGuideTurn,
@@ -446,6 +453,7 @@ export class SemanticTurnCoordinator {
   readonly #maxTurns: number;
   readonly #turns = new Map<string, StoredTurn>();
   #opening: StoredOpening | undefined;
+  #openingScene: OpeningSceneProjection | undefined;
   #activeInteractionId: string | undefined;
   #pendingOpeningObjectIntent: StoredPendingOpeningObjectIntent | undefined;
 
@@ -674,6 +682,9 @@ export class SemanticTurnCoordinator {
       const local: SemanticEvent[] = [];
       let sourceEventId = progress.sourceEventId;
       if (sourceEventId === undefined) {
+        this.#openingScene = createOpeningSceneProjection(
+          input.boot.compatibility.story,
+        );
         sourceEventId = this.#emit(
           local,
           "engine.output",
@@ -915,6 +926,10 @@ export class SemanticTurnCoordinator {
 
       let guideResult: InitialGuideResult;
       try {
+        const scene =
+          this.#openingScene?.profileId === OPENING_SCENE_PROFILE_ID
+            ? this.#openingScene
+            : undefined;
         guideResult = await awaitWithAbort(
           decideInitialGuideTurn(
             this.#guide,
@@ -924,7 +939,11 @@ export class SemanticTurnCoordinator {
               ...(input.transcriptConfidence === undefined
                 ? {}
                 : { transcriptConfidence: input.transcriptConfidence }),
-              observedObjects: input.observedObjects,
+              observedObjects:
+                scene === undefined
+                  ? input.observedObjects
+                  : openingSceneCurrentObjectLabels(scene),
+              ...(scene === undefined ? {} : { scene }),
               ...(pendingOpeningObjectIntent === undefined
                 ? {}
                 : {
@@ -1504,6 +1523,18 @@ export class SemanticTurnCoordinator {
       visibility,
       payload,
     }) as SemanticEvent<TType>;
+    if (this.#openingScene !== undefined) {
+      try {
+        this.#openingScene = projectOpeningSceneFromEvent(
+          this.#openingScene,
+          event,
+        );
+      } catch {
+        // Scene memory is derived help context. If projection ever fails, drop
+        // it rather than changing canonical event or engine control flow.
+        this.#openingScene = undefined;
+      }
+    }
     local.push(event);
     try {
       this.#publish?.(event);

@@ -152,6 +152,23 @@ subsequently uses an eligible, normally grounded imperative, direct
 second-person request, explicit first-person intent/delegation, or `let's`. This
 adds no new milestone claim.
 
+Scene-model refinement, 2026-08-20: the exact authenticated Zork I Release 119
+opening tuple can initialize a versioned `OpeningSceneProjection` derived by
+replaying canonical events. It recognizes only reviewed whole `engine.output`
+payloads at a newer revision, keeps source-backed history separate from the
+current scene, and labels directly stated relations separately from reviewed
+inverse inferences. Transcript, guide, and provider prose cannot add facts.
+Movement output invalidates the prior current scene even when the engine blocks
+the attempt; exact later location output is required to repopulate it. Its
+ranked contextual affordances are things to try, never success guarantees or
+command authorization. The bounded local resolver may explain that an
+already-current object need not be walked to, offer at most three relevant
+attempts, or recall a source-backed relative direction without a model call or
+engine turn. It exposes no hidden map, does not compile inferred relations into
+navigation, does not relax grounding, and adds no event or save schema. This is
+a hermetic implementation refinement, not live-provider evidence, and it does
+not complete M2.
+
 ### Deliverables
 
 - Implement the provider-neutral guide decision contract and deterministic
@@ -179,9 +196,9 @@ adds no new milestone claim.
 
 ### Deliberately deferred
 
-The complete observed-memory model, progressive hint ladder, full command
-knowledge extraction, release evaluation corpus, companion personality, and
-provider-specific prompting remain M2 work beyond this initial subset.
+The generalized observed-memory and scene model, progressive hint ladder, full
+command knowledge extraction, release evaluation corpus, companion personality,
+and provider-specific prompting remain M2 work beyond this initial subset.
 
 ### Landed evidence
 
@@ -191,9 +208,11 @@ provider-specific prompting remain M2 work beyond this initial subset.
 - The initial execute gate rejects low confidence, negation, command batches,
   remaining multi-step goals, unsupported grammar, hidden object referents, and
   substitutions not grounded in the player's utterance.
-- `command-knowledge` exposes only reviewed opening grammar and object names
-  supplied as observed context. Command-help prose is generated
-  deterministically from that view; provider prose is not forwarded.
+- `command-knowledge` exposes only reviewed opening grammar and observed
+  context. For the exact authenticated Release 119 tuple, that context may come
+  from the replay-derived bounded opening scene; other bootstrap callers remain
+  responsible for supplying already-observed names. Command-help prose is
+  generated deterministically from that view; provider prose is not forwarded.
 - Hermetic regressions use a deterministic fake model and the isolated Dork
   candidate with the project-owned minimal story. Direct movement and a spoken
   `pick up` paraphrase reach one expected engine turn; clarification,

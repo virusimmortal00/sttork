@@ -1,3 +1,12 @@
+import {
+  createOpeningSceneProjection,
+  OPENING_SCENE_BOOT_OUTPUT,
+  OPENING_SCENE_STORY_ID,
+  OPENING_SCENE_STORY_SHA256,
+  projectOpeningSceneFromEvent,
+  type OpeningSceneProjection,
+} from "../../command-knowledge/src/index.js";
+import type { SemanticEvent } from "../../contracts/src/index.js";
 import { describe, expect, it } from "vitest";
 
 import { FakeGuideModel } from "./fake-guide-model.js";
@@ -16,7 +25,194 @@ const leafletReadExaminePending = {
   allowedActions: ["examine", "read"],
 } as const;
 
+function authenticatedOpeningScene(): OpeningSceneProjection {
+  return projectOpeningSceneFromEvent(
+    createOpeningSceneProjection({
+      id: OPENING_SCENE_STORY_ID,
+      artifactSha256: OPENING_SCENE_STORY_SHA256,
+    }),
+    {
+      schemaVersion: 1,
+      id: "opening-output",
+      sessionId: "session-1",
+      sequence: 1,
+      occurredAt: "2026-08-20T12:00:00.000Z",
+      type: "engine.output",
+      correlationId: "story-opening",
+      visibility: "accessible",
+      payload: {
+        revision: 0,
+        exactText: OPENING_SCENE_BOOT_OUTPUT,
+        boundary: "input-requested",
+        retention: "local-save",
+      },
+    } satisfies SemanticEvent<"engine.output">,
+  );
+}
+
+function movementClearedOpeningScene(): OpeningSceneProjection {
+  const opening = authenticatedOpeningScene();
+  const committed = projectOpeningSceneFromEvent(opening, {
+    schemaVersion: 1,
+    id: "north-commit",
+    sessionId: "session-1",
+    sequence: 2,
+    occurredAt: "2026-08-20T12:00:01.000Z",
+    type: "engine.command.committed",
+    correlationId: "interaction-move",
+    visibility: "debug",
+    payload: {
+      requestId: "request-move",
+      previousRevision: 0,
+      revision: 1,
+      command: "north",
+      boundary: "input-requested",
+    },
+  } satisfies SemanticEvent<"engine.command.committed">);
+  return projectOpeningSceneFromEvent(committed, {
+    schemaVersion: 1,
+    id: "north-output",
+    sessionId: "session-1",
+    sequence: 3,
+    occurredAt: "2026-08-20T12:00:02.000Z",
+    type: "engine.output",
+    correlationId: "interaction-move",
+    visibility: "accessible",
+    payload: {
+      revision: 1,
+      exactText:
+        "North of House\nYou are facing the north side of a white house.\n\n>",
+      boundary: "input-requested",
+      retention: "local-save",
+    },
+  } satisfies SemanticEvent<"engine.output">);
+}
+
 describe("initial bounded Dungeon Guide", () => {
+  it.each([
+    {
+      playerUtterance: "Walk to the mailbox.",
+      response:
+        "The mailbox is already here. You can try examining it or opening it.",
+      basis: "observed-memory" as const,
+      sourceIds: ["opening-output", "grammar.examine", "grammar.open"],
+    },
+    {
+      playerUtterance: "What actions are available?",
+      response:
+        "You can try examining the mailbox, opening the mailbox, or examining the boarded door. The game will decide what works.",
+      basis: "command-help" as const,
+      sourceIds: ["grammar.examine", "opening-output", "grammar.open"],
+    },
+    {
+      playerUtterance: "In which direction was the house again?",
+      response:
+        "The game said you were west of the house, so the house is east of you.",
+      basis: "observed-memory" as const,
+      sourceIds: ["opening-output"],
+    },
+  ])(
+    "answers the scene-aware request $playerUtterance locally",
+    async ({ playerUtterance, response, basis, sourceIds }) => {
+      const model = new FakeGuideModel(() => {
+        throw new Error("scene-aware guidance reached the model");
+      });
+
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["door", "house", "mailbox"],
+          scene: authenticatedOpeningScene(),
+        },
+        signal,
+      );
+
+      expect(result).toEqual({
+        kind: "explain",
+        decision: {
+          kind: "explain",
+          response,
+          basis,
+          sourceIds,
+        },
+      });
+      expect(result).not.toHaveProperty("command");
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it.each([
+    {
+      name: "low-confidence transcript",
+      playerUtterance: "Walk to the mailbox.",
+      transcriptConfidence: 0.4,
+    },
+    {
+      name: "multi-action request",
+      playerUtterance: "Walk to the mailbox, then open it.",
+      transcriptConfidence: 0.99,
+    },
+    {
+      name: "negated request",
+      playerUtterance: "Do not walk to the mailbox.",
+      transcriptConfidence: 0.99,
+    },
+  ])(
+    "clarifies a $name before applying scene-aware guidance",
+    async ({ playerUtterance, transcriptConfidence }) => {
+      const model = new FakeGuideModel(() => {
+        throw new Error("unsafe scene-aware request reached the model");
+      });
+
+      expect(
+        await decideInitialGuideTurn(
+          model,
+          {
+            ...baseInput,
+            playerUtterance,
+            transcriptConfidence,
+            observedObjects: ["door", "house", "mailbox"],
+            scene: authenticatedOpeningScene(),
+          },
+          signal,
+        ),
+      ).toMatchObject({ kind: "clarify" });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("does not claim a historical house direction after movement clears the current scene", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("stale spatial recall reached the model");
+    });
+
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "In which direction was the house again?",
+        observedObjects: [],
+        scene: movementClearedOpeningScene(),
+      },
+      signal,
+    );
+
+    expect(result).toEqual({
+      kind: "explain",
+      decision: {
+        kind: "explain",
+        response:
+          "I don't have a current, observed direction for the house. Try LOOK to reorient.",
+        basis: "observed-memory",
+        sourceIds: ["opening-output", "grammar.look"],
+      },
+    });
+    expect(result).not.toHaveProperty("command");
+    expect(model.calls).toBe(0);
+  });
+
   it("grounds a direct execute decision as one canonical command", async () => {
     const result = await decideInitialGuideTurn(
       FakeGuideModel.returning({

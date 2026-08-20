@@ -182,6 +182,169 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(await engine.inspectPublicState()).toMatchObject({ revision: 1 });
   });
 
+  it("answers opening-scene guidance locally before committing one explicit mailbox action", async () => {
+    let messageId = 0;
+    const engine = new DorkWorkerEngine({
+      factory: new RuntimeFactory(),
+      storyBytes: new Uint8Array(await readFile(zorkStoryUrl)),
+      binding: DORK_WORKER_BINDING,
+      nextMessageId: () => `scene-message-${++messageId}`,
+    });
+    const boot = await engine.boot({
+      storyId: ZORK_STORY_ID,
+      artifactSha256: ZORK_STORY_SHA256,
+    });
+
+    const published: SemanticEvent[] = [];
+    let eventId = 0;
+    let requestId = 0;
+    let narrationId = 0;
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "Open the mailbox.") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.open",
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:mailbox",
+            },
+          ],
+          intentSummary: "Open the observed mailbox",
+          confidence: 0.99,
+        };
+      }
+      throw new Error(`Unexpected guide input: ${input.playerUtterance}`);
+    });
+    const subject = new SemanticTurnCoordinator({
+      engine,
+      guide,
+      narrator: { prepare: () => Promise.resolve() },
+      events: new EventSequence({
+        sessionId: "zork-opening-scene-session",
+        now: () => "2026-08-20T16:00:00.000Z",
+        nextId: () => `scene-event-${++eventId}`,
+      }),
+      nextRequestId: () => `scene-request-${++requestId}`,
+      nextNarrationId: () => `scene-narration-${++narrationId}`,
+      publish: (event) => published.push(event),
+    });
+
+    const opening = await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot,
+        narrationText: selectOpeningNarrationText(boot),
+      },
+      new AbortController().signal,
+    );
+    expect(opening.outcome).toBe("ready");
+    const openingOutput = opening.events.find(
+      (event) => event.type === "engine.output",
+    );
+    expect(openingOutput).toMatchObject({
+      id: "scene-event-1",
+      payload: { revision: 0, exactText: ZORK_RELEASE_119_OPENING },
+    });
+
+    const guidanceCases = [
+      {
+        interactionId: "walk-to-mailbox",
+        transcript: "Walk to the mailbox.",
+        response:
+          "The mailbox is already here. You can try examining it or opening it.",
+        sourceIds: ["scene-event-1", "grammar.examine", "grammar.open"],
+      },
+      {
+        interactionId: "opening-actions",
+        transcript: "What actions are available?",
+        response:
+          "You can try examining the mailbox, opening the mailbox, or examining the boarded door. The game will decide what works.",
+        sourceIds: ["grammar.examine", "scene-event-1", "grammar.open"],
+      },
+      {
+        interactionId: "house-direction",
+        transcript: "In which direction was the house again?",
+        response:
+          "The game said you were west of the house, so the house is east of you.",
+        sourceIds: ["scene-event-1"],
+      },
+    ] as const;
+
+    const guidanceResults = [];
+    for (const testCase of guidanceCases) {
+      const result = await subject.submitTurn(
+        {
+          interactionId: testCase.interactionId,
+          transcript: testCase.transcript,
+          transcriptConfidence: 0.99,
+          observedObjects: ["house", "door", "mailbox"],
+        },
+        new AbortController().signal,
+      );
+      guidanceResults.push(result);
+      expect(result).toMatchObject({ outcome: "explained" });
+      expect(result).not.toHaveProperty("engineResult");
+      const explanation = result.events.find(
+        (event) => event.type === "guide.explanation",
+      );
+      expect(explanation).toMatchObject({
+        payload: {
+          response: testCase.response,
+          sourceIds: testCase.sourceIds,
+        },
+      });
+    }
+
+    expect(guide.calls).toBe(0);
+    expect(
+      guidanceResults
+        .flatMap((result) => result.events)
+        .filter(
+          (event) =>
+            event.type.startsWith("engine.command.") ||
+            event.type === "engine.output" ||
+            event.type === "save.checkpointed",
+        ),
+    ).toEqual([]);
+    expect(await engine.inspectPublicState()).toMatchObject({ revision: 0 });
+
+    const opened = await subject.submitTurn(
+      {
+        interactionId: "open-mailbox",
+        transcript: "Open the mailbox.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(opened).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        status: "committed",
+        previousRevision: 0,
+        revision: 1,
+        command: "open mailbox",
+        output: "Opening the small mailbox reveals a leaflet.\n\n>",
+      },
+      checkpoint: { revision: 1 },
+    });
+    expect(guide.calls).toBe(1);
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.committed")
+        .map((event) => event.payload.command),
+    ).toEqual(["open mailbox"]);
+    expect(
+      published.flatMap((event) =>
+        event.type === "engine.output" && event.payload.revision === 1
+          ? [event.payload.exactText]
+          : [],
+      ),
+    ).toEqual(["Opening the small mailbox reveals a leaflet.\n\n>"]);
+    expect(await engine.inspectPublicState()).toMatchObject({ revision: 1 });
+  });
+
   it("commits, checkpoints, and requests exact narration once", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({

@@ -69,3 +69,31 @@ current scene. A committed movement keeps prior observations in memory but
 removes them from current object slots when its engine output arrives; only
 reviewed disclosures in authenticated engine output repopulate those slots. This
 keeps provider choices current without deleting player-observed history.
+
+## Bounded opening scene projection
+
+`OpeningSceneProjection` is the first story-specific scene model. It is enabled
+only for the exact authenticated Zork I Release 119 story ID and artifact hash,
+then rebuilt by folding canonical semantic events in sequence. It learns
+reviewed entities, the opening location, and relations only from exact complete
+`engine.output` payloads at a newer revision and, for command results, their
+correlated committed command. Transcript text, guide/provider prose, partial
+matches, and quoted game output cannot create facts.
+
+The projection stores source-backed history separately from the entity,
+location, and relation IDs that are current. Relations directly stated by the
+engine are explicit (`observed` in the projection). Reviewed inverse relations
+remain `inferred` and retain the same engine source; for example, “the house is
+east of you” is derived from the explicit statement that the player is west of
+the house. Movement output clears the prior current scene even if the attempted
+movement was blocked, while exact later location output can confirm it again. A
+committed command by itself never proves success.
+
+Ranked contextual affordances are concise things the player can try, not claims
+that the parser will accept them or that an action will succeed. They may power
+local, non-mutating help for an already-present object, a request for up to
+three relevant actions, or a source-backed direction recall. They cannot
+authorize a command, compile an inferred relation into movement, expose a hidden
+map, or relax the existing navigation and risk-tier gates. This projection uses
+the existing guide decisions and semantic events and adds no event or save
+schema.
