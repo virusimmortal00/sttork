@@ -193,17 +193,14 @@ h1[data-speaker-role]::before {
   display: inline-block;
   margin-right: 0.28em;
   opacity: 0;
-  filter: blur(0.16rem);
   transform: translateY(0.18em);
   transition:
     opacity 220ms ease,
-    filter 260ms ease,
     transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .spoken-word.is-visible {
   opacity: 1;
-  filter: blur(0);
   transform: translateY(0);
 }
 
@@ -1105,7 +1102,6 @@ dialog.utility-modal.is-closing::backdrop {
 
   .spoken-word {
     opacity: 1;
-    filter: none;
     transform: none;
   }
 }

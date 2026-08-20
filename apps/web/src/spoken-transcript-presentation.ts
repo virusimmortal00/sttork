@@ -50,10 +50,12 @@ export class SpokenTranscriptPresentation {
     delayMs: number,
   ) => ScheduledHandle;
   readonly #cancelScheduled: (handle: ScheduledHandle) => void;
-  #handles: ScheduledHandle[] = [];
+  #handle: ScheduledHandle | undefined;
+  #generation = 0;
   #lines: readonly string[] = [];
   #lineIndex = -1;
   #activeWords: readonly string[] = [];
+  #wordElements: readonly HTMLElement[] = [];
   #revealedWords = 0;
   #role: SpokenTranscriptRole = "narrator";
 
@@ -77,7 +79,7 @@ export class SpokenTranscriptPresentation {
   ): void {
     const lines = spokenNarrationLines(text);
     if (lines.length === 0) return;
-    this.#cancelTimers();
+    this.#cancelTimer();
     this.#archiveActive();
     this.#lines = lines;
     this.#role = role;
@@ -90,7 +92,7 @@ export class SpokenTranscriptPresentation {
   }
 
   public finish(outcome: "complete" | "interrupted" | "failed"): void {
-    this.#cancelTimers();
+    this.#cancelTimer();
     if (this.#lineIndex < 0) return;
     this.#elements.region.dataset.playbackState = "settled";
     if (outcome !== "complete") {
@@ -108,60 +110,71 @@ export class SpokenTranscriptPresentation {
   #showLine(intervalMs: number): void {
     const line = this.#lines[this.#lineIndex];
     if (line === undefined) return;
-    this.#renderActiveLine(line, this.#reducedMotion);
-    if (!this.#reducedMotion) {
-      for (let index = 0; index < this.#activeWords.length; index += 1) {
-        const handle = this.#schedule(
-          () => this.#revealWord(index),
-          index * intervalMs,
-        );
-        this.#handles.push(handle);
-      }
+    if (this.#reducedMotion) {
+      this.#renderRemainingLines();
+      return;
     }
-    if (this.#lineIndex < this.#lines.length - 1) {
-      const handle = this.#schedule(
-        () => {
-          this.#revealActiveLine();
-          this.#archiveActive();
-          this.#lineIndex += 1;
-          this.#showLine(intervalMs);
-        },
-        this.#activeWords.length * intervalMs + LINE_SETTLE_MS,
-      );
-      this.#handles.push(handle);
-    }
+    this.#renderActiveLine(line, false);
+    this.#scheduleNext(() => this.#advance(intervalMs), 0);
   }
 
   #renderActiveLine(line: string, revealImmediately: boolean): void {
     this.#activeWords = line.split(/\s+/u);
     this.#revealedWords = revealImmediately ? this.#activeWords.length : 0;
-    this.#elements.activeLine.replaceChildren(
-      ...this.#activeWords.map((word, index) => {
-        const span = document.createElement("span");
-        span.className = "spoken-word";
-        if (revealImmediately) span.classList.add("is-visible");
-        span.dataset.wordIndex = String(index);
-        span.textContent = word;
-        return span;
-      }),
-    );
+    this.#wordElements = this.#activeWords.map((word) => {
+      const span =
+        this.#elements.activeLine.ownerDocument.createElement("span");
+      span.className = "spoken-word";
+      if (revealImmediately) span.classList.add("is-visible");
+      span.textContent = word;
+      return span;
+    });
+    this.#elements.activeLine.replaceChildren(...this.#wordElements);
   }
 
   #revealWord(index: number): void {
-    const word = this.#elements.activeLine.querySelector<HTMLElement>(
-      `[data-word-index="${index}"]`,
-    );
-    word?.classList.add("is-visible");
+    this.#wordElements[index]?.classList.add("is-visible");
     this.#revealedWords = Math.max(this.#revealedWords, index + 1);
   }
 
   #revealActiveLine(): void {
-    for (const word of this.#elements.activeLine.querySelectorAll(
-      ".spoken-word",
-    )) {
-      word.classList.add("is-visible");
-    }
+    for (const word of this.#wordElements) word.classList.add("is-visible");
     this.#revealedWords = this.#activeWords.length;
+  }
+
+  #advance(intervalMs: number): void {
+    if (this.#revealedWords < this.#activeWords.length) {
+      this.#revealWord(this.#revealedWords);
+      if (this.#revealedWords < this.#activeWords.length) {
+        this.#scheduleNext(() => this.#advance(intervalMs), intervalMs);
+      } else if (this.#lineIndex < this.#lines.length - 1) {
+        this.#scheduleNext(() => this.#advanceLine(intervalMs), LINE_SETTLE_MS);
+      }
+    }
+  }
+
+  #advanceLine(intervalMs: number): void {
+    this.#archiveActive();
+    this.#lineIndex += 1;
+    this.#showLine(intervalMs);
+  }
+
+  #renderRemainingLines(): void {
+    while (this.#lineIndex < this.#lines.length - 1) {
+      this.#renderActiveLine(this.#lines[this.#lineIndex] ?? "", true);
+      this.#archiveActive();
+      this.#lineIndex += 1;
+    }
+    this.#renderActiveLine(this.#lines[this.#lineIndex] ?? "", true);
+  }
+
+  #scheduleNext(callback: () => void, delayMs: number): void {
+    const generation = this.#generation;
+    this.#handle = this.#schedule(() => {
+      if (generation !== this.#generation) return;
+      this.#handle = undefined;
+      callback();
+    }, delayMs);
   }
 
   #removeUnrevealedWords(): void {
@@ -169,13 +182,14 @@ export class SpokenTranscriptPresentation {
       .slice(0, this.#revealedWords)
       .join(" ");
     this.#activeWords = visibleText.length === 0 ? [] : visibleText.split(" ");
+    this.#wordElements = [];
     this.#elements.activeLine.textContent = visibleText;
   }
 
   #archiveActive(): void {
     const text = this.#activeWords.slice(0, this.#revealedWords).join(" ");
     if (text.length > 0) {
-      const row = document.createElement("li");
+      const row = this.#elements.history.ownerDocument.createElement("li");
       row.dataset.role = this.#role;
       row.textContent = text;
       this.#elements.history.prepend(row);
@@ -186,11 +200,13 @@ export class SpokenTranscriptPresentation {
     }
     this.#elements.activeLine.replaceChildren();
     this.#activeWords = [];
+    this.#wordElements = [];
     this.#revealedWords = 0;
   }
 
-  #cancelTimers(): void {
-    for (const handle of this.#handles) this.#cancelScheduled(handle);
-    this.#handles = [];
+  #cancelTimer(): void {
+    this.#generation += 1;
+    if (this.#handle !== undefined) this.#cancelScheduled(this.#handle);
+    this.#handle = undefined;
   }
 }

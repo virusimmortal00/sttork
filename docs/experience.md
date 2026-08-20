@@ -80,6 +80,14 @@ between sequential voices; the spoken-text surface replaces redundant motion
 under ADR-0018. Stable status text communicates every state independently of
 motion.
 
+Progressive spoken text retains direct references to its bounded active-line
+word elements and advances them with at most one scheduled callback. It does not
+query the DOM for each word or use paint-heavy blur filters. Stop, interruption,
+failure, and replacement cancel that single callback and preserve only text
+revealed before the boundary. Reduced-motion presentation schedules no
+progressive callbacks, reveals the narration immediately, and keeps the same
+role attribution and six-line visual-history bound.
+
 On a fresh session, the first control is an authored role welcome, visually
 labeled `ENTER`, as defined by
 [ADR-0017](adr/0017-authored-role-introduction-before-story-start.md). It
