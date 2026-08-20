@@ -10,6 +10,11 @@ const baseInput = {
   transcriptConfidence: 0.99,
   observedObjects: ["brass token"],
 } as const;
+const leafletReadExaminePending = {
+  kind: "read-examine-choice",
+  objectValueId: "observed-object:leaflet",
+  allowedActions: ["examine", "read"],
+} as const;
 
 describe("initial bounded Dungeon Guide", () => {
   it("grounds a direct execute decision as one canonical command", async () => {
@@ -89,7 +94,27 @@ describe("initial bounded Dungeon Guide", () => {
     },
   );
 
-  it.each(["What does the mailbox look like?", "Let's check out the mailbox."])(
+  it.each([
+    "What does the mailbox look like?",
+    "Let's check out the mailbox.",
+    "Examine the mailbox.",
+    "Examine the mailbox without taking it.",
+    "Can you examine the mailbox without taking it?",
+    "Examine the mailbox without taking it, please.",
+    "Could you look more closely at the mailbox?",
+    "Let's take a closer look at the mailbox.",
+    "What can you tell me about the mailbox?",
+    "Give me a description of the mailbox.",
+    "Show me what the mailbox looks like.",
+    "Could you check the mailbox out?",
+    "Let's see what the mailbox looks like.",
+    "Could you look over the mailbox?",
+    "Could you tell me what you see on the mailbox?",
+    "I want to know more about the mailbox.",
+    "How would you describe the mailbox?",
+    "What can I see on the mailbox?",
+    "Take a good look at the mailbox.",
+  ])(
     "semantically examines the explicitly mentioned observed mailbox in %s",
     async (playerUtterance) => {
       const result = await decideInitialGuideTurn(
@@ -131,6 +156,403 @@ describe("initial bounded Dungeon Guide", () => {
     },
   );
 
+  it("semantically examines the correctly selected longer overlapping object", async () => {
+    const result = await decideInitialGuideTurn(
+      FakeGuideModel.returning({
+        kind: "execute",
+        affordanceId: "grammar.examine",
+        slots: [
+          {
+            slotId: "object",
+            valueId: "observed-object:red leaflet",
+          },
+        ],
+        intentSummary: "Observe the red leaflet more closely",
+        confidence: 0.99,
+      }),
+      {
+        ...baseInput,
+        playerUtterance: "Could you look more closely at the red leaflet?",
+        observedObjects: ["leaflet", "red leaflet"],
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "execute",
+      command: "examine red leaflet",
+      groundingSourceId: "grammar.examine",
+    });
+  });
+
+  it.each([
+    "What's in the leaflet?",
+    "What's written on the leaflet?",
+    "Tell me what the leaflet says.",
+    "What words are on the leaflet?",
+  ])(
+    "clarifies the nonlexical READ-versus-EXAMINE ambiguity in %s",
+    async (playerUtterance) => {
+      const result = await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          affordanceId: "grammar.read",
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:leaflet",
+            },
+          ],
+          intentSummary: "Learn what is written on the leaflet",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "clarify",
+        decision: {
+          kind: "clarify",
+          question:
+            "Would you like me to examine the leaflet without taking it, or use READ, which may take it?",
+          ambiguity: expect.stringContaining("may implicitly take"),
+          choices: ["examine leaflet", "read leaflet"],
+        },
+      });
+      expect(result).not.toHaveProperty("command");
+      expect(result).toMatchObject({
+        pendingIntent: leafletReadExaminePending,
+      });
+    },
+  );
+
+  it("retains an explicitly authorized semantic READ command", async () => {
+    expect(
+      await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          affordanceId: "grammar.read",
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:leaflet",
+            },
+          ],
+          intentSummary: "Read the leaflet",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance: "Read the leaflet.",
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      ),
+    ).toMatchObject({
+      kind: "execute",
+      command: "read leaflet",
+      groundingSourceId: "grammar.read",
+    });
+  });
+
+  it.each([
+    "What's in the leaflet?",
+    "What information is available on the leaflet?",
+    "What does the leaflet contain?",
+    "What are the contents of the leaflet?",
+    "What is contained in the leaflet?",
+    "Show me the contents of the leaflet.",
+    "Can you tell me what's in the leaflet?",
+    "What's written on the leaflet?",
+    "What is the writing on the leaflet?",
+    "What words are on the leaflet?",
+    "Tell me the text on the leaflet.",
+    "What is the content of the leaflet?",
+    "What is the inscription on the leaflet?",
+    "What's printed on the leaflet?",
+    "What might the leaflet say?",
+    "Tell me what the leaflet says.",
+  ])(
+    "clarifies the visible-content request %s without consulting the provider",
+    async (playerUtterance) => {
+      const model = FakeGuideModel.returning({
+        kind: "execute",
+        affordanceId: "grammar.examine",
+        slots: [
+          {
+            slotId: "object",
+            valueId: "observed-object:leaflet",
+          },
+        ],
+        intentSummary: "Observe the leaflet's visible writing",
+        confidence: 0.99,
+      });
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "clarify",
+        decision: {
+          choices: ["examine leaflet", "read leaflet"],
+        },
+      });
+      expect(result).not.toHaveProperty("command");
+      expect(result).toMatchObject({
+        pendingIntent: leafletReadExaminePending,
+      });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it.each([
+    ["read leaflet", "Tell me what the leaflet says."],
+    ["examine leaflet", "What's written on the leaflet?"],
+  ])(
+    "clarifies a legacy provider proposal %s for %s",
+    async (command, playerUtterance) => {
+      const result = await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          command,
+          intentSummary: "Unsafe legacy content selection",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "clarify",
+        decision: {
+          choices: ["examine leaflet", "read leaflet"],
+        },
+      });
+      expect(result).not.toHaveProperty("command");
+    },
+  );
+
+  it.each(["grammar.examine", "grammar.read"])(
+    "rejects a shorter overlapping object selected through %s",
+    async (affordanceId) => {
+      const result = await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          affordanceId,
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:leaflet",
+            },
+          ],
+          intentSummary: "Select the wrong shorter object",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance: "Could you look more closely at the red leaflet?",
+          observedObjects: ["leaflet", "red leaflet"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "rejected",
+        cause: "ungrounded-command",
+      });
+      expect(result).not.toHaveProperty("command");
+    },
+  );
+
+  it.each([
+    ["wrong actions", ["open leaflet", "take leaflet"]],
+    ["duplicate action", ["read leaflet", "read leaflet"]],
+    ["stale object", ["examine mailbox", "read mailbox"]],
+    ["unobserved object", ["examine sword", "read sword"]],
+    ["wrong paired action", ["examine leaflet", "open leaflet"]],
+  ])(
+    "does not surface $0 provider choices for a recognized content request",
+    async (_name, choices) => {
+      const model = new FakeGuideModel(() => ({
+        kind: "clarify",
+        question: "Provider-controlled question",
+        ambiguity: "Provider-controlled ambiguity",
+        choices,
+      }));
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "What's written on the leaflet?",
+          observedObjects: ["leaflet", "mailbox"],
+        },
+        signal,
+      );
+
+      expect(result).toEqual({
+        kind: "clarify",
+        decision: {
+          kind: "clarify",
+          question:
+            "Would you like me to examine the leaflet without taking it, or use READ, which may take it?",
+          ambiguity:
+            "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object.",
+          choices: ["examine leaflet", "read leaflet"],
+        },
+        pendingIntent: leafletReadExaminePending,
+      });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("normalizes a valid provider READ/EXAMINE pair for unseen wording", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "clarify",
+      question: "Provider-controlled question",
+      ambiguity: "Provider-controlled ambiguity",
+      choices: ["READ the leaflet", "EXAMINE the leaflet"],
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "I'd like details about the leaflet.",
+        observedObjects: ["leaflet"],
+      },
+      signal,
+    );
+
+    expect(result).toEqual({
+      kind: "clarify",
+      decision: {
+        kind: "clarify",
+        question:
+          "Would you like me to examine the leaflet without taking it, or use READ, which may take it?",
+        ambiguity:
+          "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object.",
+        choices: ["examine leaflet", "read leaflet"],
+      },
+      pendingIntent: leafletReadExaminePending,
+    });
+    expect(model.calls).toBe(1);
+  });
+
+  it("replaces a generic non-content provider clarification with local prose", async () => {
+    const decision = {
+      kind: "clarify" as const,
+      question: "Which direction would you like to try?",
+      ambiguity: "Two directions remain possible.",
+      choices: ["north", "south"] as const,
+    };
+    const model = FakeGuideModel.returning(decision);
+    expect(
+      await decideInitialGuideTurn(
+        model,
+        { ...baseInput, playerUtterance: "Which way might work?" },
+        signal,
+      ),
+    ).toEqual({
+      kind: "clarify",
+      decision: {
+        kind: "clarify",
+        question: "Could you say which single action you want me to try?",
+        ambiguity:
+          "The request has more than one safely grounded interpretation.",
+      },
+    });
+    expect(model.calls).toBe(1);
+  });
+
+  it("discards malicious non-content provider choices for unseen wording", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "clarify",
+      question: "Open it or take it?",
+      ambiguity: "Provider-controlled ambiguity",
+      choices: ["open leaflet", "take leaflet"],
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "Help me with the leaflet.",
+        observedObjects: ["leaflet"],
+      },
+      signal,
+    );
+
+    expect(result).toEqual({
+      kind: "clarify",
+      decision: {
+        kind: "clarify",
+        question: "Could you say which single action you want me to try?",
+        ambiguity:
+          "The request has more than one safely grounded interpretation.",
+      },
+    });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(model.calls).toBe(1);
+  });
+
+  it("does not consult a provider that would select a different current object", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "execute",
+      affordanceId: "grammar.read",
+      slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+      intentSummary: "Unsafe content selection",
+      confidence: 0.99,
+    });
+    expect(
+      await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "What's written on the leaflet?",
+          observedObjects: ["leaflet", "mailbox"],
+        },
+        signal,
+      ),
+    ).toMatchObject({
+      kind: "clarify",
+      decision: { choices: ["examine leaflet", "read leaflet"] },
+    });
+    expect(model.calls).toBe(0);
+  });
+
+  it("rejects a semantic READ with an unobserved selected object", async () => {
+    expect(
+      await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "execute",
+          affordanceId: "grammar.read",
+          slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+          intentSummary: "Unsafe content selection",
+          confidence: 0.99,
+        }),
+        {
+          ...baseInput,
+          playerUtterance: "What's written on the leaflet?",
+          observedObjects: ["mailbox"],
+        },
+        signal,
+      ),
+    ).toMatchObject({ kind: "rejected", cause: "ungrounded-command" });
+  });
+
   it.each([
     {
       name: "low-confidence transcript",
@@ -154,6 +576,14 @@ describe("initial bounded Dungeon Guide", () => {
       input: {
         ...baseInput,
         playerUtterance: "Check out the mailbox, then open it.",
+        observedObjects: ["mailbox"],
+      },
+    },
+    {
+      name: "alternative request",
+      input: {
+        ...baseInput,
+        playerUtterance: "Check out the mailbox or open it.",
         observedObjects: ["mailbox"],
       },
     },
@@ -335,7 +765,7 @@ describe("initial bounded Dungeon Guide", () => {
     ).toMatchObject({ kind: "clarify" });
   });
 
-  it("routes an exact observed-object content question without calling the provider", async () => {
+  it("clarifies an exact observed-object content question without calling the provider", async () => {
     const model = new FakeGuideModel(() => {
       throw new Error(
         "the deterministic content question reached the provider",
@@ -351,15 +781,13 @@ describe("initial bounded Dungeon Guide", () => {
     );
 
     expect(result).toMatchObject({
-      kind: "execute",
-      command: "examine brass token",
-      groundingSourceId: "grammar.examine",
+      kind: "clarify",
       decision: {
-        kind: "execute",
-        command: "examine brass token",
-        confidence: 1,
+        kind: "clarify",
+        choices: ["examine brass token", "read brass token"],
       },
     });
+    expect(result).not.toHaveProperty("command");
     expect(model.calls).toBe(0);
   });
 
@@ -397,11 +825,9 @@ describe("initial bounded Dungeon Guide", () => {
     expect(model.calls).toBe(0);
   });
 
-  it("retains and resolves one reviewed pending object action", async () => {
-    const clarificationModel = FakeGuideModel.returning({
-      kind: "clarify",
-      question: "Which observed object would you like me to examine?",
-      ambiguity: "The object reference is unresolved.",
+  it("resolves an unknown content object into a typed READ/EXAMINE choice", async () => {
+    const clarificationModel = new FakeGuideModel(() => {
+      throw new Error("the unresolved content request reached the provider");
     });
     const clarified = await decideInitialGuideTurn(
       clarificationModel,
@@ -413,8 +839,9 @@ describe("initial bounded Dungeon Guide", () => {
     );
     expect(clarified).toMatchObject({
       kind: "clarify",
-      pendingIntent: { action: "examine" },
+      pendingIntent: { kind: "content-object" },
     });
+    expect(clarificationModel.calls).toBe(0);
 
     const answerModel = new FakeGuideModel(() => {
       throw new Error("the exact pending-object answer reached the provider");
@@ -424,16 +851,140 @@ describe("initial bounded Dungeon Guide", () => {
       {
         ...baseInput,
         playerUtterance: "The brass token",
-        pendingIntent: { action: "examine" },
+        pendingIntent: { kind: "content-object" },
       },
       signal,
     );
     expect(resolved).toMatchObject({
-      kind: "execute",
-      command: "examine brass token",
-      groundingSourceId: "grammar.examine",
+      kind: "clarify",
+      decision: {
+        choices: ["examine brass token", "read brass token"],
+      },
+      pendingIntent: {
+        kind: "read-examine-choice",
+        objectValueId: "observed-object:brass token",
+        allowedActions: ["examine", "read"],
+      },
     });
     expect(answerModel.calls).toBe(0);
+  });
+
+  it.each([
+    ["READ", "read leaflet", "grammar.read"],
+    ["read it", "read leaflet", "grammar.read"],
+    ["Please read it", "read leaflet", "grammar.read"],
+    ["Can you read it?", "read leaflet", "grammar.read"],
+    ["I'd like to read it", "read leaflet", "grammar.read"],
+    ["Okay, read it", "read leaflet", "grammar.read"],
+    ["EXAMINE", "examine leaflet", "grammar.examine"],
+    ["examine it", "examine leaflet", "grammar.examine"],
+    ["Could you examine it?", "examine leaflet", "grammar.examine"],
+    ["Examine it without taking it", "examine leaflet", "grammar.examine"],
+    [
+      "Examine it without taking it, please",
+      "examine leaflet",
+      "grammar.examine",
+    ],
+    [
+      "Can you examine it without taking it?",
+      "examine leaflet",
+      "grammar.examine",
+    ],
+  ])(
+    "executes the explicit pending choice %s as %s",
+    async (playerUtterance, command, groundingSourceId) => {
+      const model = new FakeGuideModel(() => {
+        throw new Error("the explicit pending choice reached the provider");
+      });
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["leaflet"],
+          pendingIntent: leafletReadExaminePending,
+        },
+        signal,
+      );
+      expect(result).toMatchObject({
+        kind: "execute",
+        command,
+        groundingSourceId,
+      });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("allows a fresh explicit command to supersede the pending choice", async () => {
+    const result = await decideInitialGuideTurn(
+      FakeGuideModel.returning({
+        kind: "execute",
+        command: "open mailbox",
+        intentSummary: "Open the mailbox",
+        confidence: 0.99,
+      }),
+      {
+        ...baseInput,
+        playerUtterance: "Open the mailbox.",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+    expect(result).toMatchObject({
+      kind: "execute",
+      command: "open mailbox",
+    });
+  });
+
+  it.each([
+    {
+      name: "stale observed object",
+      playerUtterance: "read it",
+      observedObjects: [] as readonly string[],
+    },
+    {
+      name: "negated choice",
+      playerUtterance: "do not read it",
+      observedObjects: ["leaflet"],
+    },
+    {
+      name: "multi-step choice",
+      playerUtterance: "read it and open the mailbox",
+      observedObjects: ["leaflet", "mailbox"],
+    },
+    {
+      name: "questioned choice",
+      playerUtterance: "read it?",
+      observedObjects: ["leaflet"],
+    },
+    {
+      name: "quoted choice",
+      playerUtterance: '"READ"',
+      observedObjects: ["leaflet"],
+    },
+    {
+      name: "negated bare choice",
+      playerUtterance: "No read it",
+      observedObjects: ["leaflet"],
+    },
+  ])("fails a $name closed and clears the choice", async (testCase) => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("an unsafe pending choice reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: testCase.playerUtterance,
+        observedObjects: testCase.observedObjects,
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+    expect(result).toMatchObject({ kind: "clarify" });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(model.calls).toBe(0);
   });
 
   it.each([
@@ -613,6 +1164,316 @@ describe("initial bounded Dungeon Guide", () => {
       expect(result.decision.response).toContain("brass token");
       expect(result.decision.response).not.toMatch(/sword|trapdoor/iu);
     }
+  });
+
+  it.each([
+    "What is the difference between read and examine?",
+    "Should I read or examine the leaflet?",
+  ])(
+    "answers the READ-versus-EXAMINE meta question %s without executing",
+    async (playerUtterance) => {
+      const model = new FakeGuideModel(() => {
+        throw new Error("a deterministic command comparison reached the model");
+      });
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      );
+
+      expect(result).toEqual({
+        kind: "explain",
+        decision: {
+          kind: "explain",
+          response:
+            "EXAMINE inspects an observed object without taking it. READ asks the parser to read the object and may implicitly take it.",
+          basis: "command-help",
+          sourceIds: ["grammar.examine", "grammar.read"],
+        },
+      });
+      expect(result).not.toHaveProperty("command");
+      expect(result).not.toHaveProperty("pendingIntent");
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it.each([
+    ["What does READ do with the leaflet?", ["grammar.read"]],
+    ["Does READ take the leaflet?", ["grammar.read"]],
+    ["Does READ implicitly take the leaflet?", ["grammar.read"]],
+    [
+      "Is READ safer than EXAMINE for the leaflet?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    [
+      "Is READ different from EXAMINE for the leaflet?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    [
+      "Should I read the leaflet instead of examining it?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    [
+      "Can you tell me the difference between read and examine?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    [
+      "How exactly does read differ from examine?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    ["Can you compare read and examine?", ["grammar.examine", "grammar.read"]],
+    [
+      "Could you explain the difference between read and examine?",
+      ["grammar.examine", "grammar.read"],
+    ],
+  ])(
+    "answers the command meta question %s before a malicious execute proposal",
+    async (playerUtterance, sourceIds) => {
+      const model = FakeGuideModel.returning({
+        kind: "execute",
+        affordanceId: "grammar.read",
+        slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+        intentSummary: "Unsafe meta-action execution",
+        confidence: 0.99,
+      });
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "explain",
+        decision: { kind: "explain", sourceIds },
+      });
+      expect(result).not.toHaveProperty("command");
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("keeps a direct Can-you READ request on the ordinary execute path", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "execute",
+      affordanceId: "grammar.read",
+      slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+      intentSummary: "Read the observed leaflet",
+      confidence: 0.99,
+    });
+    expect(
+      await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "Can you read the leaflet?",
+          observedObjects: ["leaflet"],
+        },
+        signal,
+      ),
+    ).toMatchObject({ kind: "execute", command: "read leaflet" });
+    expect(model.calls).toBe(1);
+  });
+
+  it.each([
+    "What if I READ the leaflet?",
+    "Will READ take the leaflet?",
+    "If I read the leaflet, what happens?",
+    "I wonder what if I read the leaflet.",
+    "I said read the leaflet.",
+    'The guide said "read the leaflet."',
+    "Read anything except the leaflet.",
+    "Can you read anything except the leaflet?",
+    "Read the leaflet only if it is safe.",
+    "Read all but the leaflet.",
+    "Read something other than the leaflet.",
+    "Read the leaflet later.",
+    "Read the leaflet when you are ready.",
+  ])(
+    "rejects semantic and legacy execution for the non-direct speech act %s",
+    async (playerUtterance) => {
+      const proposals = [
+        {
+          kind: "execute",
+          affordanceId: "grammar.read",
+          slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+          intentSummary: "Unsafe semantic speech-act execution",
+          confidence: 0.99,
+        },
+        {
+          kind: "execute",
+          command: "read leaflet",
+          intentSummary: "Unsafe legacy speech-act execution",
+          confidence: 0.99,
+        },
+      ];
+
+      for (const proposal of proposals) {
+        const model = new FakeGuideModel(() => proposal);
+        const result = await decideInitialGuideTurn(
+          model,
+          {
+            ...baseInput,
+            playerUtterance,
+            observedObjects: ["leaflet"],
+          },
+          signal,
+        );
+        expect(result).toMatchObject({
+          kind: "rejected",
+          cause: "ungrounded-command",
+        });
+        expect(result).not.toHaveProperty("command");
+        expect(model.calls).toBe(1);
+      }
+    },
+  );
+
+  it.each([
+    "Examine all but the leaflet.",
+    "I said examine the leaflet.",
+    "“Examine the leaflet.”",
+    "What if I examine the leaflet?",
+    "What if I check out the leaflet?",
+    "If it is safe, check out the leaflet.",
+    "The guide suggested checking out the leaflet.",
+    "The guide said ‘check out the leaflet.’",
+    "I might check out the leaflet.",
+    "I wonder whether to look more closely at the leaflet.",
+    "Could you open the leaflet?",
+    "Can you open up the leaflet?",
+    "Could you open the closed leaflet?",
+    "I'd like you to open the leaflet carefully.",
+    "Let's open up the leaflet.",
+    "Could you head north past the leaflet?",
+    "How do I open the leaflet?",
+    "How do I read the leaflet?",
+    "What does opening the leaflet involve?",
+    "Can you tell me whether opening the leaflet is safe?",
+    "Can you tell me a joke about the leaflet?",
+    "I want you to destroy the leaflet.",
+    "Can you open the leaflet later?",
+    "Would you read the leaflet aloud?",
+    "Could you take the leaflet tomorrow?",
+  ])(
+    "rejects semantic and legacy EXAMINE for the non-direct speech act %s",
+    async (playerUtterance) => {
+      const proposals = [
+        {
+          kind: "execute",
+          affordanceId: "grammar.examine",
+          slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+          intentSummary: "Unsafe semantic EXAMINE speech act",
+          confidence: 0.99,
+        },
+        {
+          kind: "execute",
+          command: "examine leaflet",
+          intentSummary: "Unsafe legacy EXAMINE speech act",
+          confidence: 0.99,
+        },
+      ];
+
+      for (const proposal of proposals) {
+        const result = await decideInitialGuideTurn(
+          new FakeGuideModel(() => proposal),
+          {
+            ...baseInput,
+            playerUtterance,
+            observedObjects: ["leaflet"],
+          },
+          signal,
+        );
+        expect(result).toMatchObject({
+          kind: "rejected",
+          cause: "ungrounded-command",
+        });
+        expect(result).not.toHaveProperty("command");
+      }
+    },
+  );
+
+  it("answers another offered command comparison without the model", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("a deterministic command comparison reached the model");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "Compare take and open.",
+        observedObjects: ["leaflet"],
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "explain",
+      decision: {
+        kind: "explain",
+        sourceIds: ["grammar.open", "grammar.take"],
+        response: expect.stringMatching(/OPEN:.*TAKE:.*leaflet/u),
+      },
+    });
+    expect(result).not.toHaveProperty("command");
+    expect(model.calls).toBe(0);
+  });
+
+  it.each([
+    "Compare read and dance.",
+    "Compare read and examine, then open the mailbox.",
+    "Compare mailbox with house.",
+  ])(
+    "clarifies the invalid comparison %s before a malicious execute proposal",
+    async (playerUtterance) => {
+      const model = FakeGuideModel.returning({
+        kind: "execute",
+        affordanceId: "grammar.take",
+        slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+        intentSummary: "Unsafe comparison-shaped action",
+        confidence: 0.99,
+      });
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["mailbox"],
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({ kind: "clarify" });
+      expect(result).not.toHaveProperty("command");
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("rejects command help with an unknown source ID", async () => {
+    expect(
+      await decideInitialGuideTurn(
+        FakeGuideModel.returning({
+          kind: "explain",
+          response: "Unreviewed command help.",
+          basis: "command-help",
+          sourceIds: ["grammar.unknown"],
+        }),
+        {
+          ...baseInput,
+          playerUtterance: "What does that unknown command do?",
+        },
+        signal,
+      ),
+    ).toMatchObject({
+      kind: "rejected",
+      cause: "unsupported-initial-decision",
+    });
   });
 
   it("fails closed on extra fields and provider failure", async () => {

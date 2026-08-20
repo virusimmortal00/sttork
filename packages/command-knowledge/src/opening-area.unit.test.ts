@@ -2,12 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   OPENING_AREA_KNOWLEDGE_VERSION,
+  createPendingOpeningContentObjectIntent,
+  createPendingOpeningReadExamineChoiceIntent,
   createOpeningCommandKnowledge,
   groundOpeningCommand,
   groundObservedObjectContentQuestion,
   groundPendingOpeningObjectReply,
+  groundPendingOpeningReadExamineChoiceReply,
+  identifyNonlexicalOpeningContentRequest,
+  identifyNonlexicalOpeningReadExamineAmbiguity,
+  identifyNonlexicalOpeningReadAmbiguity,
+  identifyOpeningReadExamineClarificationChoice,
   inferPendingOpeningObjectIntent,
+  isPendingOpeningObjectIntent,
+  openingObjectObservationDirectlyRequested,
   openingObjectSelectionMentioned,
+  resolvePendingOpeningContentObjectReply,
+  resolveOpeningCommandComparisonQuestion,
   openingCommandHelp,
   resolveOpeningCommandIntent,
 } from "./opening-area.js";
@@ -29,6 +40,188 @@ describe("opening-area command knowledge", () => {
       command: expected,
     });
   });
+
+  it.each([
+    "Read the leaflet.",
+    "Please read the leaflet.",
+    "Can you read the leaflet?",
+    "I'd like you to read the leaflet.",
+    "I want to read the leaflet.",
+    "I'd like to read the leaflet.",
+    "I need to read the leaflet.",
+  ])("accepts the direct tier-three request %s", (playerUtterance) => {
+    expect(
+      groundOpeningCommand(
+        "read leaflet",
+        playerUtterance,
+        createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+      ),
+    ).toMatchObject({ ok: true, command: "read leaflet" });
+  });
+
+  it.each([
+    "Examine the leaflet without taking it.",
+    "Can you examine the leaflet without taking it?",
+    "Examine the leaflet without taking it, please.",
+  ])(
+    "accepts the explicit non-taking EXAMINE request %s",
+    (playerUtterance) => {
+      expect(
+        groundOpeningCommand(
+          "examine leaflet",
+          playerUtterance,
+          createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+        ),
+      ).toMatchObject({ ok: true, command: "examine leaflet" });
+    },
+  );
+
+  it.each([
+    "What if I READ the leaflet?",
+    "Will READ take the leaflet?",
+    "Should I read the leaflet?",
+    "If I read the leaflet, what happens?",
+    "I might read the leaflet.",
+    "I wonder what if I read the leaflet.",
+    "I said read the leaflet.",
+    'The guide said "read the leaflet."',
+    '"Read the leaflet."',
+    "`Read the leaflet.`",
+    "‘Read the leaflet.’",
+    "‹Read the leaflet›",
+    "「Read the leaflet」",
+    "‚Read the leaflet‘",
+    "‛Read the leaflet‛",
+    "❝Read the leaflet❞",
+    "> Read the leaflet.",
+    "(Read the leaflet.)",
+    "Read the leaflet?",
+    "Read anything except the leaflet.",
+    "Can you read anything except the leaflet?",
+    "Read the leaflet only if it is safe.",
+    "Read all but the leaflet.",
+    "Read something other than the leaflet.",
+    "Read another object instead of the leaflet.",
+    "Read the leaflet later.",
+    "Read the leaflet when you are ready.",
+    "Read the leaflet provided it is safe.",
+    "Read the leaflet as long as it is safe.",
+    "No read the leaflet.",
+    "Read the leaflet without taking it.",
+  ])("rejects the non-direct tier-three discussion %s", (playerUtterance) => {
+    expect(
+      groundOpeningCommand(
+        "read leaflet",
+        playerUtterance,
+        createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+      ),
+    ).toEqual({ ok: false, code: "not-direct-action-request" });
+  });
+
+  it.each([
+    ["open mailbox", "Open anything except the mailbox."],
+    ["take mailbox", "Take anything but the mailbox."],
+  ])("does not retarget %s from the exclusion %s", (command, utterance) => {
+    expect(groundOpeningCommand(command, utterance, knowledge)).toEqual({
+      ok: false,
+      code: "not-direct-action-request",
+    });
+  });
+
+  it.each(["Pick the mailbox up.", "Can you pick the mailbox up?"])(
+    "accepts the separable TAKE request %s",
+    (playerUtterance) => {
+      expect(
+        groundOpeningCommand("take mailbox", playerUtterance, knowledge),
+      ).toMatchObject({ ok: true, command: "take mailbox" });
+    },
+  );
+
+  it.each([
+    "Examine all but the leaflet.",
+    "I said examine the leaflet.",
+    "“Examine the leaflet.”",
+    "What if I examine the leaflet?",
+  ])("rejects the non-direct EXAMINE discussion %s", (playerUtterance) => {
+    expect(
+      groundOpeningCommand(
+        "examine leaflet",
+        playerUtterance,
+        createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+      ),
+    ).toEqual({ ok: false, code: "not-direct-action-request" });
+  });
+
+  it.each([
+    "Could you look more closely at the mailbox?",
+    "Let's take a closer look at the mailbox.",
+    "What can you tell me about the mailbox?",
+    "Give me a description of the mailbox.",
+    "Show me what the mailbox looks like.",
+    "Could you check the mailbox out?",
+    "Let's see what the mailbox looks like.",
+    "Could you look over the mailbox?",
+    "Could you tell me what you see on the mailbox?",
+    "I want to know more about the mailbox.",
+    "How would you describe the mailbox?",
+    "What can I see on the mailbox?",
+    "Take a good look at the mailbox.",
+  ])(
+    "recognizes the direct semantic EXAMINE request %s without a phrase allowlist",
+    (playerUtterance) => {
+      const mailbox = knowledge.observedObjectOptions.find(
+        (option) => option.label === "mailbox",
+      );
+      if (mailbox === undefined) throw new Error("Expected current mailbox.");
+      expect(
+        openingObjectObservationDirectlyRequested(
+          mailbox,
+          playerUtterance,
+          knowledge,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    "What if I check out the mailbox?",
+    "If it is safe, check out the mailbox.",
+    "The guide suggested checking out the mailbox.",
+    "The guide said ‘check out the mailbox.’",
+    "I might check out the mailbox.",
+    "I wonder whether to look more closely at the mailbox.",
+    "Could you open the mailbox?",
+    "Can you open up the mailbox?",
+    "Could you open the closed mailbox?",
+    "I'd like you to open the mailbox carefully.",
+    "Let's open up the mailbox.",
+    "Could you head north past the mailbox?",
+    "How do I open the mailbox?",
+    "How do I read the mailbox?",
+    "What does opening the mailbox involve?",
+    "Can you tell me whether opening the mailbox is safe?",
+    "Can you tell me a joke about the mailbox?",
+    "I want you to destroy the mailbox.",
+    "Can you open the mailbox later?",
+    "Would you read the mailbox aloud?",
+    "Could you take the mailbox tomorrow?",
+    "What does EXAMINE do with the mailbox?",
+  ])(
+    "rejects the non-direct semantic EXAMINE request %s",
+    (playerUtterance) => {
+      const mailbox = knowledge.observedObjectOptions.find(
+        (option) => option.label === "mailbox",
+      );
+      if (mailbox === undefined) throw new Error("Expected current mailbox.");
+      expect(
+        openingObjectObservationDirectlyRequested(
+          mailbox,
+          playerUtterance,
+          knowledge,
+        ),
+      ).toBe(false);
+    },
+  );
 
   it("rejects hidden objects and commands not grounded in the utterance", () => {
     expect(
@@ -225,6 +418,265 @@ describe("opening-area command knowledge", () => {
   });
 
   it.each([
+    "What does the leaflet say?",
+    "What might the leaflet say?",
+    "Tell me what the leaflet says.",
+    "What's written on the leaflet?",
+    "What is the writing on the leaflet?",
+    "What words are on the leaflet?",
+    "Tell me the text on the leaflet.",
+    "What is the content of the leaflet?",
+    "What's in the leaflet?",
+    "What information is available on the leaflet?",
+    "What does the leaflet contain?",
+    "What are the contents of the leaflet?",
+    "What is contained in the leaflet?",
+    "Show me the contents of the leaflet.",
+    "Can you tell me what's in the leaflet?",
+    "What is the inscription on the leaflet?",
+    "What's printed on the leaflet?",
+  ])("identifies the local content ambiguity in %s", (playerUtterance) => {
+    const leafletKnowledge = createOpeningCommandKnowledge({
+      observedObjects: ["leaflet"],
+    });
+    expect(
+      identifyNonlexicalOpeningContentRequest(
+        playerUtterance,
+        leafletKnowledge,
+      ),
+    ).toEqual({ id: "observed-object:leaflet", label: "leaflet" });
+  });
+
+  it.each([
+    "Read the written leaflet.",
+    "Examine the writing on the leaflet.",
+    "Take the leaflet with the printed text.",
+    "What's written on the leaflet or mailbox?",
+    "What's written on the sword?",
+  ])(
+    "does not replace the explicit, ambiguous, or unobserved request %s with a local content ambiguity",
+    (playerUtterance) => {
+      expect(
+        identifyNonlexicalOpeningContentRequest(
+          playerUtterance,
+          createOpeningCommandKnowledge({
+            observedObjects: ["leaflet", "mailbox"],
+          }),
+        ),
+      ).toBeUndefined();
+    },
+  );
+
+  it.each(["grammar.examine", "grammar.read"])(
+    "does not bind an overlapping shorter object from %s",
+    (affordanceId) => {
+      expect(
+        identifyNonlexicalOpeningReadExamineAmbiguity(
+          {
+            affordanceId,
+            slots: [
+              {
+                slotId: "object",
+                valueId: "observed-object:leaflet",
+              },
+            ],
+          },
+          "What is written on the red leaflet?",
+          createOpeningCommandKnowledge({
+            observedObjects: ["leaflet", "red leaflet"],
+          }),
+        ),
+      ).toBeUndefined();
+    },
+  );
+
+  it("binds the uniquely mentioned longer overlapping object", () => {
+    const overlappingKnowledge = createOpeningCommandKnowledge({
+      observedObjects: ["leaflet", "red leaflet"],
+    });
+    expect(
+      identifyNonlexicalOpeningContentRequest(
+        "What is written on the red leaflet?",
+        overlappingKnowledge,
+      ),
+    ).toEqual({
+      id: "observed-object:red leaflet",
+      label: "red leaflet",
+    });
+
+    const redLeaflet = overlappingKnowledge.observedObjectOptions.find(
+      (option) => option.label === "red leaflet",
+    );
+    if (redLeaflet === undefined) {
+      throw new Error("Expected current red leaflet.");
+    }
+    expect(
+      openingObjectObservationDirectlyRequested(
+        redLeaflet,
+        "Could you look more closely at the red leaflet?",
+        overlappingKnowledge,
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    [["examine leaflet", "read leaflet"]],
+    [["READ the leaflet", "EXAMINE the leaflet"]],
+  ])("identifies one current READ/EXAMINE clarification pair %#", (choices) => {
+    expect(
+      identifyOpeningReadExamineClarificationChoice(
+        choices,
+        "What information is on the leaflet?",
+        createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+      ),
+    ).toEqual({ id: "observed-object:leaflet", label: "leaflet" });
+  });
+
+  it.each([
+    ["duplicate action", ["read leaflet", "read leaflet"]],
+    ["different current objects", ["examine leaflet", "read mailbox"]],
+    ["stale object", ["examine leaflet", "read leaflet"]],
+    ["unobserved object", ["examine sword", "read sword"]],
+    ["wrong action", ["open leaflet", "read leaflet"]],
+    ["extra action", ["examine leaflet", "read leaflet", "take leaflet"]],
+    ["overlapping object label", ["examine leaflet", "read leaflet"]],
+  ])("rejects a $name clarification pair", (_name, choices) => {
+    const observedObjects =
+      _name === "stale object"
+        ? ["mailbox"]
+        : _name === "overlapping object label"
+          ? ["leaflet", "red leaflet"]
+          : ["leaflet", "mailbox"];
+    const utterance =
+      _name === "overlapping object label"
+        ? "What is written on the red leaflet?"
+        : "What information is on the leaflet?";
+    expect(
+      identifyOpeningReadExamineClarificationChoice(
+        choices,
+        utterance,
+        createOpeningCommandKnowledge({ observedObjects }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    {
+      affordanceId: "grammar.read",
+      playerUtterance: "What's written on the leaflet?",
+    },
+    {
+      affordanceId: "grammar.read",
+      playerUtterance: "Tell me what the leaflet says.",
+    },
+    {
+      affordanceId: "grammar.read",
+      playerUtterance: "What words are on the leaflet?",
+    },
+    {
+      affordanceId: "grammar.examine",
+      playerUtterance: "What's printed on the leaflet?",
+    },
+    {
+      affordanceId: "grammar.examine",
+      playerUtterance: "Tell me the text on the leaflet.",
+    },
+  ])(
+    "identifies a nonlexical $affordanceId ambiguity in $playerUtterance",
+    ({ affordanceId, playerUtterance }) => {
+      const leafletKnowledge = createOpeningCommandKnowledge({
+        observedObjects: ["leaflet"],
+      });
+
+      expect(
+        identifyNonlexicalOpeningReadExamineAmbiguity(
+          {
+            affordanceId,
+            slots: [
+              {
+                slotId: "object",
+                valueId: "observed-object:leaflet",
+              },
+            ],
+          },
+          playerUtterance,
+          leafletKnowledge,
+        ),
+      ).toEqual({
+        id: "observed-object:leaflet",
+        label: "leaflet",
+      });
+    },
+  );
+
+  it.each([
+    {
+      name: "explicit READ authorization",
+      intent: {
+        affordanceId: "grammar.read",
+        slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+      },
+      playerUtterance: "Read the leaflet.",
+      observedObjects: ["leaflet"],
+    },
+    {
+      name: "different selected object",
+      intent: {
+        affordanceId: "grammar.read",
+        slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+      },
+      playerUtterance: "What's written on the leaflet?",
+      observedObjects: ["leaflet", "mailbox"],
+    },
+    {
+      name: "unobserved selected object",
+      intent: {
+        affordanceId: "grammar.read",
+        slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+      },
+      playerUtterance: "What's written on the leaflet?",
+      observedObjects: ["mailbox"],
+    },
+    {
+      name: "non-READ affordance",
+      intent: {
+        affordanceId: "grammar.take",
+        slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+      },
+      playerUtterance: "What's written on the leaflet?",
+      observedObjects: ["leaflet"],
+    },
+    {
+      name: "nonlexical EXAMINE appearance request",
+      intent: {
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+      },
+      playerUtterance: "What does the leaflet look like?",
+      observedObjects: ["leaflet"],
+    },
+    {
+      name: "nonlexical EXAMINE check-out request",
+      intent: {
+        affordanceId: "grammar.examine",
+        slots: [{ slotId: "object", valueId: "observed-object:leaflet" }],
+      },
+      playerUtterance: "Let's check out the leaflet.",
+      observedObjects: ["leaflet"],
+    },
+  ])("does not identify a $name as ambiguous", (testCase) => {
+    expect(
+      identifyNonlexicalOpeningReadAmbiguity(
+        testCase.intent,
+        testCase.playerUtterance,
+        createOpeningCommandKnowledge({
+          observedObjects: testCase.observedObjects,
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it.each([
     ["What does the mailbox say?", "examine mailbox"],
     ["what does brass token say", "examine brass token"],
   ])(
@@ -268,11 +720,17 @@ describe("opening-area command knowledge", () => {
     });
   });
 
+  it("retains an unresolved content-object request without choosing an action", () => {
+    expect(inferPendingOpeningObjectIntent("What does it say?")).toEqual({
+      kind: "content-object",
+    });
+  });
+
   it.each([
-    ["What does it say?", "examine"],
     ["read it", "read"],
     ["please open it", "open"],
     ["pick it up", "take"],
+    ["Can you pick it up?", "take"],
   ])("retains the single reviewed object action in %s", (utterance, action) => {
     expect(inferPendingOpeningObjectIntent(utterance)).toEqual({ action });
   });
@@ -281,6 +739,7 @@ describe("opening-area command knowledge", () => {
     "go north",
     "open it and take it",
     "read it and go north",
+    "read it or examine it",
     "what does it say then go north",
   ])("does not retain an unsafe or absent object action in %s", (utterance) => {
     expect(inferPendingOpeningObjectIntent(utterance)).toBeUndefined();
@@ -325,8 +784,136 @@ describe("opening-area command knowledge", () => {
     ).toEqual({ ok: false, code: "unobserved-object" });
   });
 
+  it("turns an unresolved content object into one typed current READ/EXAMINE choice", () => {
+    const contentIntent = createPendingOpeningContentObjectIntent();
+    const selected = resolvePendingOpeningContentObjectReply(
+      contentIntent,
+      "The brass token",
+      knowledge,
+    );
+    expect(selected).toEqual({
+      ok: true,
+      selectedObject: {
+        id: "observed-object:brass token",
+        label: "brass token",
+      },
+    });
+    if (!selected.ok) throw new Error("Expected one current object.");
+
+    const choice = createPendingOpeningReadExamineChoiceIntent(
+      selected.selectedObject,
+    );
+    expect(choice).toEqual({
+      kind: "read-examine-choice",
+      objectValueId: "observed-object:brass token",
+      allowedActions: ["examine", "read"],
+    });
+    expect(isPendingOpeningObjectIntent(choice)).toBe(true);
+
+    for (const [utterance, command] of [
+      ["READ", "read brass token"],
+      ["read it", "read brass token"],
+      ["Please read it", "read brass token"],
+      ["Can you read it?", "read brass token"],
+      ["I'd like to read it", "read brass token"],
+      ["read it please", "read brass token"],
+      ["Okay, read it", "read brass token"],
+      ["EXAMINE", "examine brass token"],
+      ["examine it", "examine brass token"],
+      ["Could you examine it?", "examine brass token"],
+      ["Examine it without taking it", "examine brass token"],
+      ["Please examine it without taking it", "examine brass token"],
+      ["Can you examine it without taking it?", "examine brass token"],
+      ["Just examine it without taking it", "examine brass token"],
+      ["Examine it without taking it, please", "examine brass token"],
+    ] as const) {
+      expect(
+        groundPendingOpeningReadExamineChoiceReply(
+          choice,
+          utterance,
+          knowledge,
+        ),
+      ).toMatchObject({ ok: true, command });
+    }
+  });
+
+  it.each([
+    "READ?",
+    "Read it?",
+    '"READ"',
+    "‘Read it.’",
+    "Read it only if it will not take it.",
+    "Read all but it",
+    "Read it later",
+    "Read it when you are ready",
+    "No read it",
+  ])("does not execute the pending choice discussion %s", (utterance) => {
+    const choice = createPendingOpeningReadExamineChoiceIntent({
+      id: "observed-object:brass token",
+      label: "brass token",
+    });
+    expect(
+      groundPendingOpeningReadExamineChoiceReply(choice, utterance, knowledge),
+    ).toMatchObject({ ok: false });
+  });
+
+  it("fails a pending READ/EXAMINE choice closed without capturing a fresh command", () => {
+    const choice = createPendingOpeningReadExamineChoiceIntent({
+      id: "observed-object:brass token",
+      label: "brass token",
+    });
+    expect(
+      groundPendingOpeningReadExamineChoiceReply(
+        choice,
+        "read it",
+        createOpeningCommandKnowledge({ observedObjects: ["mailbox"] }),
+      ),
+    ).toEqual({ ok: false, code: "unobserved-object" });
+    expect(
+      groundPendingOpeningReadExamineChoiceReply(
+        choice,
+        "open the mailbox",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "not-grounded-in-utterance" });
+    expect(
+      groundPendingOpeningReadExamineChoiceReply(
+        choice,
+        "read the mailbox",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "not-grounded-in-utterance" });
+    expect(
+      groundPendingOpeningReadExamineChoiceReply(
+        choice,
+        "read it and open the mailbox",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "not-grounded-in-utterance" });
+  });
+
+  it.each([
+    null,
+    { kind: "content-object", action: "read" },
+    {
+      kind: "read-examine-choice",
+      objectValueId: "observed-object:brass token",
+      allowedActions: ["read", "examine"],
+    },
+    {
+      kind: "read-examine-choice",
+      objectValueId: "observed-object:sword\u0000",
+      allowedActions: ["examine", "read"],
+    },
+  ])("rejects malformed pending state %#", (intent) => {
+    expect(isPendingOpeningObjectIntent(intent)).toBe(false);
+  });
+
   it("builds help only from parser grammar and observed object names", () => {
     const help = openingCommandHelp(knowledge);
+    expect(help).toBe(
+      "You can look, check inventory, or try a direction such as north, south, east, west, up, or down. For things already mentioned—brass token, mailbox—you can try examine, open, read, or take.",
+    );
     expect(help).toContain("look");
     expect(help).toContain("brass token");
     expect(help).toContain("mailbox");
@@ -336,7 +923,7 @@ describe("opening-area command knowledge", () => {
     expect(Object.isFrozen(knowledge.observedObjects)).toBe(true);
     expect(Object.isFrozen(knowledge.observedObjectOptions)).toBe(true);
     expect(knowledge.version).toBe(OPENING_AREA_KNOWLEDGE_VERSION);
-    expect(knowledge.version).toBe(6);
+    expect(knowledge.version).toBe(7);
     expect(knowledge.observedObjectOptions).toEqual([
       {
         id: "observed-object:brass token",
@@ -382,6 +969,142 @@ describe("opening-area command knowledge", () => {
       ["grammar.inventory", 1],
       ["grammar.examine", 2],
     ]);
+  });
+
+  it("renders the reviewed READ-versus-EXAMINE comparison from validated sources", () => {
+    expect(
+      openingCommandHelp(knowledge, ["grammar.read", "grammar.examine"]),
+    ).toBe(
+      "EXAMINE inspects an observed object without taking it. READ asks the parser to read the object and may implicitly take it.",
+    );
+    expect(
+      openingCommandHelp(knowledge, ["grammar.examine", "grammar.read"]),
+    ).toBe(
+      "EXAMINE inspects an observed object without taking it. READ asks the parser to read the object and may implicitly take it.",
+    );
+  });
+
+  it.each([
+    "What is the difference between read and examine?",
+    "How do READ and EXAMINE differ?",
+    "Explain the difference between examine and read.",
+    "read versus examine",
+    "read vs. examine",
+    "Should I read or examine the leaflet?",
+    "Can you tell me the difference between read and examine?",
+    "Tell me the difference between read and examine.",
+    "How exactly does read differ from examine?",
+    "Can you compare read and examine?",
+    "Please compare read and examine.",
+    "Could you explain the difference between read and examine?",
+    "Can you tell me how read and examine differ?",
+  ])("resolves the bounded command comparison %s", (playerUtterance) => {
+    const comparisonKnowledge = playerUtterance.includes("leaflet")
+      ? createOpeningCommandKnowledge({ observedObjects: ["leaflet"] })
+      : knowledge;
+    expect(
+      resolveOpeningCommandComparisonQuestion(
+        playerUtterance,
+        comparisonKnowledge,
+      ),
+    ).toEqual({
+      kind: "resolved",
+      sourceIds: ["grammar.examine", "grammar.read"],
+    });
+  });
+
+  it("resolves an arbitrary offered command pair in canonical rule order", () => {
+    expect(
+      resolveOpeningCommandComparisonQuestion(
+        "Compare take and open.",
+        knowledge,
+      ),
+    ).toEqual({
+      kind: "resolved",
+      sourceIds: ["grammar.open", "grammar.take"],
+    });
+  });
+
+  it.each([
+    ["What does READ do with the leaflet?", ["grammar.read"]],
+    ["Does READ take the leaflet?", ["grammar.read"]],
+    ["Does READ implicitly take the leaflet?", ["grammar.read"]],
+    [
+      "Is READ safer than EXAMINE for the leaflet?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    [
+      "Should I read the leaflet instead of examining it?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    [
+      "Is READ different from EXAMINE for the leaflet?",
+      ["grammar.examine", "grammar.read"],
+    ],
+    ["Could I read the leaflet?", ["grammar.read"]],
+    ["What would happen if I read the leaflet?", ["grammar.read"]],
+  ])("resolves the command meta question %s", (playerUtterance, sourceIds) => {
+    expect(
+      resolveOpeningCommandComparisonQuestion(
+        playerUtterance,
+        createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+      ),
+    ).toEqual({ kind: "resolved", sourceIds });
+  });
+
+  it.each(["Can you read the leaflet?", "What does the mailbox look like?"])(
+    "leaves the direct request %s on the ordinary action path",
+    (utterance) => {
+      expect(
+        resolveOpeningCommandComparisonQuestion(utterance, knowledge),
+      ).toEqual({ kind: "not-comparison" });
+    },
+  );
+
+  it.each([
+    "Compare read and dance.",
+    "Compare read and read.",
+    "Compare read and examine, then open the mailbox.",
+    "Compare read, examine, and open.",
+    "Compare mailbox with house.",
+    "Should I read or dance the mailbox?",
+  ])("rejects the invalid command comparison %s", (playerUtterance) => {
+    expect(
+      resolveOpeningCommandComparisonQuestion(playerUtterance, knowledge),
+    ).toEqual({ kind: "invalid" });
+  });
+
+  it("leaves ordinary multi-action wording to the normal action policy", () => {
+    expect(
+      resolveOpeningCommandComparisonQuestion(
+        "Open the mailbox and take it.",
+        knowledge,
+      ),
+    ).toEqual({ kind: "not-comparison" });
+  });
+
+  it("fails closed on a comparison cue between non-command terms", () => {
+    expect(
+      resolveOpeningCommandComparisonQuestion(
+        "What is the difference between house and mailbox?",
+        knowledge,
+      ),
+    ).toEqual({ kind: "invalid" });
+  });
+
+  it("renders other targeted help in canonical rule order with observed context", () => {
+    expect(
+      openingCommandHelp(knowledge, ["grammar.take", "grammar.look"]),
+    ).toBe(
+      "LOOK: Describe the player's current location and visible surroundings. TAKE: Take one currently observed object. Observed objects currently available: brass token, mailbox.",
+    );
+  });
+
+  it("rejects unknown or empty targeted command-help sources", () => {
+    expect(() => openingCommandHelp(knowledge, ["grammar.unknown"])).toThrow(
+      TypeError,
+    );
+    expect(() => openingCommandHelp(knowledge, [])).toThrow(TypeError);
   });
 
   it("rejects oversized observed context before constructing model input", () => {

@@ -1,13 +1,22 @@
 import {
+  createPendingOpeningContentObjectIntent,
+  createPendingOpeningReadExamineChoiceIntent,
   createOpeningCommandKnowledge,
   groundOpeningCommand,
-  groundObservedObjectContentQuestion,
   groundPendingOpeningObjectReply,
+  groundPendingOpeningReadExamineChoiceReply,
+  identifyNonlexicalOpeningContentRequest,
+  identifyNonlexicalOpeningReadExamineAmbiguity,
+  identifyOpeningReadExamineClarificationChoice,
   inferPendingOpeningObjectIntent,
+  isPendingOpeningObjectIntent,
   openingCommandHelp,
-  openingObjectSelectionMentioned,
+  openingObjectObservationDirectlyRequested,
+  resolvePendingOpeningContentObjectReply,
+  resolveOpeningCommandComparisonQuestion,
   resolveOpeningCommandIntent,
   type OpeningCommandKnowledge,
+  type OpeningObservedObjectOption,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
 import type {
@@ -79,16 +88,44 @@ function clarification(
   question: string,
   ambiguity: string,
   pendingIntent?: PendingOpeningObjectIntent,
+  choices?: readonly [string, string],
 ): InitialGuideResult {
   return {
     kind: "clarify",
-    decision: { kind: "clarify", question, ambiguity },
+    decision: {
+      kind: "clarify",
+      question,
+      ambiguity,
+      ...(choices === undefined ? {} : { choices }),
+    },
     ...(pendingIntent === undefined ? {} : { pendingIntent }),
   };
 }
 
+function readExamineClarification(
+  selectedObject: OpeningObservedObjectOption,
+): InitialGuideResult {
+  const objectLabel = selectedObject.label;
+  return clarification(
+    `Would you like me to examine the ${objectLabel} without taking it, or use READ, which may take it?`,
+    "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object.",
+    createPendingOpeningReadExamineChoiceIntent(selectedObject),
+    [`examine ${objectLabel}`, `read ${objectLabel}`],
+  );
+}
+
+function genericProviderClarification(
+  pendingIntent?: PendingOpeningObjectIntent,
+): InitialGuideResult {
+  return clarification(
+    "Could you say which single action you want me to try?",
+    "The request has more than one safely grounded interpretation.",
+    pendingIntent,
+  );
+}
+
 function appearsMultiStep(utterance: string): boolean {
-  return /[;\n]|\b(?:and|then|after that|followed by)\b/iu.test(utterance);
+  return /[;\n]|\b(?:and|or|then|after that|followed by)\b/iu.test(utterance);
 }
 
 function containsNegation(utterance: string): boolean {
@@ -109,13 +146,7 @@ function transcriptConfidenceRequiresClarification(
 function validPendingIntent(
   value: PendingOpeningObjectIntent | undefined,
 ): boolean {
-  return (
-    value === undefined ||
-    (typeof value === "object" &&
-      value !== null &&
-      Object.keys(value).length === 1 &&
-      ["examine", "open", "read", "take"].includes(value.action))
-  );
+  return value === undefined || isPendingOpeningObjectIntent(value);
 }
 
 function materializeExecuteDecision(
@@ -181,6 +212,28 @@ export async function decideInitialGuideTurn(
     );
   }
 
+  const commandComparison = resolveOpeningCommandComparisonQuestion(
+    input.playerUtterance,
+    knowledge,
+  );
+  if (commandComparison.kind === "resolved") {
+    return {
+      kind: "explain",
+      decision: {
+        kind: "explain",
+        response: openingCommandHelp(knowledge, commandComparison.sourceIds),
+        basis: "command-help",
+        sourceIds: commandComparison.sourceIds,
+      },
+    };
+  }
+  if (commandComparison.kind === "invalid") {
+    return clarification(
+      "Which two available commands would you like me to compare?",
+      "A command comparison must name exactly two currently available commands and no additional action.",
+    );
+  }
+
   if (appearsMultiStep(input.playerUtterance)) {
     return clarification(
       "Which one action should I try first?",
@@ -196,45 +249,93 @@ export async function decideInitialGuideTurn(
   }
 
   if (input.pendingIntent !== undefined) {
-    const pendingReply = groundPendingOpeningObjectReply(
-      input.pendingIntent,
-      input.playerUtterance,
-      knowledge,
-    );
-    if (pendingReply.ok) {
-      const decision = {
-        kind: "execute" as const,
-        command: pendingReply.command,
-        intentSummary:
-          "Apply the pending action to the selected observed object.",
-        confidence: 1,
-      };
-      return {
-        kind: "execute",
-        command: pendingReply.command,
-        decision,
-        groundingSourceId: pendingReply.ruleId,
-      };
+    if ("action" in input.pendingIntent) {
+      const pendingReply = groundPendingOpeningObjectReply(
+        input.pendingIntent,
+        input.playerUtterance,
+        knowledge,
+      );
+      if (pendingReply.ok) {
+        const decision = {
+          kind: "execute" as const,
+          command: pendingReply.command,
+          intentSummary:
+            "Apply the pending action to the selected observed object.",
+          confidence: 1,
+        };
+        return {
+          kind: "execute",
+          command: pendingReply.command,
+          decision,
+          groundingSourceId: pendingReply.ruleId,
+        };
+      }
+    } else if (input.pendingIntent.kind === "content-object") {
+      const contentObjectReply = resolvePendingOpeningContentObjectReply(
+        input.pendingIntent,
+        input.playerUtterance,
+        knowledge,
+      );
+      if (contentObjectReply.ok) {
+        return readExamineClarification(contentObjectReply.selectedObject);
+      }
+    } else {
+      const choiceReply = groundPendingOpeningReadExamineChoiceReply(
+        input.pendingIntent,
+        input.playerUtterance,
+        knowledge,
+      );
+      if (choiceReply.ok) {
+        const decision = {
+          kind: "execute" as const,
+          command: choiceReply.command,
+          intentSummary:
+            "Apply the player's explicit action choice to the still-observed object.",
+          confidence: 1,
+        };
+        return {
+          kind: "execute",
+          command: choiceReply.command,
+          decision,
+          groundingSourceId: choiceReply.ruleId,
+        };
+      }
+      if (choiceReply.code === "unobserved-object") {
+        return clarification(
+          "That object is no longer in the observed scene. What would you like to do instead?",
+          "The pending READ-or-EXAMINE choice no longer has a currently observed object.",
+        );
+      }
+      if (choiceReply.code === "not-direct-action-request") {
+        return clarification(
+          "Please choose READ or EXAMINE as a direct action.",
+          "A question, condition, or quoted command does not authorize the pending action.",
+        );
+      }
     }
   }
 
-  const directContentQuestion = groundObservedObjectContentQuestion(
+  const localContentAmbiguity = identifyNonlexicalOpeningContentRequest(
     input.playerUtterance,
     knowledge,
   );
-  if (directContentQuestion.ok) {
-    const decision = {
-      kind: "execute" as const,
-      command: directContentQuestion.command,
-      intentSummary: "Examine the observed object for visible content.",
-      confidence: 1,
-    };
-    return {
-      kind: "execute",
-      command: directContentQuestion.command,
-      decision,
-      groundingSourceId: directContentQuestion.ruleId,
-    };
+  if (localContentAmbiguity !== undefined) {
+    return readExamineClarification(localContentAmbiguity);
+  }
+
+  const missingContentObject = inferPendingOpeningObjectIntent(
+    input.playerUtterance,
+  );
+  if (
+    missingContentObject !== undefined &&
+    "kind" in missingContentObject &&
+    missingContentObject.kind === "content-object"
+  ) {
+    return clarification(
+      "Which observed object would you like to inspect or read?",
+      "The content request does not identify one currently observed object.",
+      createPendingOpeningContentObjectIntent(),
+    );
   }
 
   let unknownDecision: unknown;
@@ -272,14 +373,23 @@ export async function decideInitialGuideTurn(
   }
 
   if (decision.kind === "clarify") {
+    const deterministicAmbiguity =
+      identifyNonlexicalOpeningContentRequest(
+        input.playerUtterance,
+        knowledge,
+      ) ??
+      identifyOpeningReadExamineClarificationChoice(
+        decision.choices,
+        input.playerUtterance,
+        knowledge,
+      );
+    if (deterministicAmbiguity !== undefined) {
+      return readExamineClarification(deterministicAmbiguity);
+    }
     const pendingIntent = inferPendingOpeningObjectIntent(
       input.playerUtterance,
     );
-    return {
-      kind: "clarify",
-      decision,
-      ...(pendingIntent === undefined ? {} : { pendingIntent }),
-    };
+    return genericProviderClarification(pendingIntent);
   }
 
   if (decision.kind === "explain") {
@@ -305,7 +415,7 @@ export async function decideInitialGuideTurn(
       kind: "explain",
       decision: {
         kind: "explain",
-        response: openingCommandHelp(knowledge),
+        response: openingCommandHelp(knowledge, decision.sourceIds),
         basis: "command-help",
         sourceIds: decision.sourceIds,
       },
@@ -349,6 +459,14 @@ export async function decideInitialGuideTurn(
         knowledge,
       );
       if (!lexicalGrounding.ok) {
+        const ambiguity = identifyNonlexicalOpeningReadExamineAmbiguity(
+          decision.command,
+          input.playerUtterance,
+          knowledge,
+        );
+        if (ambiguity !== undefined) {
+          return readExamineClarification(ambiguity);
+        }
         return {
           kind: "rejected",
           cause: "ungrounded-command",
@@ -396,15 +514,33 @@ export async function decideInitialGuideTurn(
       input.playerUtterance,
       knowledge,
     );
+    const readExamineAmbiguity = lexicalGrounding.ok
+      ? undefined
+      : identifyNonlexicalOpeningReadExamineAmbiguity(
+          {
+            affordanceId: decision.affordanceId,
+            slots: decision.slots,
+          },
+          input.playerUtterance,
+          knowledge,
+        );
+    if (readExamineAmbiguity !== undefined) {
+      return readExamineClarification(readExamineAmbiguity);
+    }
     const semanticFallbackAllowed =
+      !lexicalGrounding.ok &&
       semanticGrounding.semanticFallbackAllowed &&
-      (semanticGrounding.riskTier === 1 ||
-        (semanticGrounding.riskTier === 2 &&
+      ((lexicalGrounding.code === "not-grounded-in-utterance" &&
+        semanticGrounding.riskTier === 1) ||
+        ((lexicalGrounding.code === "not-grounded-in-utterance" ||
+          lexicalGrounding.code === "not-direct-action-request") &&
+          semanticGrounding.riskTier === 2 &&
           semanticGrounding.ruleId === "grammar.examine" &&
           semanticGrounding.selectedObject !== undefined &&
-          openingObjectSelectionMentioned(
+          openingObjectObservationDirectlyRequested(
             semanticGrounding.selectedObject,
             input.playerUtterance,
+            knowledge,
           )));
     if (!lexicalGrounding.ok && !semanticFallbackAllowed) {
       return {

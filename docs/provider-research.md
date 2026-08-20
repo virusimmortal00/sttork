@@ -124,10 +124,69 @@ selected from current command knowledge; it no longer accepts provider-authored
 parser text. Aliases and grammar strings are prompt examples, not an exhaustive
 paraphrase list. Guide core validates current slot IDs, compiles the canonical
 command locally, permits semantic fallback only for certified T1 observations
-and T2 examination of an explicitly named observed object, and removes all
-provider-only metadata before canonical guide events are recorded. T3 and higher
-contextual and confirmation policies in
+and T2 examination of one uniquely mentioned observed object in a direct
+affirmative observation request, and removes all provider-only metadata before
+canonical guide events are recorded. T3 and higher actions additionally require
+lexical grounding and a deterministic imperative, direct second-person request,
+explicit first-person intent or delegation, or `let's` speech act. Command words
+in questions about command behavior, hypothetical or conditional statements,
+exclusions, advice, comparisons, reports, or quoted mentions do not authorize
+execution. Later contextual and confirmation policies in
 [ADR-0012](adr/0012-structured-semantic-command-intents.md) remain open.
+
+The 2026-08-19 observed-content clarification makes the distinction between
+`grammar.examine` and `grammar.read` explicit in guide instructions and command
+knowledge. Nonlexical content, writing, and inscription requests about one
+explicitly named current object always clarify between the two actions,
+independent of whether the provider proposes EXAMINE, READ, or `clarify`. The
+exact reviewed “what does [object] say?” matcher is a deterministic
+clarification fast path rather than an expanding phrase allowlist.
+Provider-authored clarification prose and choices are not surfaced. Only local
+recognition or provider choices that exactly validate as the current object's
+EXAMINE/READ pair becomes the deterministic local question with typed choices;
+all other provider clarifications become a deterministic generic question with
+only locally inferred pending state. Local policy sends no command until the
+player explicitly chooses; it explains that EXAMINE observes without taking
+while the Release 119 READ action may implicitly take the object. Explicit
+EXAMINE and lexical READ execute through their ordinary gates only when the
+speech-act guard also recognizes an imperative, direct second-person request,
+explicit first-person intent or delegation, or `let's`. Appearance, description,
+inspection, and “check out” requests remain least-effect T2 EXAMINE
+observations; READ remains T3 with no semantic fallback. Because this changes
+guide instructions and affordance semantics, earlier guide-evaluation evidence
+does not qualify the revised profile; the affected paraphrase, clarification,
+follow-up, and contrast suites must be rerun before promotion.
+
+A content question without an object retains the typed `content-object` intent
+while the guide requests one current object. Once supplied, that object produces
+the EXAMINE-versus-READ clarification rather than execution. Its session-memory
+choice stores only the current object value ID and allowed actions `examine` and
+`read`; neither state is written to an event or save. A next-turn `READ`,
+`read it`, `EXAMINE`, or `examine it` is rebound and revalidated against current
+knowledge before execution. Stale objects fail closed. Command help clears the
+pending choice, while an unrelated fresh command supersedes it.
+
+Command-comparison questions and alternative-oriented meta questions that do not
+choose an action are non-mutating `explain` decisions with basis `command-help`,
+never implicit execute choices. The guard also covers single-command effect
+questions (“what does READ do?” and “does READ take it?”), safer/different
+advice, should-I and instead-of questions, and hypothetical wording. These
+examples do not make the resolver an exhaustive natural-language classifier. The
+bounded local resolver recognizes reviewed forms and derives their current
+command-knowledge source IDs directly. Other meta wording may reach the
+provider, which must return only relevant IDs from the current command
+knowledge. Guide core validates every provider-selected ID and replaces provider
+prose with deterministic help. The reviewed READ-versus-EXAMINE comparison
+states that EXAMINE observes without taking while READ may implicitly take the
+object. Mentioning a command lexically inside these questions, a conditional,
+exclusion, reported speech, or quoted discussion never authorizes T3 execution.
+An imperative, direct second-person request, explicit first-person intent or
+delegation, or `let's` remains eligible on a later turn. Provider qualification
+must cover effect, advice, hypothetical, comparison, and alternative questions;
+conditionals, exclusions, reports, and quotations; every supported direct-action
+form; invented or stale source IDs; zero-mutation behavior; generic
+clarification replacement; exact typed clarification choices; pending-state
+clearing and supersession; stale objects; and the subsequent direct choice.
 
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT Transcribe model](https://developers.openai.com/api/docs/models/gpt-transcribe)

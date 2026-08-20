@@ -328,7 +328,13 @@ risk-tier policy in [ADR-0012](adr/0012-structured-semantic-command-intents.md).
 The live semantic lane permits certified zero-slot `look` and `inventory`, plus
 T2 `examine` with one locally validated observed-object slot whose label is
 explicit in the utterance. Navigation and state-changing actions retain lexical
-grounding even though the provider selects their typed affordance frame.
+grounding even though the provider selects their typed affordance frame. For T3
+and higher, matching a command word is necessary but not sufficient: a
+deterministic speech-act guard must also identify an imperative, direct
+second-person request, explicit first-person intent or delegation, or `let's`.
+Command vocabulary inside a question about command behavior, hypothetical or
+conditional statement, exclusion, request for advice or comparison, reported
+speech, or quoted mention does not authorize execution.
 
 Before execution, the orchestrator checks:
 
@@ -356,12 +362,63 @@ The engine response is final. A parser error is not rewritten as success. The
 guide may explain the error, present up to three grounded alternatives, or ask
 what the player meant.
 
-For the bounded opening-area profile, a content question in the exact reviewed
-shape “what does [the] `<observed object>` say?” is an observation request. It
-normalizes to `examine <object>`, not `read <object>`, because the Release 119
-READ action may implicitly take the object. The object must already be present
-in event-derived observed memory, and additional actions or unreviewed question
-shapes do not receive this normalization.
+For the bounded opening-area profile, a nonlexical request to discover writing,
+an inscription, or other content on one explicitly named, currently offered
+observed object is ambiguous between EXAMINE and READ. It always produces a
+clarification regardless of whether the provider proposes `grammar.examine`,
+`grammar.read`, or `clarify`; local policy never silently chooses either action.
+The exact reviewed shape “what does [the] `<observed object>` say?” is a
+deterministic clarification fast path, not an execution shortcut or an
+exhaustive allowlist. Provider-authored clarification prose and choices are not
+surfaced. Only a locally recognized ambiguity or provider choices that exactly
+validate as the current object's EXAMINE/READ pair becomes the deterministic
+local question with typed `examine <object>` and `read <object>` choices. Every
+other provider clarification becomes a deterministic generic clarification with
+only pending state inferred locally from the player's words.
+
+The guide explains that EXAMINE observes without taking while the Release 119
+READ action may implicitly take the object, then asks which action the player
+intends. A subsequent explicit answer is grounded and executed as a new ordinary
+turn. Explicit EXAMINE executes `grammar.examine`, and explicit lexical READ
+executes `grammar.read` only when the deterministic speech-act guard also sees a
+direct action. Imperatives, direct second-person requests, explicit first-person
+intent or delegation, and `let's` remain eligible. Questions about command
+behavior, hypotheticals, conditionals, exclusions, advice, comparisons, reported
+speech, and quoted mentions do not. Requests about appearance or description,
+including “inspect,” “look at,” and “check out,” remain least-effect T2 EXAMINE
+observations. This semantic lane accepts model-selected paraphrases covered by
+the reviewed compositional observation grammar while local policy still rejects
+quoted, reported, hypothetical, conditional, excluded, multi-action, stale,
+overlapping, or competing T3 requests. READ remains T3 with no semantic
+fallback. Negated, ambiguous, unobserved, and multi-action requests retain their
+ordinary non-execution gates.
+
+When content wording does not identify an object, the guide retains a typed
+`content-object` intent while asking which current object the player means. A
+follow-up that names exactly one currently offered object produces the standard
+EXAMINE-versus-READ clarification rather than an engine turn. The resulting
+session-memory choice retains only that current object value ID and the allowed
+actions `examine` and `read`; it is not written to an event or save. On the next
+new turn, an explicit `READ`, `read it`, `EXAMINE`, or `examine it` selects one
+action only after current-object, grounding, risk, and commit checks run again.
+An object no longer offered fails closed. Intervening command help clears the
+pending choice; an unrelated fresh command supersedes it instead of inheriting
+its object.
+
+A player question that compares currently offered commands or asks about
+alternatives without choosing one is T0 command help, not an implicit choice or
+game action, and never executes. The same non-mutating guard covers questions
+about one command's effect, whether READ takes an object, which command is safer
+or different, and should-I, instead-of, and hypothetical wording. These are
+examples of semantic classes, not an exhaustive natural-language allowlist. A
+bounded local resolver recognizes reviewed forms. Other meta wording may reach
+the provider, which returns `explain` with basis `command-help` and only
+relevant current command-knowledge source IDs. Local policy validates those IDs
+and emits reviewed deterministic prose rather than forwarding provider-authored
+help. A READ-versus-EXAMINE comparison must state that EXAMINE observes without
+taking while READ may implicitly take the object. The player may then make an
+explicit choice in a new ordinary turn using one of the supported direct-action
+forms.
 
 ## Clarification policy
 
@@ -379,6 +436,13 @@ A clarification is one short question. Offer two or three spoken choices only
 when they are grounded in observed state. Do not bury the question beneath an
 explanation.
 
+Provider clarification text is untrusted input, not player-facing copy. Only a
+locally recognized ambiguity or an exact, validated current-object EXAMINE/READ
+choice pair receives the deterministic object-specific question and typed
+choices. All other provider clarifications become one deterministic generic
+question; provider prose and choices are discarded, and any pending state is
+inferred only from the player's utterance.
+
 The bounded opening-area implementation may retain one typed pending object
 action (`examine`, `open`, `read`, or `take`). It derives that action from the
 player's words, never from guide prose. A follow-up such as “the leaflet” fills
@@ -388,6 +452,16 @@ boundaries. The slot is offered to the next new interaction only, except that a
 low-confidence transcript or provider failure may leave it available for a safe
 retry. A confirmed command consumes it. Replaying an old clarification
 interaction cannot restore it or execute the follow-up twice.
+
+A missing-object content request uses the distinct pending state
+`{ kind: "content-object" }`. Resolving its object creates the non-mutating
+choice with kind `read-examine-choice`, one `objectValueId`, and
+`allowedActions: ["examine", "read"]`, not a default action. These are
+session-memory states, not event or save fields. An explicit bare or pronominal
+answer such as `READ`, `read it`, `EXAMINE`, or `examine it` can be rebound and
+revalidated on the next turn. Command help clears the choice, an unrelated fresh
+command supersedes it, and an object that is no longer current cannot be
+recovered from pending state.
 
 ## Observed memory
 
@@ -524,14 +598,31 @@ details appear only in debug mode unless the player needs them to reconnect.
 The guide contract is not complete until automated fixtures cover at least:
 
 1. A direct intent such as “open the mailbox” executes one grounded command.
-2. A paraphrase family for current-location observation—including unseen test
-   wording—maps to one `look` intent without fabricated findings, while negated,
-   hypothetical, quoted, or multi-action contrasts do not execute.
+2. Paraphrase families for current-location and object-appearance observation,
+   including unseen test wording and “check out,” map to one `look` or
+   least-effect `examine` intent without fabricated findings. Nonlexical
+   content/writing wording always explains the READ-versus-EXAMINE effect
+   difference, offers the two typed choices, and emits no engine turn regardless
+   of the provider decision. A missing-object content request can resolve its
+   object first, but still clarifies the action; bare and pronominal explicit
+   choices then revalidate current state before execution. Exact and
+   provider-routed effect, advice, hypothetical, comparison, or alternative meta
+   questions emit deterministic current-source help, including READ's
+   implicit-take warning, and still emit no engine turn. Command words in those
+   forms, questions about command behavior, conditionals, exclusions, reports,
+   or quotations never supply T3 authorization. A subsequent EXAMINE or READ
+   choice expressed as an imperative, direct second-person request, explicit
+   first-person intent/delegation, or `let's` may execute normally. Negated,
+   ambiguous, unobserved, or multi-action contrasts do not execute. Generic
+   provider clarification prose and choices are never surfaced.
 3. An ambiguous object reference produces a clarification and no engine turn.
 4. A multi-step request observes each engine response and stops after an
    unexpected result.
 5. A parser rejection is narrated exactly and explained separately.
-6. A question about an observed object is answered with source-backed memory.
+6. A recall question about an already observed object fact is answered with
+   source-backed memory. Content absent from observed memory is neither
+   fabricated nor automatically observed: the guide clarifies the action, and
+   only a later supported direct-action form may execute an observation.
 7. A question about an unobserved object does not leak hidden game knowledge.
 8. Hint requests remain within each level and escalate only after player intent.
 9. Duplicate tool delivery does not duplicate a game action.

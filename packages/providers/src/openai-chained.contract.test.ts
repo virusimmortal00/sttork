@@ -308,6 +308,22 @@ describe("OpenAiChainedProvider", () => {
                     }),
                   }),
                   expect.objectContaining({
+                    required: ["kind", "question", "ambiguity", "choices"],
+                    properties: expect.objectContaining({
+                      kind: { type: "string", enum: ["clarify"] },
+                      choices: {
+                        type: "array",
+                        minItems: 2,
+                        maxItems: 3,
+                        items: {
+                          type: "string",
+                          minLength: 1,
+                          maxLength: 160,
+                        },
+                      },
+                    }),
+                  }),
+                  expect.objectContaining({
                     required: ["kind", "response", "basis", "sourceIds"],
                     properties: expect.objectContaining({
                       kind: { type: "string", enum: ["explain"] },
@@ -364,7 +380,67 @@ describe("OpenAiChainedProvider", () => {
     });
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
-        "aliases and grammar examples as non-exhaustive examples",
+        "Questions about parser vocabulary, syntax, behavior, or differences between available commands are command help, not game actions",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "return explain with basis command-help and exactly the relevant current commandKnowledge rule IDs as sourceIds",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "never execute a command merely because the question names it",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "riskTier and semanticFallbackAllowed as selection policy",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "semanticFallbackAllowed is true, classify natural paraphrases semantically",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "when it is false, select that rule only when the player explicitly uses one of its aliases",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "For an unambiguous request, prefer the lowest-risk rule that fully satisfies",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "content wording could reasonably mean either lower-risk grammar.examine or higher-risk grammar.read",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "return clarify instead of execute",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "For every clarification, supply two or three concise, explicit player-selectable choices",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "For an ambiguous EXAMINE/READ clarification, choices must offer both EXAMINE and READ",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "Never silently choose the higher-risk grammar.read action",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "aliases and grammar examples as non-exhaustive examples for rules that allow semantic fallback",
       ),
     });
     expect(requestBody).toMatchObject({
@@ -402,6 +478,15 @@ describe("OpenAiChainedProvider", () => {
   });
 
   it.each([
+    {
+      name: "bounded clarification choices",
+      decision: {
+        kind: "clarify",
+        question: "Would you like to EXAMINE the leaflet or READ its contents?",
+        ambiguity: "The request could mean either inspection or reading.",
+        choices: ["EXAMINE the leaflet", "READ the leaflet"],
+      },
+    },
     {
       name: "grounded explanation",
       decision: {
@@ -441,6 +526,106 @@ describe("OpenAiChainedProvider", () => {
     await expect(
       provider.decide(guideInput(), new AbortController().signal),
     ).resolves.toEqual(decision);
+  });
+
+  it.each([
+    {
+      name: "missing choices",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+      },
+    },
+    {
+      name: "non-array choices",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: "EXAMINE or READ",
+      },
+    },
+    {
+      name: "too few choices",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: ["EXAMINE the leaflet"],
+      },
+    },
+    {
+      name: "too many choices",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: ["EXAMINE", "READ", "OPEN", "TAKE"],
+      },
+    },
+    {
+      name: "non-string choice",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: ["EXAMINE the leaflet", 7],
+      },
+    },
+    {
+      name: "empty choice",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: ["EXAMINE the leaflet", ""],
+      },
+    },
+    {
+      name: "oversized choice",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: ["EXAMINE the leaflet", "r".repeat(161)],
+      },
+    },
+    {
+      name: "extra clarification field",
+      decision: {
+        kind: "clarify",
+        question: "Which action do you mean?",
+        ambiguity: "The requested action is ambiguous.",
+        choices: ["EXAMINE the leaflet", "READ the leaflet"],
+        defaultChoice: "EXAMINE the leaflet",
+      },
+    },
+  ])("rejects a clarification with $name", async ({ decision }) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({ decision }),
+                },
+              ],
+            },
+          ],
+        }),
+    });
+
+    await expect(
+      provider.decide(guideInput(), new AbortController().signal),
+    ).rejects.toMatchObject({
+      name: "ProviderAdapterError",
+      code: "malformed-response",
+    });
   });
 
   it("normalizes one observed-object slot without parser command text", async () => {
@@ -493,6 +678,7 @@ describe("OpenAiChainedProvider", () => {
                       kind: "clarify",
                       question: "Which direction?",
                       ambiguity: "No direction was supplied.",
+                      choices: ["NORTH", "SOUTH"],
                     },
                   }),
                 },

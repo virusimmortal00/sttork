@@ -109,8 +109,41 @@ interface RecoveryRecord {
   readonly requestedEventId: string;
 }
 
-interface StoredPendingOpeningObjectIntent extends PendingOpeningObjectIntent {
+interface StoredPendingOpeningObjectIntent {
+  readonly intent: PendingOpeningObjectIntent;
   readonly sourceInteractionId: string;
+}
+
+function copyPendingOpeningObjectIntent(
+  intent: PendingOpeningObjectIntent,
+): PendingOpeningObjectIntent {
+  if ("action" in intent) return { action: intent.action };
+  if (intent.kind === "content-object") return { kind: "content-object" };
+  return {
+    kind: "read-examine-choice",
+    objectValueId: intent.objectValueId,
+    allowedActions: [intent.allowedActions[0], intent.allowedActions[1]],
+  };
+}
+
+function samePendingOpeningObjectIntent(
+  left: PendingOpeningObjectIntent,
+  right: PendingOpeningObjectIntent,
+): boolean {
+  if ("action" in left || "action" in right) {
+    return (
+      "action" in left && "action" in right && left.action === right.action
+    );
+  }
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "content-object" || right.kind === "content-object") {
+    return left.kind === right.kind;
+  }
+  return (
+    left.objectValueId === right.objectValueId &&
+    left.allowedActions[0] === right.allowedActions[0] &&
+    left.allowedActions[1] === right.allowedActions[1]
+  );
 }
 
 type StoredTurn =
@@ -895,9 +928,9 @@ export class SemanticTurnCoordinator {
               ...(pendingOpeningObjectIntent === undefined
                 ? {}
                 : {
-                    pendingIntent: {
-                      action: pendingOpeningObjectIntent.action,
-                    },
+                    pendingIntent: copyPendingOpeningObjectIntent(
+                      pendingOpeningObjectIntent.intent,
+                    ),
                   }),
             },
             signal,
@@ -998,10 +1031,15 @@ export class SemanticTurnCoordinator {
           guideResult.pendingIntent === undefined
             ? undefined
             : {
-                action: guideResult.pendingIntent.action,
+                intent: copyPendingOpeningObjectIntent(
+                  guideResult.pendingIntent,
+                ),
                 sourceInteractionId:
-                  pendingOpeningObjectIntent?.action ===
-                  guideResult.pendingIntent.action
+                  pendingOpeningObjectIntent !== undefined &&
+                  samePendingOpeningObjectIntent(
+                    pendingOpeningObjectIntent.intent,
+                    guideResult.pendingIntent,
+                  )
                     ? pendingOpeningObjectIntent.sourceInteractionId
                     : input.interactionId,
               };
@@ -1035,6 +1073,7 @@ export class SemanticTurnCoordinator {
       }
 
       if (guideResult.kind === "explain") {
+        this.#pendingOpeningObjectIntent = undefined;
         const explanation = this.#emit(
           local,
           "guide.explanation",

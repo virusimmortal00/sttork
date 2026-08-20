@@ -55,16 +55,81 @@ model's execute proposal and enabled zero-slot T1 observation. The next slice
 adopts the target frame for the live path: the model returns an `affordanceId`
 and bounded slots, while command knowledge alone compiles the parser string. T2
 semantic fallback is enabled only for `examine` with one explicitly named,
-currently offered observed-object ID. T3 navigation and state-changing actions
-are compiled from the same frame but still require lexical authorization. Guide
-core strips all provider-only intent metadata before recording the canonical
-decision. Legacy hermetic model fixtures without an affordance ID retain the
-lexical path.
+currently offered observed-object ID and a direct affirmative observation speech
+act. The model supplies the semantic paraphrase classification; local policy
+rejects quotations, reports, hypotheticals, conditions, exclusions, multi-action
+wording, stale or overlapping targets, and a directly grounded competing T3
+action. The local observation grammar is compositional and separate from the
+parser's alias list; both the semantic selection and that grammar must agree,
+and accepted paraphrases need not reproduce a canonical parser phrase. T3
+navigation and state-changing actions are compiled from the same frame but still
+require lexical authorization and a deterministic direct-action speech act: an
+imperative, a direct second-person request, explicit first-person intent or
+delegation, or `let's`. Guide core strips all provider-only intent metadata
+before recording the canonical decision. Legacy hermetic model fixtures without
+an affordance ID retain the lexical path.
 
 All existing transcript-confidence, model-confidence, negation, multi-step,
 cancellation, observed-state, revision, idempotency, and engine commit gates
 stay in force. T3 and higher tiers retain lexical grounding until their
 contextual and confirmation policies land.
+
+### Clarification: content observation and READ choice (2026-08-19)
+
+A nonlexical request to discover writing, an inscription, or other content on
+one explicitly named, currently offered object is ambiguous between EXAMINE and
+READ. It always produces a clarification, regardless of whether the provider
+proposes `grammar.examine`, `grammar.read`, or `clarify`; neither action is
+silently selected. The exact reviewed “what does [the] `<observed object>` say?”
+matcher is a deterministic clarification fast path, not an execution shortcut or
+an exhaustive sentence allowlist. Provider-authored clarification prose and
+choices are not surfaced. Only a locally recognized ambiguity or a provider
+clarification whose choices exactly validate as the current object's EXAMINE and
+READ pair becomes the deterministic local question with typed `examine <object>`
+and `read <object>` choices. Every other provider clarification becomes
+deterministic generic clarification, retaining only pending state inferred
+locally from the player's words.
+
+The guide explains that EXAMINE observes without taking while the Zork I Release
+119 READ action may implicitly take the object, then asks the player to choose.
+A subsequent explicit answer is processed as a new turn through the ordinary
+grounding and risk gates. Explicit EXAMINE executes `grammar.examine`; explicit
+lexical READ executes `grammar.read` only when a deterministic speech-act guard
+also identifies a direct action. Imperatives, direct second-person requests,
+explicit first-person intent or delegation, and `let's` remain eligible. Command
+words inside questions about command behavior, hypotheticals, conditionals,
+exclusions, advice, comparisons, reported speech, or quoted mentions do not
+authorize execution. Appearance, description, inspection, and “check out”
+requests remain least-effect T2 EXAMINE observations. READ remains T3 with no
+semantic fallback. This clarification weakens none of the existing confidence,
+polarity, referent, or one-action gates.
+
+If content wording omits the object, the guide retains the typed
+`content-object` intent while asking which current object the player means.
+Naming one currently offered object produces the EXAMINE-versus-READ
+clarification; it does not execute. Its session-memory choice retains only the
+current object value ID and the allowed actions `examine` and `read`; it is not
+written to an event or save. A next-turn `READ`, `read it`, `EXAMINE`, or
+`examine it` may select one action only after the object and action are
+revalidated against current knowledge. Stale objects fail closed. Intervening
+command help clears the pending choice, and an unrelated fresh command
+supersedes it.
+
+A question comparing currently offered commands, or asking about alternative
+commands without choosing one, is T0 command help rather than a game action or
+an implicit choice. It never submits an engine command. A bounded local resolver
+handles reviewed command-effect, advice, comparison, and hypothetical forms,
+including questions such as “what does READ do?”, “does READ take it?”, which
+option is safer or different, and whether one should be used instead of another.
+These examples do not define an exhaustive natural-language allowlist. Other
+meta wording may be classified by the provider as `explain` with basis
+`command-help` and relevant current command-knowledge source IDs. Local policy
+validates those IDs and emits deterministic reviewed prose instead of
+provider-authored help. A READ-versus-EXAMINE comparison states that EXAMINE
+observes without taking while READ may implicitly take the object. A later
+explicit player choice is a new turn subject to the ordinary grounding and risk
+gates and must use one of the supported direct-action forms before it can
+execute.
 
 ## Consequences
 

@@ -654,18 +654,11 @@ describe("SemanticTurnCoordinator", () => {
     expect(engine.revision).toBe(0);
   });
 
-  it("carries one pending object action into an exact observed-object answer", async () => {
+  it("clarifies content object and action before committing one idempotent explicit choice", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();
     const guide = new FakeGuideModel(() => {
-      if (guide.calls === 1) {
-        return {
-          kind: "clarify",
-          question: "Which observed object would you like me to examine?",
-          ambiguity: "The object reference is unresolved.",
-        };
-      }
-      throw new Error("no pending intent should remain");
+      throw new Error("deterministic pending choices must not reach the guide");
     });
     const subject = coordinator(engine, narrator, guide);
     const first = await subject.submitTurn(
@@ -686,14 +679,38 @@ describe("SemanticTurnCoordinator", () => {
       transcriptConfidence: 0.99,
       observedObjects: ["leaflet"],
     } as const;
-    const resolved = await subject.submitTurn(
+    const objectResolved = await subject.submitTurn(
       answer,
+      new AbortController().signal,
+    );
+    expect(objectResolved).toMatchObject({
+      outcome: "clarified",
+    });
+    expect(
+      objectResolved.events.find(
+        (event) => event.type === "guide.clarification",
+      ),
+    ).toMatchObject({
+      payload: {
+        choices: ["examine leaflet", "read leaflet"],
+      },
+    });
+    expect(engine.executeCalls).toHaveLength(0);
+
+    const choice = {
+      interactionId: "pending-action-answer",
+      transcript: "read it",
+      transcriptConfidence: 0.99,
+      observedObjects: ["leaflet"],
+    } as const;
+    const resolved = await subject.submitTurn(
+      choice,
       new AbortController().signal,
     );
     expect(resolved).toMatchObject({
       outcome: "committed",
       engineResult: {
-        command: "examine leaflet",
+        command: "read leaflet",
         revision: 1,
       },
     });
@@ -701,13 +718,13 @@ describe("SemanticTurnCoordinator", () => {
       {
         requestId: "request-1",
         expectedRevision: 0,
-        command: "examine leaflet",
+        command: "read leaflet",
       },
     ]);
-    expect(guide.calls).toBe(1);
+    expect(guide.calls).toBe(0);
 
     expect(
-      await subject.submitTurn(answer, new AbortController().signal),
+      await subject.submitTurn(choice, new AbortController().signal),
     ).toEqual(resolved);
     expect(engine.executeCalls).toHaveLength(1);
 
@@ -731,7 +748,69 @@ describe("SemanticTurnCoordinator", () => {
     );
     expect(staleAnswer.outcome).toBe("failed");
     expect(engine.executeCalls).toHaveLength(1);
-    expect(guide.calls).toBe(2);
+    expect(guide.calls).toBe(1);
+  });
+
+  it("clears a pending action choice when command help supersedes it", async () => {
+    const engine = new FakeEngine();
+    const guide = new FakeGuideModel(() => {
+      throw new Error("a cleared pending choice must not bypass the guide");
+    });
+    const subject = coordinator(engine, new FakeNarrator(), guide);
+
+    expect(
+      (
+        await subject.submitTurn(
+          {
+            interactionId: "content-without-object",
+            transcript: "What does it say?",
+            transcriptConfidence: 0.99,
+            observedObjects: ["leaflet"],
+          },
+          new AbortController().signal,
+        )
+      ).outcome,
+    ).toBe("clarified");
+    expect(
+      (
+        await subject.submitTurn(
+          {
+            interactionId: "content-object-answer",
+            transcript: "The leaflet",
+            transcriptConfidence: 0.99,
+            observedObjects: ["leaflet"],
+          },
+          new AbortController().signal,
+        )
+      ).outcome,
+    ).toBe("clarified");
+
+    expect(
+      (
+        await subject.submitTurn(
+          {
+            interactionId: "read-examine-help",
+            transcript: "What is the difference between read and examine?",
+            transcriptConfidence: 0.99,
+            observedObjects: ["leaflet"],
+          },
+          new AbortController().signal,
+        )
+      ).outcome,
+    ).toBe("explained");
+
+    const afterHelp = await subject.submitTurn(
+      {
+        interactionId: "pronoun-after-help",
+        transcript: "read it",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(afterHelp.outcome).toBe("failed");
+    expect(engine.executeCalls).toHaveLength(0);
+    expect(guide.calls).toBe(1);
   });
 
   it("preserves pending intent across a provider failure before engine submission", async () => {

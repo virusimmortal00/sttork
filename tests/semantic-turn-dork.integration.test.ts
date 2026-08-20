@@ -413,7 +413,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     },
   );
 
-  it("reads the observed Zork I leaflet without implicitly taking it", async () => {
+  it("clarifies ambiguous leaflet content wording before examining without taking it", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({
       factory: new RuntimeFactory(),
@@ -440,11 +440,44 @@ describe("semantic turn through the isolated Dork engine", () => {
     let eventId = 0;
     let requestId = 0;
     let narrationId = 0;
-    const guide = FakeGuideModel.returning({
-      kind: "execute",
-      command: "open mailbox",
-      intentSummary: "Open the observed mailbox",
-      confidence: 0.99,
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "Open the mailbox.") {
+        return {
+          kind: "execute",
+          command: "open mailbox",
+          intentSummary: "Open the observed mailbox",
+          confidence: 0.99,
+        };
+      }
+      if (input.playerUtterance === "What's written on the leaflet?") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.read",
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:leaflet",
+            },
+          ],
+          intentSummary: "Learn the visible written content of the leaflet",
+          confidence: 0.99,
+        };
+      }
+      if (input.playerUtterance === "Examine the leaflet.") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.examine",
+          slots: [
+            {
+              slotId: "object",
+              valueId: "observed-object:leaflet",
+            },
+          ],
+          intentSummary: "Examine the observed leaflet",
+          confidence: 0.99,
+        };
+      }
+      throw new Error(`Unexpected guide input: ${input.playerUtterance}`);
     });
     const subject = new SemanticTurnCoordinator({
       engine,
@@ -495,16 +528,78 @@ describe("semantic turn through the isolated Dork engine", () => {
 
     const leafletText =
       '"WELCOME TO ZORK!\n\nZORK is a game of adventure, danger, and low cunning. In it you will explore some of the most amazing territory ever seen by mortals. No computer should be without one!"\n\n>';
-    const read = await subject.submitTurn(
+    const ambiguousContentRequest = await subject.submitTurn(
       {
         interactionId: "read-leaflet",
-        transcript: "What does the leaflet say?",
+        transcript: "What's written on the leaflet?",
         transcriptConfidence: 0.99,
         observedObjects: observedObjectProjection.observedObjects,
       },
       new AbortController().signal,
     );
-    expect(read).toMatchObject({
+    expect(ambiguousContentRequest).toMatchObject({
+      outcome: "clarified",
+    });
+    expect(ambiguousContentRequest).not.toHaveProperty("engineResult");
+    const clarification = published.find(
+      (event) =>
+        event.type === "guide.clarification" &&
+        event.correlationId === "read-leaflet",
+    );
+    if (clarification?.type !== "guide.clarification") {
+      throw new Error("Expected one leaflet-action clarification event.");
+    }
+    expect(clarification.payload).toMatchObject({
+      question: expect.stringMatching(/examine.*read|read.*examine/iu),
+      ambiguity: expect.stringMatching(/effect|risk|take/iu),
+      choices: ["examine leaflet", "read leaflet"],
+    });
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual(["open mailbox"]);
+
+    const commandDifference = await subject.submitTurn(
+      {
+        interactionId: "read-examine-help",
+        transcript: "What is the difference between READ and EXAMINE?",
+        transcriptConfidence: 0.99,
+        observedObjects: observedObjectProjection.observedObjects,
+      },
+      new AbortController().signal,
+    );
+    expect(commandDifference).toMatchObject({ outcome: "explained" });
+    expect(commandDifference).not.toHaveProperty("engineResult");
+    const explanation = published.find(
+      (event) =>
+        event.type === "guide.explanation" &&
+        event.correlationId === "read-examine-help",
+    );
+    if (explanation?.type !== "guide.explanation") {
+      throw new Error("Expected one READ-versus-EXAMINE explanation event.");
+    }
+    expect(explanation.payload).toMatchObject({
+      response:
+        "EXAMINE inspects an observed object without taking it. READ asks the parser to read the object and may implicitly take it.",
+      sourceIds: ["grammar.examine", "grammar.read"],
+    });
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual(["open mailbox"]);
+
+    const examined = await subject.submitTurn(
+      {
+        interactionId: "examine-leaflet",
+        transcript: "Examine the leaflet.",
+        transcriptConfidence: 0.99,
+        observedObjects: observedObjectProjection.observedObjects,
+      },
+      new AbortController().signal,
+    );
+    expect(examined).toMatchObject({
       outcome: "committed",
       engineResult: {
         status: "committed",
@@ -513,7 +608,7 @@ describe("semantic turn through the isolated Dork engine", () => {
         output: leafletText,
       },
     });
-    expect(guide.calls).toBe(1);
+    expect(guide.calls).toBe(2);
 
     const requestedCommands = published
       .filter((event) => event.type === "engine.command.requested")
@@ -522,11 +617,20 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(
       requestedCommands.filter((command) => command === "examine leaflet"),
     ).toHaveLength(1);
+    expect(requestedCommands).not.toContain("read leaflet");
     expect(requestedCommands).not.toContain("take leaflet");
     expect(narration).toEqual([
       expect.objectContaining({
         role: "narrator",
         text: "Opening the small mailbox reveals a leaflet.\n\n>",
+      }),
+      expect.objectContaining({
+        role: "guide",
+        text: clarification.payload.question,
+      }),
+      expect.objectContaining({
+        role: "guide",
+        text: explanation.payload.response,
       }),
       expect.objectContaining({ role: "narrator", text: leafletText }),
     ]);

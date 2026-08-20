@@ -103,12 +103,54 @@ policy accepts only `execute`, `clarify`, and deterministic command-help
 Evolution note, 2026-08-19: the chained OpenAI smoke now requires execute
 proposals to select a current command-knowledge affordance ID and typed slots;
 provider-authored parser text is no longer accepted. The risk-tiered semantic
-lane covers zero-slot `look` and `inventory` plus T2 examination of one
-explicitly named observed object, allowing unseen natural paraphrases without
-adding literal aliases. Navigation and state-changing actions retain lexical
-grounding pending the later policies in
+lane covers zero-slot `look` and `inventory` plus T2 examination of one uniquely
+mentioned observed object in a direct affirmative observation request, allowing
+unseen natural paraphrases without adding literal aliases. Navigation and
+state-changing actions retain lexical grounding plus deterministic direct-action
+speech-act validation pending the later policies in
 [ADR-0012](adr/0012-structured-semantic-command-intents.md). This does not
 reopen the Slice 2 checkpoint or complete M2.
+
+Grounding clarification, 2026-08-19: nonlexical content, writing, or inscription
+requests for one explicitly named current object always clarify between EXAMINE
+and READ; local policy sends no command whether the provider proposes EXAMINE,
+READ, or a clarification. The exact reviewed “what does [object] say?” matcher
+is a deterministic clarification fast path. Provider-authored clarification
+prose and choices are discarded. Only local recognition or an exact validated
+current-object EXAMINE/READ pair produces the deterministic question and typed
+choices; other provider clarifications use a deterministic generic question and
+only locally inferred pending state. The guide explains that EXAMINE observes
+without taking while the Release 119 READ action may implicitly take the object.
+A subsequent explicit EXAMINE or lexical READ answer passes through ordinary
+grounding and executes only when it is an imperative, direct second-person
+request, explicit first-person intent or delegation, or `let's`. Appearance,
+description, inspection, and “check out” requests remain least-effect T2 EXAMINE
+observations; READ stays T3 with no semantic fallback. Content wording without
+an object retains only the typed `content-object` intent while the guide asks
+for one current object. Naming it produces the action clarification, whose
+session-memory state retains only the current object value ID plus the allowed
+actions `examine` and `read`; neither state is written to an event or save. Bare
+or pronominal `READ`/`EXAMINE` answers may select the next turn only after
+revalidation. Stale objects fail closed, command help clears the pending choice,
+and unrelated fresh commands supersede it. This refinement adds no new milestone
+claim.
+
+Meta-help clarification, 2026-08-19: questions comparing offered commands or
+asking about alternatives without selecting one are non-mutating
+`explain`/`command-help` turns and never execute. A bounded local resolver
+covers reviewed command-effect, advice, comparison, and hypothetical forms such
+as what READ does, whether it takes an object, safer/different questions, and
+should-I or instead-of wording. Those examples are not an exhaustive language
+allowlist. The provider may classify other meta wording using only relevant
+current command-knowledge source IDs. Local policy validates those IDs and emits
+deterministic help instead of provider prose. READ-versus-EXAMINE help states
+that EXAMINE observes without taking while READ may implicitly take the object.
+Command words inside questions about command behavior, hypotheticals,
+conditionals, exclusions, advice, comparisons, reports, or quoted mentions do
+not authorize T3 execution. No engine command is sent until the player
+subsequently uses an eligible, normally grounded imperative, direct
+second-person request, explicit first-person intent/delegation, or `let's`. This
+adds no new milestone claim.
 
 ### Deliverables
 

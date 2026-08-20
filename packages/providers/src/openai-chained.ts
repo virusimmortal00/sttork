@@ -105,11 +105,21 @@ const guideDecisionSchema = {
         {
           type: "object",
           additionalProperties: false,
-          required: ["kind", "question", "ambiguity"],
+          required: ["kind", "question", "ambiguity", "choices"],
           properties: {
             kind: { type: "string", enum: ["clarify"] },
             question: { type: "string", minLength: 1, maxLength: 500 },
             ambiguity: { type: "string", minLength: 1, maxLength: 500 },
+            choices: {
+              type: "array",
+              minItems: 2,
+              maxItems: 3,
+              items: {
+                type: "string",
+                minLength: 1,
+                maxLength: 160,
+              },
+            },
           },
         },
         {
@@ -272,11 +282,34 @@ function normalizeGuideDecision(value: unknown): unknown {
     };
   }
   if (kind === "clarify") {
-    assertExactDecisionKeys(value, ["kind", "question", "ambiguity"]);
+    assertExactDecisionKeys(value, [
+      "kind",
+      "question",
+      "ambiguity",
+      "choices",
+    ]);
+    const choices = field("choices");
+    if (
+      !Array.isArray(choices) ||
+      choices.length < 2 ||
+      choices.length > 3 ||
+      choices.some(
+        (choice) =>
+          typeof choice !== "string" ||
+          choice.length === 0 ||
+          choice.length > 160,
+      )
+    ) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        "Guide clarification choices were invalid.",
+      );
+    }
     return {
       kind,
       question: string("question", 500),
       ambiguity: string("ambiguity", 500),
+      choices: [...choices] as string[],
     };
   }
   if (kind === "explain") {
@@ -645,7 +678,7 @@ export class OpenAiChainedProvider implements GuideModel {
           ? {}
           : { safety_identifier: this.#safetyIdentifier }),
         instructions:
-          "You are a constrained parser guide. Return one schema-valid decision. Use execute only when the player directly requests one unambiguous game action. Do not execute an action merely quoted, offered as an example, discussed hypothetically, or reported as someone else's request. A direct player question asking to observe or describe the current surroundings or one observed object is an action request. For execute, select affordanceId as the exact ID of one current commandKnowledge rule and select only slot value IDs currently allowed by commandKnowledge. Return slots: [] for a zero-slot rule. For an observed-object rule, return exactly one object slot whose valueId identifies the single intended observed object. A request to describe, inspect, look at, or check out one observed object selects grammar.examine. Never write parser command text or invent an affordance, slot, or value ID. Treat commandKnowledge aliases and grammar examples as non-exhaustive examples of how a player may express that action, not as an exhaustive natural-language allowlist. Return one action only; never combine, sequence, or emit multiple actions. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed or reveal hidden game facts.",
+          "You are a constrained parser guide. Return one schema-valid decision. Use execute only when the player directly requests one unambiguous game action. Do not execute an action merely quoted, offered as an example, discussed hypothetically, or reported as someone else's request. A direct player question asking to observe or describe the current surroundings or one observed object is an action request. Questions about parser vocabulary, syntax, behavior, or differences between available commands are command help, not game actions: return explain with basis command-help and exactly the relevant current commandKnowledge rule IDs as sourceIds, and never execute a command merely because the question names it. For execute, select affordanceId as the exact ID of one current commandKnowledge rule and select only slot value IDs currently allowed by commandKnowledge. Return slots: [] for a zero-slot rule. For an observed-object rule, return exactly one object slot whose valueId identifies the single intended observed object. Use each rule's riskTier and semanticFallbackAllowed as selection policy. When semanticFallbackAllowed is true, classify natural paraphrases semantically; when it is false, select that rule only when the player explicitly uses one of its aliases to request that action. For an unambiguous request, prefer the lowest-risk rule that fully satisfies the player's request. A request to describe, inspect, look at, or check out one observed object selects grammar.examine. When content wording could reasonably mean either lower-risk grammar.examine or higher-risk grammar.read and those parser actions can have different effects, return clarify instead of execute. For every clarification, supply two or three concise, explicit player-selectable choices. For an ambiguous EXAMINE/READ clarification, choices must offer both EXAMINE and READ, and the question must explain their different effects. Never silently choose the higher-risk grammar.read action. Never write parser command text or invent an affordance, slot, or value ID. Treat commandKnowledge aliases and grammar examples as non-exhaustive examples for rules that allow semantic fallback, not as an exhaustive natural-language allowlist. Return one action only; never combine, sequence, or emit multiple actions. Use clarify when the action, direction, or referent is ambiguous or no concrete game action is stated. Use explain only for parser or command help grounded in supplied commandKnowledge, with basis command-help and only supplied source IDs. Use cannot_comply for unsafe or unsupported requests. Use only supplied command knowledge and observed objects. Never claim game state changed or reveal hidden game facts.",
         input: serializedInput,
         text: {
           verbosity: this.#profile.guideVerbosity,
