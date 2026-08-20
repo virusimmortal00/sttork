@@ -115,6 +115,71 @@ export function saveOpenAiLiveVoicePreferences(
   return normalized;
 }
 
+function sameVoicePreferences(
+  left: OpenAiLiveVoicePreferences,
+  right: OpenAiLiveVoicePreferences,
+): boolean {
+  return (
+    left.guideVoice === right.guideVoice &&
+    left.narratorVoice === right.narratorVoice &&
+    left.guideRate === right.guideRate &&
+    left.narratorRate === right.narratorRate
+  );
+}
+
+export class OpenAiLiveVoicePreferenceSession {
+  #preferences: OpenAiLiveVoicePreferences;
+  #dirty = false;
+
+  public constructor(private readonly storage: VoicePreferenceStorage) {
+    this.#preferences = loadOpenAiLiveVoicePreferences(storage);
+  }
+
+  public get current(): OpenAiLiveVoicePreferences {
+    return this.#preferences;
+  }
+
+  public update(
+    update: Partial<OpenAiLiveVoicePreferences>,
+  ): OpenAiLiveVoicePreferences {
+    if (
+      (update.schemaVersion !== undefined && update.schemaVersion !== 1) ||
+      (update.guideVoice !== undefined && !isVoice(update.guideVoice)) ||
+      (update.narratorVoice !== undefined && !isVoice(update.narratorVoice)) ||
+      (update.guideRate !== undefined &&
+        speechRate(update.guideRate) === undefined) ||
+      (update.narratorRate !== undefined &&
+        speechRate(update.narratorRate) === undefined)
+    ) {
+      return this.#preferences;
+    }
+    const next = normalizeOpenAiLiveVoicePreferences({
+      ...this.#preferences,
+      ...update,
+    });
+    if (!sameVoicePreferences(this.#preferences, next)) {
+      this.#preferences = next;
+      this.#dirty = true;
+    }
+    return this.#preferences;
+  }
+
+  public persist(): boolean {
+    if (!this.#dirty) return true;
+    try {
+      this.#preferences = saveOpenAiLiveVoicePreferences(
+        this.storage,
+        this.#preferences,
+      );
+      this.#dirty = false;
+      return true;
+    } catch {
+      // Keep the valid in-session preference and retry at the next boundary.
+      return false;
+    }
+  }
+}
+
 export function openAiSpeechPreferenceForRole(
   preferences: OpenAiLiveVoicePreferences,
   role: "guide" | "narrator",

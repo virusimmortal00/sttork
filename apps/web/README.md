@@ -45,9 +45,13 @@ the dedicated performance gate.
 
 The hidden Voices panel provides separate, locally persisted Guide/Narrator
 voice and rate preferences across the reviewed OpenAI TTS catalog. Its sample
-buttons are explicitly marked as billable AI-generated speech. Transcription
-uploads include only current observed-object labels; the server, not the
-browser, derives the reviewed command-vocabulary hints.
+buttons are explicitly marked as billable AI-generated speech. Rate-slider input
+updates the current session and its own visible value immediately; the final
+normalized preference is persisted on the slider's change boundary, when the
+panel closes, or when the page is left. A storage failure leaves the valid
+session preference active for a later retry. Transcription uploads include only
+current observed-object labels; the server, not the browser, derives the
+reviewed command-vocabulary hints.
 
 The live playback adapter synchronously primes one persistent browser audio
 element from `START STORY`, speaking, text-submit, and Repeat gestures before
