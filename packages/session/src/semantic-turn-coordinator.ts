@@ -60,6 +60,22 @@ export interface OpeningNarrationResult {
   readonly events: readonly SemanticEvent[];
 }
 
+export interface RoleIntroductionMessage {
+  readonly role: NarrationRole;
+  readonly text: string;
+}
+
+export interface RoleIntroductionInput {
+  readonly interactionId: string;
+  readonly messages: readonly RoleIntroductionMessage[];
+}
+
+export interface RoleIntroductionResult {
+  readonly interactionId: string;
+  readonly outcome: "ready" | "cancelled" | "failed";
+  readonly events: readonly SemanticEvent[];
+}
+
 type NarrationPreparationOutcome = OpeningNarrationResult["outcome"];
 
 export type SemanticTurnOutcome =
@@ -232,6 +248,38 @@ type StoredOpening =
       readonly fingerprint: string;
       readonly result: OpeningNarrationResult;
     };
+
+type StoredRoleIntroduction =
+  | {
+      readonly kind: "pending";
+      readonly fingerprint: string;
+      readonly promise: Promise<RoleIntroductionResult>;
+    }
+  | {
+      readonly kind: "complete";
+      readonly fingerprint: string;
+      readonly result: RoleIntroductionResult;
+    };
+
+function validatedRoleIntroduction(
+  input: RoleIntroductionInput,
+): readonly RoleIntroductionMessage[] {
+  if (input.messages.length < 1 || input.messages.length > 4) {
+    throw new RangeError("role introduction must contain one to four messages");
+  }
+  return input.messages.map((message) => {
+    if (
+      (message.role !== "guide" && message.role !== "narrator") ||
+      typeof message.text !== "string" ||
+      message.text.trim().length === 0 ||
+      message.text.length > 2_000 ||
+      /\p{Cc}/u.test(message.text)
+    ) {
+      throw new TypeError("role introduction messages must be bounded prose");
+    }
+    return { role: message.role, text: message.text.trim() };
+  });
+}
 
 function fingerprint(input: SemanticTurnInput): string {
   return JSON.stringify({
@@ -474,6 +522,7 @@ export class SemanticTurnCoordinator {
   readonly #publish: ((event: SemanticEvent) => void) | undefined;
   readonly #maxTurns: number;
   readonly #turns = new Map<string, StoredTurn>();
+  #roleIntroduction: StoredRoleIntroduction | undefined;
   #opening: StoredOpening | undefined;
   #openingScene: OpeningSceneProjection | undefined;
   #activeInteractionId: string | undefined;
@@ -625,6 +674,50 @@ export class SemanticTurnCoordinator {
     }
   }
 
+  public async prepareRoleIntroduction(
+    input: RoleIntroductionInput,
+    signal: AbortSignal,
+  ): Promise<RoleIntroductionResult> {
+    const interactionId = this.#requireId(input.interactionId, "interaction");
+    const messages = validatedRoleIntroduction(input);
+    const inputFingerprint = JSON.stringify({ interactionId, messages });
+    const existing = this.#roleIntroduction;
+    if (existing !== undefined) {
+      if (existing.fingerprint !== inputFingerprint) {
+        throw new SemanticTurnConflictError(interactionId);
+      }
+      return existing.kind === "complete"
+        ? existing.result
+        : await existing.promise;
+    }
+    if (this.#activeInteractionId !== undefined) {
+      throw new SemanticTurnBusyError();
+    }
+
+    const operation = this.#runRoleIntroduction(
+      interactionId,
+      messages,
+      signal,
+    );
+    this.#roleIntroduction = {
+      kind: "pending",
+      fingerprint: inputFingerprint,
+      promise: operation,
+    };
+    try {
+      const result = await operation;
+      this.#roleIntroduction = {
+        kind: "complete",
+        fingerprint: inputFingerprint,
+        result,
+      };
+      return result;
+    } catch (error) {
+      this.#roleIntroduction = undefined;
+      throw error;
+    }
+  }
+
   public recordTranscriptionFailure(input: {
     readonly interactionId: string;
     readonly code: string;
@@ -738,6 +831,51 @@ export class SemanticTurnCoordinator {
         },
         sourceEventId,
       };
+    } finally {
+      this.#activeInteractionId = undefined;
+    }
+  }
+
+  async #runRoleIntroduction(
+    interactionId: string,
+    messages: readonly RoleIntroductionMessage[],
+    signal: AbortSignal,
+  ): Promise<RoleIntroductionResult> {
+    if (this.#activeInteractionId !== undefined) {
+      throw new SemanticTurnBusyError();
+    }
+    this.#activeInteractionId = interactionId;
+    const local: SemanticEvent[] = [];
+    try {
+      for (const [index, message] of messages.entries()) {
+        const source = this.#emit(
+          local,
+          "experience.role-introduction",
+          interactionId,
+          undefined,
+          "accessible",
+          {
+            role: message.role,
+            text: message.text,
+            position: index + 1,
+            total: messages.length,
+            retention: "session-only",
+          },
+        );
+        const outcome = await this.#narrate(
+          local,
+          interactionId,
+          message.role,
+          message.text,
+          source.id,
+          signal,
+          false,
+        );
+        if (outcome !== "ready") {
+          return { interactionId, outcome, events: local };
+        }
+      }
+      return { interactionId, outcome: "ready", events: local };
     } finally {
       this.#activeInteractionId = undefined;
     }
@@ -1447,6 +1585,7 @@ export class SemanticTurnCoordinator {
     text: string,
     sourceEventId: string,
     signal: AbortSignal,
+    engineCommitConfirmed = role === "narrator",
   ): Promise<NarrationPreparationOutcome> {
     const narrationId = this.#requireId(this.#nextNarrationId(), "narration");
     const requested = this.#emit(
@@ -1521,8 +1660,9 @@ export class SemanticTurnCoordinator {
             stage: "narration",
             code: "narration-failed",
             recoverable: true,
-            engineCommitState:
-              role === "narrator" ? "confirmed" : "not-submitted",
+            engineCommitState: engineCommitConfirmed
+              ? "confirmed"
+              : "not-submitted",
           },
         );
         return "failed";

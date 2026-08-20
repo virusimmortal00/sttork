@@ -50,6 +50,11 @@ over the same event stream. It is not a separate implementation of the game.
    keyboard-operable controls, repeat/stop, speech-rate controls, and non-color
    status cues ship with the voice experience.
 
+The first-run surface uses the fixed, attributed Guide and Narrator welcome in
+[ADR-0017](./adr/0017-authored-role-introduction-before-story-start.md) before
+the player deliberately activates the canonical story opening. The welcome is
+project-authored experience prose, never engine output or generated game fact.
+
 ## Goals
 
 ### Player experience

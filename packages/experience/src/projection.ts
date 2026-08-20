@@ -14,7 +14,8 @@ export type ExperienceDisplayState =
 
 export type StoryStartPhase = "ready" | "starting" | "started";
 
-export type TranscriptRole = "player" | "guide" | "game" | "system";
+export type TranscriptRole =
+  "player" | "guide" | "narrator" | "game" | "system";
 export type TranscriptDelivery =
   "pending" | "speaking" | "interrupted" | "complete" | "failed";
 
@@ -272,6 +273,12 @@ export function reduceExperienceProjection(
       transcript = [
         ...transcript,
         transcriptItem(event, "player", event.payload.text),
+      ];
+      break;
+    case "experience.role-introduction":
+      transcript = [
+        ...transcript,
+        transcriptItem(event, event.payload.role, event.payload.text),
       ];
       break;
     case "guide.clarification":

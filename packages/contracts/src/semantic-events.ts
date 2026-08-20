@@ -34,6 +34,13 @@ export interface SemanticEventPayloads {
     readonly confidence?: number;
     readonly retention: ProseRetention;
   };
+  readonly "experience.role-introduction": {
+    readonly role: NarrationRole;
+    readonly text: string;
+    readonly position: number;
+    readonly total: number;
+    readonly retention: ProseRetention;
+  };
   readonly "guide.decision.proposed": {
     readonly decision: GuideDecision;
     readonly retention: ProseRetention;
