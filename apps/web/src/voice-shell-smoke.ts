@@ -27,6 +27,12 @@ import { DorkWorkerEngine } from "../../../spikes/dork-worker/dork-worker-engine
 
 import { applyActionLogPresentation } from "./action-log-presentation.js";
 import { createModalController } from "./modal-controller.js";
+import { OptionalEventLogPresentation } from "./optional-event-log-presentation.js";
+import {
+  clientProjectionSoakEventCount,
+  type ClientProjectionSoakEvidence,
+  runClientProjectionSoak,
+} from "./optional-event-log-soak.js";
 import {
   ROLE_INTRODUCTION,
   ROLE_INTRODUCTION_INTERACTION_ID,
@@ -85,6 +91,10 @@ interface SmokeEvidence {
     readonly documentAbsent: boolean;
     readonly windowAbsent: boolean;
   };
+  projectionSoak?:
+    | { readonly status: "running" }
+    | ClientProjectionSoakEvidence
+    | { readonly status: "failed"; readonly error: string };
   error?: string;
 }
 
@@ -193,6 +203,26 @@ async function run(): Promise<void> {
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
   const canonicalEvents: SemanticEvent[] = [];
+  const optionalEventLog = new OptionalEventLogPresentation(
+    {
+      elements: {
+        transcriptList,
+        transcriptPage: {
+          older: required<HTMLButtonElement>("transcript-older"),
+          newer: required<HTMLButtonElement>("transcript-newer"),
+          status: required<HTMLElement>("transcript-page-status"),
+        },
+        debugContent,
+        debugPage: {
+          older: required<HTMLButtonElement>("debug-older"),
+          newer: required<HTMLButtonElement>("debug-newer"),
+          status: required<HTMLElement>("debug-page-status"),
+        },
+      },
+      events: () => canonicalEvents,
+    },
+    projection,
+  );
   const narrationById = new Map<
     string,
     { readonly role: "guide" | "narrator"; readonly text: string }
@@ -244,22 +274,7 @@ async function run(): Promise<void> {
       projection.activeCommand,
       actionLog,
     );
-    transcriptList.replaceChildren(
-      ...projection.transcript.map((item) => {
-        const row = document.createElement("li");
-        row.dataset.role = item.role;
-        row.textContent = `${item.role}: ${item.text}`;
-        return row;
-      }),
-    );
-    debugContent.textContent = JSON.stringify(
-      {
-        throughSequence: projection.throughSequence,
-        events: projection.debug,
-      },
-      null,
-      2,
-    );
+    optionalEventLog.update(projection);
   }
 
   function publish(event: SemanticEvent): void {
@@ -644,14 +659,20 @@ async function run(): Promise<void> {
     trigger: transcriptButton,
     closeButton: transcriptCloseButton,
     reducedMotion,
-    onOpenChange: modalOpenChanged,
+    onOpenChange: (open) => {
+      optionalEventLog.setTranscriptOpen(open);
+      modalOpenChanged();
+    },
   });
   createModalController({
     dialog: debugPanel,
     trigger: debugButton,
     closeButton: debugCloseButton,
     reducedMotion,
-    onOpenChange: modalOpenChanged,
+    onOpenChange: (open) => {
+      optionalEventLog.setDebugOpen(open);
+      modalOpenChanged();
+    },
   });
 
   captureButton.addEventListener("click", () => {
@@ -726,6 +747,26 @@ async function run(): Promise<void> {
       ? {}
       : { workerEnvironment: factory.lastEnvironment }),
   });
+  const soakEventCount = clientProjectionSoakEventCount(window.location.search);
+  if (soakEventCount !== undefined) {
+    const baseEvidence = window.__VOICE_SHELL_SMOKE__!;
+    publishEvidence({
+      ...baseEvidence,
+      projectionSoak: { status: "running" },
+    });
+    try {
+      const projectionSoak = await runClientProjectionSoak(soakEventCount);
+      publishEvidence({ ...baseEvidence, projectionSoak });
+    } catch (error) {
+      publishEvidence({
+        ...baseEvidence,
+        projectionSoak: {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown failure",
+        },
+      });
+    }
+  }
 }
 
 void run().catch((error: unknown) => {

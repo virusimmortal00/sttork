@@ -21,6 +21,7 @@ export type TranscriptDelivery =
 
 export interface TranscriptItemProjection {
   readonly id: string;
+  readonly introducedAtSequence: number;
   readonly sourceEventIds: readonly string[];
   readonly throughSequence: number;
   readonly role: TranscriptRole;
@@ -41,6 +42,9 @@ export interface CommandCueProjection {
 }
 
 export const EXPERIENCE_ACTION_LOG_LIMIT = 8;
+export const EXPERIENCE_TRANSCRIPT_LIMIT = 128;
+export const EXPERIENCE_DEBUG_LIMIT = 256;
+export const EXPERIENCE_SOURCE_EVENT_LIMIT = 256;
 
 export interface ActionLogItemProjection {
   readonly requestId: string;
@@ -143,6 +147,36 @@ function addCommittedAction(
   return [action, ...actionLog].slice(0, EXPERIENCE_ACTION_LOG_LIMIT);
 }
 
+function appendBounded<T>(
+  values: readonly T[],
+  value: T,
+  limit: number,
+): readonly T[] {
+  if (values.length < limit) return [...values, value];
+  return [...values.slice(values.length - limit + 1), value];
+}
+
+function appendSourceReference(
+  values: readonly string[],
+  value: string,
+): readonly string[] {
+  if (values.length < EXPERIENCE_SOURCE_EVENT_LIMIT) {
+    return [...values, value];
+  }
+  return [
+    values[0]!,
+    ...values.slice(values.length - EXPERIENCE_SOURCE_EVENT_LIMIT + 2),
+    value,
+  ];
+}
+
+function appendTranscript(
+  transcript: readonly TranscriptItemProjection[],
+  item: TranscriptItemProjection,
+): readonly TranscriptItemProjection[] {
+  return appendBounded(transcript, item, EXPERIENCE_TRANSCRIPT_LIMIT);
+}
+
 function recoverableErrorStatus(code: string): string {
   switch (code) {
     case "playback-authorization-required":
@@ -176,7 +210,7 @@ function projectCommittedAction(
     itemIndex === index
       ? {
           ...item,
-          sourceEventIds: [...item.sourceEventIds, event.id],
+          sourceEventIds: appendSourceReference(item.sourceEventIds, event.id),
           throughSequence: event.sequence,
         }
       : item,
@@ -191,6 +225,7 @@ function transcriptItem(
 ): TranscriptItemProjection {
   return {
     id: event.id,
+    introducedAtSequence: event.sequence,
     sourceEventIds: [event.id],
     throughSequence: event.sequence,
     role,
@@ -210,7 +245,7 @@ function updateDelivery(
     item.sourceEventIds.includes(sourceEventId)
       ? {
           ...item,
-          sourceEventIds: [...item.sourceEventIds, event.id],
+          sourceEventIds: appendSourceReference(item.sourceEventIds, event.id),
           throughSequence: event.sequence,
           delivery,
         }
@@ -270,34 +305,34 @@ export function reduceExperienceProjection(
       ) {
         activeCommand = undefined;
       }
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, "player", event.payload.text),
-      ];
+      );
       break;
     case "experience.role-introduction":
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, event.payload.role, event.payload.text),
-      ];
+      );
       break;
     case "guide.clarification":
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, "guide", event.payload.question),
-      ];
+      );
       break;
     case "guide.explanation":
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, "guide", event.payload.response),
-      ];
+      );
       break;
     case "guide.cannot_comply":
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, "guide", event.payload.response),
-      ];
+      );
       break;
     case "engine.command.requested":
       activeCommand = {
@@ -308,15 +343,15 @@ export function reduceExperienceProjection(
         sourceEventIds: [event.id],
         throughSequence: event.sequence,
       };
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(
           event,
           "system",
           event.payload.command,
           event.payload.command,
         ),
-      ];
+      );
       break;
     case "engine.command.committed":
       actionLog = projectCommittedAction(
@@ -375,10 +410,10 @@ export function reduceExperienceProjection(
       ) {
         activeCommand = { ...activeCommand, outputEventId: event.id };
       }
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, "game", event.payload.exactText),
-      ];
+      );
       break;
     case "system.error":
       if (
@@ -393,10 +428,10 @@ export function reduceExperienceProjection(
       statusText = event.payload.recoverable
         ? recoverableErrorStatus(event.payload.code)
         : "Session ended";
-      transcript = [
-        ...transcript,
+      transcript = appendTranscript(
+        transcript,
         transcriptItem(event, "system", `Error: ${event.payload.code}`),
-      ];
+      );
       break;
     case "narration.cancelled": {
       if (matchesActiveStoryStartNarration(previous, event)) {
@@ -499,10 +534,7 @@ export function reduceExperienceProjection(
         displayState = "ready";
         statusText = "Ready";
       }
-      const narrationRequest = previous.debug.find(
-        (entry) => entry.id === event.causationId,
-      );
-      const sourceEventId = narrationRequest?.id ?? event.causationId;
+      const sourceEventId = event.causationId;
       if (sourceEventId !== undefined) {
         transcript = updateDelivery(
           transcript,
@@ -537,17 +569,22 @@ export function reduceExperienceProjection(
     ...(activeCommand === undefined ? {} : { activeCommand }),
     actionLog,
     throughSequence: event.sequence,
-    sourceEventIds: [...previous.sourceEventIds, event.id],
+    sourceEventIds: appendBounded(
+      previous.sourceEventIds,
+      event.id,
+      EXPERIENCE_SOURCE_EVENT_LIMIT,
+    ),
     transcript,
-    debug: [
-      ...previous.debug,
+    debug: appendBounded(
+      previous.debug,
       {
         id: event.id,
         sequence: event.sequence,
         type: event.type,
         correlationId: event.correlationId,
       },
-    ],
+      EXPERIENCE_DEBUG_LIMIT,
+    ),
   };
 }
 

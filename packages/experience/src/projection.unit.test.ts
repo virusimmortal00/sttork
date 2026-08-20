@@ -4,6 +4,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   EXPERIENCE_ACTION_LOG_LIMIT,
+  EXPERIENCE_DEBUG_LIMIT,
+  EXPERIENCE_SOURCE_EVENT_LIMIT,
+  EXPERIENCE_TRANSCRIPT_LIMIT,
   initialExperienceProjection,
   projectExperience,
   reduceExperienceProjection,
@@ -133,6 +136,95 @@ function appendOpeningPreparation(sequence: EventSequence) {
 }
 
 describe("experience projection", () => {
+  it("bounds disposable transcript, debug, and source-reference projections", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "long-session",
+      now: () => "2026-08-20T12:00:00.000Z",
+      nextId: () => `long-event-${++id}`,
+    });
+    const eventCount = EXPERIENCE_DEBUG_LIMIT * 4;
+    const events = Array.from({ length: eventCount }, (_, index) =>
+      sequence.append({
+        type: "transcript.final",
+        correlationId: `turn-${index + 1}`,
+        visibility: "accessible",
+        payload: {
+          text: `utterance ${index + 1}`,
+          confidence: 1,
+          retention: "local-save" as const,
+        },
+      }),
+    );
+
+    const projection = projectExperience(events);
+
+    expect(projection.transcript).toHaveLength(EXPERIENCE_TRANSCRIPT_LIMIT);
+    expect(projection.transcript[0]?.text).toBe(
+      `utterance ${eventCount - EXPERIENCE_TRANSCRIPT_LIMIT + 1}`,
+    );
+    expect(projection.transcript.at(-1)?.text).toBe(`utterance ${eventCount}`);
+    expect(projection.debug).toHaveLength(EXPERIENCE_DEBUG_LIMIT);
+    expect(projection.debug[0]?.sequence).toBe(
+      eventCount - EXPERIENCE_DEBUG_LIMIT + 1,
+    );
+    expect(projection.sourceEventIds).toHaveLength(
+      EXPERIENCE_SOURCE_EVENT_LIMIT,
+    );
+    expect(projection.sourceEventIds[0]).toBe(
+      `long-event-${eventCount - EXPERIENCE_SOURCE_EVENT_LIMIT + 1}`,
+    );
+    expect(projection.throughSequence).toBe(eventCount);
+  });
+
+  it("bounds source references attached to one repeatedly narrated item", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "repeated-narration",
+      now: () => "2026-08-20T12:00:00.000Z",
+      nextId: () => `repeat-event-${++id}`,
+    });
+    const output = sequence.append({
+      type: "engine.output",
+      correlationId: "repeat-turn",
+      visibility: "accessible",
+      payload: {
+        revision: 1,
+        exactText: "Still here.",
+        boundary: "input-requested" as const,
+        retention: "local-save" as const,
+      },
+    });
+    const events = [
+      output,
+      ...Array.from({ length: EXPERIENCE_SOURCE_EVENT_LIMIT * 2 }, (_, index) =>
+        sequence.append({
+          type: "narration.requested",
+          correlationId: "repeat-turn",
+          causationId: output.id,
+          visibility: "debug",
+          payload: {
+            narrationId: `repeat-${index + 1}`,
+            role: "narrator" as const,
+            text: "Still here.",
+            sourceEventId: output.id,
+            retention: "session-only" as const,
+          },
+        }),
+      ),
+    ];
+
+    const projection = projectExperience(events);
+
+    expect(projection.transcript).toHaveLength(1);
+    expect(projection.transcript[0]?.sourceEventIds).toHaveLength(
+      EXPERIENCE_SOURCE_EVENT_LIMIT,
+    );
+    expect(projection.transcript[0]?.sourceEventIds.at(-1)).toBe(
+      events.at(-1)?.id,
+    );
+  });
+
   it("keeps authored Guide and Narrator introductions attributed in transcript order", () => {
     let id = 0;
     const sequence = new EventSequence({

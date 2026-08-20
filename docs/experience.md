@@ -424,6 +424,15 @@ transcript and accessibility projections. Provider-native payloads stay in
 short-lived adapter diagnostics, and credentials are never canonical events or
 projection fields.
 
+The live experience state is a bounded working set, not a second copy of the
+session record. It retains at most 128 recent transcript items and 256 recent
+debug/source-event entries. The complete canonical semantic-event history
+remains authoritative. Transcript and debug dialogs render only while open, page
+backward through canonical event prefixes, and discard their DOM or serialized
+JSON when closed. Paging therefore preserves complete accessible history without
+making ordinary turns perform hidden DOM replacement or unbounded JSON
+serialization.
+
 ## Visible transcript mode
 
 The optional transcript is a semantic rendering of the event stream. It shows,
@@ -441,7 +450,8 @@ linked to the original event.
 
 Transcript mode supports adjustable type size, line spacing, contrast, caption
 duration, role labels, and copy/export controls. Opening or closing it does not
-pause or branch gameplay.
+pause or branch gameplay. Long transcripts are exposed in bounded pages with
+Older and Newer controls; moving between pages is a projection-only operation.
 
 Text input may be enabled as an accessibility or test accommodation. Submitted
 text is normalized at the same semantic boundary as `transcript.final` and
