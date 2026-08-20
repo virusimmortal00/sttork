@@ -373,6 +373,12 @@ speak a reviewed 32-word excerpt instead of the full 67-word boot output. That
 decision does not rewrite the preceding historical result and is not evidence
 that the excerpt has passed a live browser or microphone smoke.
 
+Provider evolution on 2026-08-19 replaced the active completed-file
+transcription leg with `gpt-transcribe` while preserving the same bounded
+Transcriptions API boundary. The earlier `gpt-4o-mini-transcribe` bullet remains
+the exact configuration of the recorded slice evidence; this update requires
+fresh live evidence before it changes that result.
+
 ### Evidence still required
 
 - Record a real browser microphone turn for one unambiguous intent, one engine

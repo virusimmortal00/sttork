@@ -28,6 +28,11 @@ export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
   maxNarrationCharacters: 4_000,
 });
 
+export const OPENAI_CHAINED_PROFILE_2026_08_19 = Object.freeze({
+  ...OPENAI_CHAINED_PROFILE_2026_08_18,
+  transcriptionModel: "gpt-transcribe",
+});
+
 export interface OpenAiChainedProfile {
   readonly provider: "openai";
   readonly transcriptionModel: string;
@@ -337,6 +342,38 @@ function boundedString(value: unknown, name: string, maximum: number): string {
   return value;
 }
 
+function detectedLanguages(value: unknown): readonly string[] {
+  if (typeof value !== "object" || value === null) return [];
+  const languages = Reflect.get(value, "languages");
+  if (languages === undefined) return [];
+  if (!Array.isArray(languages) || languages.length > 16) {
+    throw new ProviderAdapterError(
+      "malformed-response",
+      "Provider transcription languages were malformed.",
+    );
+  }
+  const normalized: string[] = [];
+  for (const detected of languages) {
+    const code =
+      typeof detected === "object" && detected !== null
+        ? Reflect.get(detected, "code")
+        : undefined;
+    if (
+      typeof code !== "string" ||
+      code.length > 32 ||
+      !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/iu.test(code)
+    ) {
+      throw new ProviderAdapterError(
+        "malformed-response",
+        "Provider transcription language code was malformed.",
+      );
+    }
+    const canonical = code.toLowerCase();
+    if (!normalized.includes(canonical)) normalized.push(canonical);
+  }
+  return normalized;
+}
+
 function boundedNarrationText(
   value: unknown,
   name: string,
@@ -373,6 +410,12 @@ function hasUnsafeNarrationControl(value: string): boolean {
 function safeInteger(value: unknown): number | undefined {
   return Number.isSafeInteger(value) && (value as number) >= 0
     ? (value as number)
+    : undefined;
+}
+
+function safeNonnegativeFinite(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
     : undefined;
 }
 
@@ -456,6 +499,12 @@ function tokenUsage(
     typeof usage === "object" && usage !== null
       ? safeInteger(Reflect.get(usage, "total_tokens"))
       : undefined;
+  const inputAudioSeconds =
+    typeof usage === "object" &&
+    usage !== null &&
+    Reflect.get(usage, "type") === "duration"
+      ? safeNonnegativeFinite(Reflect.get(usage, "seconds"))
+      : undefined;
   return {
     provider: "openai",
     capability,
@@ -466,6 +515,7 @@ function tokenUsage(
     ...(outputTokens === undefined ? {} : { outputTokens }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
     ...(totalTokens === undefined ? {} : { totalTokens }),
+    ...(inputAudioSeconds === undefined ? {} : { inputAudioSeconds }),
   };
 }
 
@@ -497,7 +547,7 @@ export class OpenAiChainedProvider implements GuideModel {
         "OpenAI base URL must use HTTPS.",
       );
     }
-    this.#profile = options.profile ?? OPENAI_CHAINED_PROFILE_2026_08_18;
+    this.#profile = options.profile ?? OPENAI_CHAINED_PROFILE_2026_08_19;
     this.#safetyIdentifier =
       options.safetyIdentifier === undefined
         ? undefined
@@ -541,10 +591,7 @@ export class OpenAiChainedProvider implements GuideModel {
       "transcription",
       2_000,
     );
-    const languageValue =
-      typeof value === "object" && value !== null
-        ? Reflect.get(value, "language")
-        : undefined;
+    const languages = detectedLanguages(value);
     const usage: ProviderUsage = {
       ...tokenUsage(value, "transcription", this.#profile.transcriptionModel),
       inputAudioBytes: bytes.byteLength,
@@ -552,9 +599,7 @@ export class OpenAiChainedProvider implements GuideModel {
     this.#onUsage?.(usage);
     return {
       text,
-      ...(typeof languageValue === "string" && languageValue.length <= 32
-        ? { language: languageValue }
-        : {}),
+      languages,
       usage,
     };
   }

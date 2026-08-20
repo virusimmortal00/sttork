@@ -9,12 +9,13 @@ export interface ProviderUsage {
   readonly reasoningTokens?: number;
   readonly totalTokens?: number;
   readonly inputAudioBytes?: number;
+  readonly inputAudioSeconds?: number;
   readonly inputCharacters?: number;
 }
 
 export interface ProviderTranscription {
   readonly text: string;
-  readonly language?: string;
+  readonly languages: readonly string[];
   readonly usage: ProviderUsage;
 }
 

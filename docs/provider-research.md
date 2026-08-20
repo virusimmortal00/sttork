@@ -65,7 +65,7 @@ predictable control, and structured workflows. The experimental chained profile
 therefore evaluates these explicit server-side capabilities without changing the
 settled OpenRouter-first or optional-Realtime delivery milestones:
 
-- transcription: `gpt-4o-mini-transcribe`;
+- transcription: `gpt-transcribe`, using the completed-file Transcriptions API;
 - schema-constrained initial guide: `gpt-5.6-luna` with `reasoning.effort` set
   to `none`, `reasoning.context` set to `current_turn`, and low output verbosity
   for the bounded, latency-sensitive intent-classification decision;
@@ -75,6 +75,16 @@ The profile is dated configuration for a budget-limited smoke, not a promoted
 default. It has no automatic fallback, makes no provider request in hermetic
 tests, and keeps the deployment API key on the server. Current OpenAI model
 catalog and pricing must be rechecked before every live run.
+
+The 2026-08-19 transcription revision keeps the existing bounded file-upload
+architecture. Current official documentation lists `gpt-transcribe` at $0.0045
+per input minute and returns reliable detections as `languages: [{ code }]`, or
+an empty array when it cannot detect one. The adapter normalizes the bounded
+list of detected codes without collapsing multilingual audio into one language.
+Language hints, when added, must use the model's plural `languages` request
+field rather than the legacy singular `language` field. Duration-billed usage is
+normalized as input-audio seconds while the provider boundary retains
+compatibility with token-billed transcription usage.
 
 Each guide request is deliberately stateless (`store: false`) and independently
 grounded in the current reviewed command knowledge. It does not carry a
@@ -108,6 +118,8 @@ contextual and confirmation policies in
 [ADR-0012](adr/0012-structured-semantic-command-intents.md) remain open.
 
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
+- [GPT Transcribe model](https://developers.openai.com/api/docs/models/gpt-transcribe)
+- [File transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
 - [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
 - [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
 - [Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs)

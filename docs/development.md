@@ -158,9 +158,9 @@ unavailable or rejected; the harness also rejects it as a configured public
 origin. HTTPS is required even when the test device and developer machine share
 a trusted home network.
 
-The 2026-08-19 smoke profile uses `gpt-4o-mini-transcribe`, `gpt-5.6-luna`, and
-`tts-1`, with one global maximum of 30 provider requests for the server process.
-The initial `START STORY` narration uses one speech request without requesting
+The 2026-08-19 smoke profile uses `gpt-transcribe`, `gpt-5.6-luna`, and `tts-1`,
+with one global maximum of 30 provider requests for the server process. The
+initial `START STORY` narration uses one speech request without requesting
 microphone permission. For the exact Zork I Release 119 story/build/opening
 tuple, [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) selects the
 reviewed 32-word title-and-scene excerpt instead of speaking the full 67-word

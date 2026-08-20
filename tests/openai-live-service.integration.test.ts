@@ -21,7 +21,7 @@ class FakeProvider implements OpenAiLiveProviderPort {
       void args;
       return {
         text: "go north",
-        language: "en",
+        languages: ["en"],
         usage: {
           provider: "openai",
           capability: "transcription",
@@ -195,7 +195,7 @@ describe("OpenAI local live service", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({
       text: "go north",
-      language: "en",
+      languages: ["en"],
       usage: expect.objectContaining({
         capability: "transcription",
         inputAudioBytes: 3,

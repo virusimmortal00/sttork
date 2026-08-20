@@ -171,9 +171,7 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
         );
         return json({
           text: result.text,
-          ...(result.language === undefined
-            ? {}
-            : { language: result.language }),
+          languages: result.languages,
           usage: safeUsage(result.usage),
         });
       }

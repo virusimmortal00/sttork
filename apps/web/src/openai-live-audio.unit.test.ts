@@ -321,7 +321,7 @@ describe("OpenAiLiveTranscriber", () => {
         expect(headers.get("content-type")).toBe("audio/webm;codecs=opus");
         return jsonResponse({
           text: "go north",
-          language: "en",
+          languages: ["en"],
           usage: { provider: "openai" },
         });
       },

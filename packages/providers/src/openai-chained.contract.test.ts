@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProviderAdapterError } from "./contracts.js";
 import {
   OPENAI_CHAINED_PROFILE_2026_08_18,
+  OPENAI_CHAINED_PROFILE_2026_08_19,
   OpenAiChainedProvider,
 } from "./openai-chained.js";
 
@@ -28,7 +29,13 @@ function guideInput() {
 
 describe("OpenAiChainedProvider", () => {
   it("pins the live developer smoke request ceiling", () => {
-    expect(OPENAI_CHAINED_PROFILE_2026_08_18.maxRequests).toBe(30);
+    expect(OPENAI_CHAINED_PROFILE_2026_08_19.maxRequests).toBe(30);
+    expect(OPENAI_CHAINED_PROFILE_2026_08_19.transcriptionModel).toBe(
+      "gpt-transcribe",
+    );
+    expect(OPENAI_CHAINED_PROFILE_2026_08_18.transcriptionModel).toBe(
+      "gpt-4o-mini-transcribe",
+    );
   });
 
   it("normalizes transcription and reports bounded usage", async () => {
@@ -37,7 +44,7 @@ describe("OpenAiChainedProvider", () => {
       calls.push({ url: String(input), init });
       return jsonResponse({
         text: "go north",
-        language: "en",
+        languages: [{ code: "en" }],
         usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 },
       });
     };
@@ -56,11 +63,11 @@ describe("OpenAiChainedProvider", () => {
 
     expect(result).toEqual({
       text: "go north",
-      language: "en",
+      languages: ["en"],
       usage: expect.objectContaining({
         provider: "openai",
         capability: "transcription",
-        model: "gpt-4o-mini-transcribe",
+        model: "gpt-transcribe",
         inputTokens: 10,
         outputTokens: 2,
         totalTokens: 12,
@@ -75,8 +82,105 @@ describe("OpenAiChainedProvider", () => {
     );
     const body = calls[0]?.init?.body;
     expect(body).toBeInstanceOf(FormData);
-    expect((body as FormData).get("model")).toBe("gpt-4o-mini-transcribe");
+    expect((body as FormData).get("model")).toBe("gpt-transcribe");
     expect(usage).toHaveBeenCalledOnce();
+  });
+
+  it("preserves multiple detected languages without collapsing them", async () => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          text: "go north, puis regarde",
+          languages: [{ code: "en" }, { code: "fr" }],
+        }),
+    });
+
+    const result = await provider.transcribe(
+      new Uint8Array([1]),
+      "audio/webm",
+      new AbortController().signal,
+    );
+
+    expect(result.languages).toEqual(["en", "fr"]);
+  });
+
+  it("normalizes an unavailable detected language to an empty list", async () => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () => jsonResponse({ text: "go north", languages: [] }),
+    });
+
+    const result = await provider.transcribe(
+      new Uint8Array([1]),
+      "audio/webm",
+      new AbortController().signal,
+    );
+
+    expect(result.languages).toEqual([]);
+  });
+
+  it("normalizes duration-billed transcription usage", async () => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({
+          text: "go north",
+          languages: [{ code: "en" }],
+          usage: { type: "duration", seconds: 1.25 },
+        }),
+    });
+
+    const result = await provider.transcribe(
+      new Uint8Array([1]),
+      "audio/webm",
+      new AbortController().signal,
+    );
+
+    expect(result.usage).toMatchObject({
+      model: "gpt-transcribe",
+      inputAudioBytes: 1,
+      inputAudioSeconds: 1.25,
+    });
+  });
+
+  it.each([
+    { type: "duration", seconds: -1 },
+    { type: "duration", seconds: "1.25" },
+    { type: "tokens", seconds: 1.25 },
+  ])("ignores malformed or non-duration audio usage", async (usage) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () =>
+        jsonResponse({ text: "go north", languages: [], usage }),
+    });
+
+    const result = await provider.transcribe(
+      new Uint8Array([1]),
+      "audio/webm",
+      new AbortController().signal,
+    );
+
+    expect(result.usage).not.toHaveProperty("inputAudioSeconds");
+  });
+
+  it.each([
+    { text: "go north", languages: "en" },
+    { text: "go north", languages: [{ code: "en\nunsafe" }] },
+    { text: "go north", languages: [{ name: "English" }] },
+  ])("rejects malformed detected languages", async (response) => {
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async () => jsonResponse(response),
+    });
+
+    await expect(
+      provider.transcribe(
+        new Uint8Array([1]),
+        "audio/webm",
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "malformed-response" });
   });
 
   it("requests one strict guide decision and returns only normalized data", async () => {
