@@ -28,6 +28,21 @@
           ></output>
         </div>
       </div>
+      <div
+        id="spoken-transcript"
+        class="spoken-transcript"
+        aria-hidden="true"
+        hidden
+      >
+        <p id="spoken-line" class="spoken-line"></p>
+        <ol id="spoken-history" class="spoken-history"></ol>
+      </div>
+      <div class="primary-action">
+        <button id="capture" type="button" aria-label="Start story" disabled>
+          BEGIN
+        </button>
+        <p id="primary-cue" class="cue" aria-hidden="true"></p>
+      </div>
       <ol
         id="action-log"
         class="action-log"
@@ -36,33 +51,78 @@
         tabindex="0"
         hidden
       ></ol>
-      <div class="primary-action">
-        <button id="capture" type="button" aria-label="Start story" disabled>
-          BEGIN
-        </button>
-        <p id="primary-cue" class="cue" aria-hidden="true"></p>
-      </div>
-      <nav aria-label="Voice session controls">
-        <button id="stop" type="button" disabled>Stop</button>
-        <button id="pause" type="button" disabled>Pause</button>
-        <button id="repeat" type="button" disabled>Repeat</button>
-        <button id="toggle-transcript" type="button" aria-expanded="false">
+      <nav class="control-dock" aria-label="Voice session controls">
+        <div class="session-actions" role="group" aria-label="Playback">
+          <button id="stop" type="button" disabled>Stop</button>
+          <button id="pause" type="button" disabled>Pause</button>
+          <button id="repeat" type="button" disabled>Repeat</button>
+        </div>
+      </nav>
+    </main>
+    <footer class="app-footer">
+      <nav class="utility-actions" aria-label="More options">
+        <button
+          id="toggle-transcript"
+          type="button"
+          aria-expanded="false"
+          aria-controls="transcript-panel"
+        >
           Transcript
         </button>
-        <button id="toggle-debug" type="button" aria-expanded="false">
+        <button
+          id="toggle-debug"
+          class="developer-control"
+          type="button"
+          aria-expanded="false"
+          aria-controls="debug-panel"
+        >
           Debug
         </button>
       </nav>
-      <section id="transcript-panel" aria-label="Accessible transcript" hidden>
-        <ol id="transcript-list"></ol>
-        <form id="text-form">
-          <label for="text-input">Accessible text input</label>
-          <input id="text-input" autocomplete="off" disabled />
-          <button id="text-submit" type="submit" disabled>Send</button>
-        </form>
-      </section>
-      <pre id="debug-panel" aria-label="Developer event evidence" hidden></pre>
-    </main>
+    </footer>
+    <dialog
+      id="transcript-panel"
+      class="utility-modal"
+      aria-labelledby="transcript-heading"
+      aria-modal="true"
+    >
+      <header class="modal-header">
+        <h2 id="transcript-heading">Transcript</h2>
+        <button
+          id="close-transcript"
+          class="modal-close"
+          type="button"
+          aria-label="Close transcript"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+      <ol id="transcript-list"></ol>
+      <form id="text-form">
+        <label for="text-input">Accessible text input</label>
+        <input id="text-input" autocomplete="off" disabled />
+        <button id="text-submit" type="submit" disabled>Send</button>
+      </form>
+    </dialog>
+    <dialog
+      id="debug-panel"
+      class="utility-modal"
+      aria-labelledby="debug-heading"
+      aria-modal="true"
+    >
+      <header class="modal-header">
+        <h2 id="debug-heading">Debug evidence</h2>
+        <button
+          id="close-debug"
+          class="modal-close"
+          type="button"
+          aria-label="Close debug evidence"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </header>
+      <pre id="debug-content" aria-label="Developer event evidence"></pre>
+    </dialog>
     <script type="module" src="/app/apps/web/src/voice-shell-smoke.js"></script>
   </body>
 </html>

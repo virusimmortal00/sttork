@@ -344,9 +344,12 @@ transcript is a failure when it executes the wrong command.
 
 Required assertions include:
 
-- a fresh playable session exposes `START STORY` before capture, keeps it
-  enabled without microphone permission, and does not request that permission
-  when activated;
+- a fresh playable session exposes `ENTER` before capture, keeps it enabled
+  without microphone permission, and emits exactly two ordered, attributed
+  ADR-0017 role-introduction sources and narration requests without an engine
+  inspection or mutation;
+- completion, interruption, or failure of the welcome exposes the distinct
+  `THE STORY BEGINS` action without requesting microphone permission;
 - one activation produces exactly one `engine.output` whose exact text,
   `input-requested` boundary, and revision zero match authenticated boot state,
   followed by one source-linked narrator synthesis request and no engine
@@ -375,6 +378,10 @@ Required assertions include:
   playback can be re-primed from Repeat, and a bounded missing-`playing`
   deadline produces a recoverable terminal event. Local priming itself emits no
   provider request or semantic playback event;
+- an exact Repeat of the latest completed role/text/voice/rate tuple reuses one
+  bounded session-memory audio blob without another speech request, while an
+  interrupted clip or changed voice/rate misses that cache and synthesizes
+  again; every temporary replay object URL is still revoked;
 - a narration retry visibly projects Processing while work is active, and a
   recoverable audio failure does not reveal the transcript or move keyboard or
   screen-reader focus;
@@ -481,11 +488,15 @@ cost.
 The absence of visible text by default is a presentation choice, not a reduction
 in semantic information. Automated and manual tests must cover:
 
-- keyboard activation of `START STORY` before microphone permission, including
-  the full exact-text path when excerpt or fallback narration fails;
+- keyboard activation of `ENTER` and then `THE STORY BEGINS` before microphone
+  permission, including distinct Guide/Narrator attribution and the full
+  exact-text path when excerpt or fallback narration fails;
 - status changes exposed through appropriately managed live regions;
 - complete keyboard operation of microphone, stop, repeat, settings, transcript,
   and debug controls;
+- footer utility triggers opening labeled modal dialogs, trapping focus while
+  open and restoring it to the correct trigger after button, Escape, or backdrop
+  closure without stopping unrelated playback;
 - visible focus and logical focus order when controls are shown;
 - transcript/caption mode preserving player transcript, interpreted command,
   exact engine response, and guide text;

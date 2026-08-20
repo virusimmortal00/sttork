@@ -15,7 +15,12 @@ export type VoiceActivityState =
   | "blocked";
 
 export interface VoiceStatePresentationElements {
-  readonly status: { textContent: string | null };
+  readonly status: {
+    textContent: string | null;
+    readonly dataset: { speakerRole?: string };
+    setAttribute(name: string, value: string): void;
+    removeAttribute(name: string): void;
+  };
   readonly activityIndicator: {
     readonly dataset: { state?: string };
     hidden: boolean | string;
@@ -125,8 +130,24 @@ export function applyVoiceStatePresentation(
   statusText: string,
   elements: VoiceStatePresentationElements,
 ): void {
-  if (elements.status.textContent !== statusText) {
-    elements.status.textContent = statusText;
+  const speakerRole =
+    state === "guide-speaking"
+      ? "Guide"
+      : state === "narrator-speaking"
+        ? "Narrator"
+        : undefined;
+  const visibleStatusText = speakerRole === undefined ? statusText : "speaking";
+  if (elements.status.textContent !== visibleStatusText) {
+    elements.status.textContent = visibleStatusText;
+  }
+  if (speakerRole === undefined) {
+    if (elements.status.dataset.speakerRole !== undefined) {
+      delete elements.status.dataset.speakerRole;
+      elements.status.removeAttribute("aria-label");
+    }
+  } else {
+    elements.status.dataset.speakerRole = speakerRole;
+    elements.status.setAttribute("aria-label", statusText);
   }
   const activityState = activityStateForVoiceState(state);
   if (elements.activityIndicator.dataset.state !== activityState) {

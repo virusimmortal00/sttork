@@ -26,6 +26,12 @@ import { DORK_WORKER_BINDING } from "../../../spikes/dork-worker/dork-worker-bin
 import { DorkWorkerEngine } from "../../../spikes/dork-worker/dork-worker-engine.js";
 
 import { applyActionLogPresentation } from "./action-log-presentation.js";
+import { createModalController } from "./modal-controller.js";
+import {
+  ROLE_INTRODUCTION,
+  ROLE_INTRODUCTION_INTERACTION_ID,
+} from "./role-introduction.js";
+import { SpokenTranscriptPresentation } from "./spoken-transcript-presentation.js";
 import {
   applyStoryStartPresentation,
   openingActivationFailureDisposition,
@@ -113,9 +119,23 @@ async function run(): Promise<void> {
   const repeatButton = required<HTMLButtonElement>("repeat");
   const transcriptButton = required<HTMLButtonElement>("toggle-transcript");
   const debugButton = required<HTMLButtonElement>("toggle-debug");
-  const transcriptPanel = required<HTMLElement>("transcript-panel");
+  const transcriptCloseButton = required<HTMLButtonElement>("close-transcript");
+  const debugCloseButton = required<HTMLButtonElement>("close-debug");
+  const transcriptPanel = required<HTMLDialogElement>("transcript-panel");
   const transcriptList = required<HTMLOListElement>("transcript-list");
-  const debugPanel = required<HTMLElement>("debug-panel");
+  const spokenTranscript = new SpokenTranscriptPresentation(
+    {
+      region: required<HTMLElement>("spoken-transcript"),
+      activeLine: required<HTMLElement>("spoken-line"),
+      history: required<HTMLOListElement>("spoken-history"),
+    },
+    {
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)")
+        .matches,
+    },
+  );
+  const debugPanel = required<HTMLDialogElement>("debug-panel");
+  const debugContent = required<HTMLPreElement>("debug-content");
   const textForm = required<HTMLFormElement>("text-form");
   const textInput = required<HTMLInputElement>("text-input");
   const textSubmitButton = required<HTMLButtonElement>("text-submit");
@@ -173,13 +193,20 @@ async function run(): Promise<void> {
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
   const canonicalEvents: SemanticEvent[] = [];
+  const narrationById = new Map<
+    string,
+    { readonly role: "guide" | "narrator"; readonly text: string }
+  >();
   let turns = 0;
   let eventId = 0;
   let requestId = 0;
   let narrationId = 0;
   let interactionId = 0;
   let captureId = 0;
-  let storyStartPhase: StoryStartPhase = "ready";
+  let storyStartPhase: StoryStartPhase = "welcome";
+  let introductionPromise: Promise<void> | undefined;
+  let introductionAbort: AbortController | undefined;
+  let introductionStopRequested = false;
   let storyStartPromise: Promise<void> | undefined;
   let openingAbort: AbortController | undefined;
   let openingStopRequested = false;
@@ -225,7 +252,7 @@ async function run(): Promise<void> {
         return row;
       }),
     );
-    debugPanel.textContent = JSON.stringify(
+    debugContent.textContent = JSON.stringify(
       {
         throughSequence: projection.throughSequence,
         events: projection.debug,
@@ -236,6 +263,29 @@ async function run(): Promise<void> {
   }
 
   function publish(event: SemanticEvent): void {
+    if (
+      event.type === "narration.requested" &&
+      (event.payload.role === "guide" || event.payload.role === "narrator")
+    ) {
+      if (!narrationById.has(event.payload.narrationId)) {
+        while (narrationById.size >= 32) {
+          const oldestId = narrationById.keys().next().value;
+          if (oldestId === undefined) break;
+          narrationById.delete(oldestId);
+        }
+      }
+      narrationById.set(event.payload.narrationId, {
+        role: event.payload.role,
+        text: event.payload.text,
+      });
+    } else if (event.type === "audio.playback.started") {
+      const narration = narrationById.get(event.payload.narrationId);
+      if (narration !== undefined) {
+        spokenTranscript.start(narration.text, 1, narration.role);
+      }
+    } else if (event.type === "audio.playback.ended") {
+      spokenTranscript.finish(event.payload.outcome);
+    }
     canonicalEvents.push(event);
     projection = reduceExperienceProjection(projection, event);
     renderProjection();
@@ -324,8 +374,8 @@ async function run(): Promise<void> {
         finalRevision: state.revision,
         eventTypes: canonicalEvents.map((event) => event.type),
         playback: playback.records.map(({ role, text }) => ({ role, text })),
-        transcriptHidden: transcriptPanel.hidden !== false,
-        debugHidden: debugPanel.hidden !== false,
+        transcriptHidden: !transcriptPanel.open,
+        debugHidden: !debugPanel.open,
         ...(factory.lastEnvironment === undefined
           ? {}
           : { workerEnvironment: factory.lastEnvironment }),
@@ -427,7 +477,7 @@ async function run(): Promise<void> {
       await operation;
     } catch (error) {
       storyStartPromise = undefined;
-      storyStartPhase = "ready";
+      storyStartPhase = "story-ready";
       presentControllerState();
       if (
         openingActivationFailureDisposition(
@@ -443,8 +493,57 @@ async function run(): Promise<void> {
     }
   }
 
+  async function startIntroduction(): Promise<void> {
+    if (storyStartPhase !== "welcome") return;
+    if (introductionPromise !== undefined) return introductionPromise;
+    storyStartPhase = "introducing";
+    introductionStopRequested = false;
+    applyVoiceStatePresentation(
+      "processing",
+      "Preparing your companions",
+      voicePresentation,
+    );
+    applyStoryStartPresentation(
+      storyStartPhase,
+      controller.state,
+      true,
+      storyStartPresentation,
+    );
+    const abort = new AbortController();
+    introductionAbort = abort;
+    const operation = (async () => {
+      const prepared = await coordinator.prepareRoleIntroduction(
+        {
+          interactionId: ROLE_INTRODUCTION_INTERACTION_ID,
+          messages: ROLE_INTRODUCTION,
+        },
+        abort.signal,
+      );
+      if (prepared.outcome === "ready") {
+        const playing = controller.playPrepared(
+          ROLE_INTRODUCTION_INTERACTION_ID,
+        );
+        if (introductionStopRequested) await controller.stop();
+        await playing;
+      }
+      storyStartPhase = "story-ready";
+      presentControllerState();
+      updateEvidence();
+    })();
+    introductionPromise = operation;
+    try {
+      await operation;
+    } catch {
+      storyStartPhase = "story-ready";
+      presentControllerState();
+    } finally {
+      if (introductionAbort === abort) introductionAbort = undefined;
+    }
+  }
+
   async function primaryAction(): Promise<void> {
-    if (storyStartPhase === "ready") await startStory();
+    if (storyStartPhase === "welcome") await startIntroduction();
+    else if (storyStartPhase === "story-ready") await startStory();
     else if (storyStartPhase === "started") await toggleCapture();
   }
 
@@ -519,6 +618,10 @@ async function run(): Promise<void> {
   }
 
   async function stopActive(): Promise<void> {
+    if (storyStartPhase === "introducing") {
+      introductionStopRequested = true;
+      introductionAbort?.abort(new Error("Player stopped the introduction."));
+    }
     if (storyStartPhase === "starting" || openingNarrationRetryActive) {
       openingStopRequested = true;
       openingAbort?.abort(new Error("Player stopped the story opening."));
@@ -532,6 +635,24 @@ async function run(): Promise<void> {
       applyVoiceStatePresentation("blocked", "Try again", voicePresentation);
     });
   }
+
+  const reducedMotion = (): boolean =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const modalOpenChanged = (): void => updateEvidence();
+  createModalController({
+    dialog: transcriptPanel,
+    trigger: transcriptButton,
+    closeButton: transcriptCloseButton,
+    reducedMotion,
+    onOpenChange: modalOpenChanged,
+  });
+  createModalController({
+    dialog: debugPanel,
+    trigger: debugButton,
+    closeButton: debugCloseButton,
+    reducedMotion,
+    onOpenChange: modalOpenChanged,
+  });
 
   captureButton.addEventListener("click", () => {
     controller.activatePlaybackFromUserGesture();
@@ -550,19 +671,6 @@ async function run(): Promise<void> {
   repeatButton.addEventListener("click", () => {
     controller.activatePlaybackFromUserGesture();
     runControl(repeatLastNarration);
-  });
-  transcriptButton.addEventListener("click", () => {
-    transcriptPanel.hidden = !transcriptPanel.hidden;
-    transcriptButton.setAttribute(
-      "aria-expanded",
-      String(!transcriptPanel.hidden),
-    );
-    updateEvidence();
-  });
-  debugButton.addEventListener("click", () => {
-    debugPanel.hidden = !debugPanel.hidden;
-    debugButton.setAttribute("aria-expanded", String(!debugPanel.hidden));
-    updateEvidence();
   });
   textForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -590,7 +698,12 @@ async function run(): Promise<void> {
         runControl(toggleCapture);
       }
     }
-    if (event.code === "Escape") runControl(stopActive);
+    if (
+      event.code === "Escape" &&
+      document.querySelector("dialog[open]") === null
+    ) {
+      runControl(stopActive);
+    }
   });
 
   projection = {

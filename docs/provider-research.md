@@ -1,7 +1,7 @@
 # Provider and upstream research snapshot
 
 Status: informative, not a runtime contract  
-Last verified: 2026-08-19
+Last verified: 2026-08-20
 
 This document records the external facts that informed the initial strategy.
 Provider catalogs, prices, authentication flows, and model status change. Each
@@ -70,7 +70,8 @@ settled OpenRouter-first or optional-Realtime delivery milestones:
   to `none`, `reasoning.context` set to `current_turn`, and low output verbosity
   for the bounded, latency-sensitive intent-classification decision;
 - narration: `gpt-4o-mini-tts` through the request-based Speech API, preserving
-  the existing role-specific `nova` guide and `onyx` narrator voices.
+  `nova` guide and `onyx` narrator defaults, with the current documented voice
+  catalog available as bounded player preferences.
 
 The profile is dated configuration for a budget-limited smoke, not a promoted
 default. It has no automatic fallback, makes no provider request in hermetic
@@ -82,8 +83,11 @@ architecture. Current official documentation lists `gpt-transcribe` at $0.0045
 per input minute and returns reliable detections as `languages: [{ code }]`, or
 an empty array when it cannot detect one. The adapter normalizes the bounded
 list of detected codes without collapsing multilingual audio into one language.
-Language hints, when added, must use the model's plural `languages` request
-field rather than the legacy singular `language` field. Duration-billed usage is
+The 2026-08-20 revision sends a short static task prompt, reviewed parser
+aliases, and object labels from the client's canonical observed-object
+projection through the documented `prompt`, repeated `keywords[]`, and plural
+`languages[]` fields. The trusted server rejects labels outside the reviewed
+opening vocabulary before the provider boundary. Duration-billed usage is
 normalized as input-audio seconds while the provider boundary retains
 compatibility with token-billed transcription usage.
 
@@ -92,11 +96,24 @@ selection with `gpt-4o-mini-tts`. Current official documentation describes it as
 OpenAI's newest and most reliable text-to-speech model and lists it as the
 speech-generation model in the primary catalog. `tts-1` remains available in the
 full catalog and remains recorded in the earlier Slice 5 smoke evidence; it was
-not removed from that historical record or relabeled as deprecated. This
-revision keeps the same Speech endpoint, MP3 response, normal speed, request and
-response bounds, cancellation signal, and role-specific voices. It does not add
-model style instructions, so the provider receives the exact selected guide or
-narrator text without an additional prose-generation prompt.
+not removed from that historical record or relabeled as deprecated. The
+2026-08-20 revision keeps the same Speech endpoint and MP3 format while adding
+the current documented voices (`alloy`, `ash`, `ballad`, `coral`, `echo`,
+`fable`, `nova`, `onyx`, `sage`, `shimmer`, `verse`, `marin`, and `cedar`) as an
+allowlisted preference catalog. Guide and narrator choices and rates are
+independent, locally persisted, and bounded to 0.75–1.25×. Static role delivery
+instructions affect speaking style only and explicitly forbid adding, omitting,
+or paraphrasing the selected text. One deterministic, tested pronunciation map
+supplies the exact narrator title line `ZORK I: The Great Underground Empire` to
+synthesis as `ZORK One: The Great Underground Empire`; canonical events and
+visible text retain `ZORK I`, and near matches are untouched. The same exact
+opening mapping adds terminal punctuation and a blank line after the standalone
+`West of House` heading so synthesis pauses before the description without
+adding prose. The provider response remains a bounded, cancellable stream
+through the BFF; browsers use incremental MediaSource playback for supported MP3
+environments and a bounded in-memory fallback otherwise. The optional settings
+surface identifies the voices as AI-generated and identifies samples as billable
+requests.
 
 Each guide request is deliberately stateless (`store: false`) and independently
 grounded in the current reviewed command knowledge. It does not carry a

@@ -30,7 +30,22 @@ import {
   OpenAiLivePlaybackPort,
   OpenAiLiveTranscriber,
 } from "./openai-live-audio.js";
+import {
+  loadOpenAiLiveVoicePreferences,
+  normalizeOpenAiLiveVoicePreferences,
+  OPENAI_TTS_VOICES,
+  openAiSpeechPreferenceForRole,
+  saveOpenAiLiveVoicePreferences,
+  type OpenAiLiveVoicePreferences,
+  type OpenAiTtsVoice,
+} from "./openai-live-preferences.js";
 import { applyActionLogPresentation } from "./action-log-presentation.js";
+import { createModalController } from "./modal-controller.js";
+import {
+  ROLE_INTRODUCTION,
+  ROLE_INTRODUCTION_INTERACTION_ID,
+} from "./role-introduction.js";
+import { SpokenTranscriptPresentation } from "./spoken-transcript-presentation.js";
 import {
   applyStoryStartPresentation,
   openingActivationFailureDisposition,
@@ -92,6 +107,7 @@ interface LiveSmokeEvidence {
   audioRecordingAvailable: boolean;
   turns: number;
   finalRevision: number;
+  speechRequests?: number;
   eventTypes: readonly string[];
   transcriptHidden: boolean;
   debugHidden: boolean;
@@ -121,7 +137,7 @@ interface LiveStatusElement {
 export interface LivePreflightPresentationElements {
   readonly status: LiveStatusElement;
   readonly captureButton: DisableableControl;
-  readonly transcriptPanel: { hidden: boolean | string };
+  readonly transcriptPanel: { showModal(): void };
   readonly transcriptButton: {
     setAttribute(name: string, value: string): void;
   };
@@ -237,7 +253,7 @@ export function applyLivePreflightPresentation(
   elements.status.textContent = preflight.statusText;
   elements.captureButton.disabled = !preflight.voiceAvailable;
   if (!preflight.voiceAvailable) {
-    elements.transcriptPanel.hidden = false;
+    elements.transcriptPanel.showModal();
     elements.transcriptButton.setAttribute("aria-expanded", "true");
     elements.textForm.hidden = false;
     elements.textInput.disabled = false;
@@ -310,9 +326,34 @@ async function run(): Promise<void> {
   const repeatButton = required<HTMLButtonElement>("repeat");
   const transcriptButton = required<HTMLButtonElement>("toggle-transcript");
   const debugButton = required<HTMLButtonElement>("toggle-debug");
-  const transcriptPanel = required<HTMLElement>("transcript-panel");
+  const settingsButton = required<HTMLButtonElement>("toggle-settings");
+  const transcriptCloseButton = required<HTMLButtonElement>("close-transcript");
+  const debugCloseButton = required<HTMLButtonElement>("close-debug");
+  const settingsCloseButton = required<HTMLButtonElement>("close-settings");
+  const transcriptPanel = required<HTMLDialogElement>("transcript-panel");
   const transcriptList = required<HTMLOListElement>("transcript-list");
-  const debugPanel = required<HTMLElement>("debug-panel");
+  const spokenTranscript = new SpokenTranscriptPresentation(
+    {
+      region: required<HTMLElement>("spoken-transcript"),
+      activeLine: required<HTMLElement>("spoken-line"),
+      history: required<HTMLOListElement>("spoken-history"),
+    },
+    {
+      reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)")
+        .matches,
+    },
+  );
+  const debugPanel = required<HTMLDialogElement>("debug-panel");
+  const debugContent = required<HTMLPreElement>("debug-content");
+  const settingsPanel = required<HTMLDialogElement>("settings-panel");
+  const guideVoice = required<HTMLSelectElement>("guide-voice");
+  const narratorVoice = required<HTMLSelectElement>("narrator-voice");
+  const guideRate = required<HTMLInputElement>("guide-rate");
+  const narratorRate = required<HTMLInputElement>("narrator-rate");
+  const guideRateValue = required<HTMLOutputElement>("guide-rate-value");
+  const narratorRateValue = required<HTMLOutputElement>("narrator-rate-value");
+  const previewGuide = required<HTMLButtonElement>("preview-guide");
+  const previewNarrator = required<HTMLButtonElement>("preview-narrator");
   const textForm = required<HTMLFormElement>("text-form");
   const textInput = required<HTMLInputElement>("text-input");
   const textSubmitButton = required<HTMLButtonElement>("text-submit");
@@ -370,13 +411,45 @@ async function run(): Promise<void> {
       turns: 0,
       finalRevision: 0,
       eventTypes: [],
-      transcriptHidden: transcriptPanel.hidden !== false,
-      debugHidden: debugPanel.hidden !== false,
+      transcriptHidden: !transcriptPanel.open,
+      debugHidden: !debugPanel.open,
       errorCode: preflight.errorCode ?? "secure-context-required",
     });
     return;
   }
   const token = sessionToken();
+  let voicePreferences = loadOpenAiLiveVoicePreferences(localStorage);
+
+  for (const voice of OPENAI_TTS_VOICES) {
+    guideVoice.add(new Option(voice, voice));
+    narratorVoice.add(new Option(voice, voice));
+  }
+
+  function renderVoicePreferences(): void {
+    guideVoice.value = voicePreferences.guideVoice;
+    narratorVoice.value = voicePreferences.narratorVoice;
+    guideRate.value = String(voicePreferences.guideRate);
+    narratorRate.value = String(voicePreferences.narratorRate);
+    guideRateValue.value = `${voicePreferences.guideRate.toFixed(2)}×`;
+    narratorRateValue.value = `${voicePreferences.narratorRate.toFixed(2)}×`;
+  }
+
+  function updateVoicePreferences(
+    update: Partial<OpenAiLiveVoicePreferences>,
+  ): void {
+    voicePreferences = normalizeOpenAiLiveVoicePreferences({
+      ...voicePreferences,
+      ...update,
+    });
+    try {
+      saveOpenAiLiveVoicePreferences(localStorage, voicePreferences);
+    } catch {
+      // Preferences still apply for this session when storage is unavailable.
+    }
+    renderVoicePreferences();
+  }
+
+  renderVoicePreferences();
 
   const storyResponse = await fetch(STORY_URL, { cache: "no-store" });
   if (!storyResponse.ok) throw new Error("Story fetch failed.");
@@ -413,13 +486,20 @@ async function run(): Promise<void> {
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
   const canonicalEvents: SemanticEvent[] = [];
+  const narrationById = new Map<
+    string,
+    { readonly role: "guide" | "narrator"; readonly text: string }
+  >();
   let turns = 0;
   let eventId = 0;
   let requestId = 0;
   let narrationId = 0;
   let interactionId = 0;
   let captureId = 0;
-  let storyStartPhase: StoryStartPhase = "ready";
+  let storyStartPhase: StoryStartPhase = "welcome";
+  let introductionPromise: Promise<void> | undefined;
+  let introductionAbort: AbortController | undefined;
+  let introductionStopRequested = false;
   let storyStartPromise: Promise<void> | undefined;
   let openingAbort: AbortController | undefined;
   let openingStopRequested = false;
@@ -433,9 +513,19 @@ async function run(): Promise<void> {
   const transcriber = new OpenAiLiveTranscriber({
     store: capturedAudio,
     sessionToken: token,
+    observedObjects: () => observedObjectProjection.currentObjects,
   });
   const guide = new OpenAiLiveGuideModel({ sessionToken: token });
-  const playback = new OpenAiLivePlaybackPort({ sessionToken: token });
+  const playback = new OpenAiLivePlaybackPort({
+    sessionToken: token,
+    speechPreference: (role) =>
+      openAiSpeechPreferenceForRole(voicePreferences, role),
+  });
+  let previewPlayback: OpenAiLivePlaybackPort | undefined;
+  let previewAbort: AbortController | undefined;
+  let previewId = 0;
+  const reducedMotion = (): boolean =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function renderProjection(): void {
     if (openingNarrationRetryActive) {
@@ -471,7 +561,7 @@ async function run(): Promise<void> {
         return row;
       }),
     );
-    debugPanel.textContent = JSON.stringify(
+    debugContent.textContent = JSON.stringify(
       {
         throughSequence: projection.throughSequence,
         events: projection.debug,
@@ -482,6 +572,35 @@ async function run(): Promise<void> {
   }
 
   function publish(event: SemanticEvent): void {
+    if (
+      event.type === "narration.requested" &&
+      (event.payload.role === "guide" || event.payload.role === "narrator")
+    ) {
+      if (!narrationById.has(event.payload.narrationId)) {
+        while (narrationById.size >= 32) {
+          const oldestId = narrationById.keys().next().value;
+          if (oldestId === undefined) break;
+          narrationById.delete(oldestId);
+        }
+      }
+      narrationById.set(event.payload.narrationId, {
+        role: event.payload.role,
+        text: event.payload.text,
+      });
+    } else if (event.type === "audio.playback.started") {
+      const narration = narrationById.get(event.payload.narrationId);
+      if (narration !== undefined) {
+        spokenTranscript.start(
+          narration.text,
+          narration.role === "guide"
+            ? voicePreferences.guideRate
+            : voicePreferences.narratorRate,
+          narration.role,
+        );
+      }
+    } else if (event.type === "audio.playback.ended") {
+      spokenTranscript.finish(event.payload.outcome);
+    }
     observedObjectProjection = projectOpeningObjectsFromEvent(
       observedObjectProjection,
       event,
@@ -553,9 +672,10 @@ async function run(): Promise<void> {
       audioRecordingAvailable: preflight.audioRecordingAvailable,
       turns,
       finalRevision: state.revision,
+      speechRequests: playback.synthesisRequests,
       eventTypes: canonicalEvents.map((event) => event.type),
-      transcriptHidden: transcriptPanel.hidden !== false,
-      debugHidden: debugPanel.hidden !== false,
+      transcriptHidden: !transcriptPanel.open,
+      debugHidden: !debugPanel.open,
       ...(factory.lastEnvironment === undefined
         ? {}
         : { workerEnvironment: factory.lastEnvironment }),
@@ -664,7 +784,7 @@ async function run(): Promise<void> {
       await operation;
     } catch (error) {
       storyStartPromise = undefined;
-      storyStartPhase = "ready";
+      storyStartPhase = "story-ready";
       presentControllerState();
       if (
         openingActivationFailureDisposition(
@@ -680,8 +800,57 @@ async function run(): Promise<void> {
     }
   }
 
+  async function startIntroduction(): Promise<void> {
+    if (storyStartPhase !== "welcome") return;
+    if (introductionPromise !== undefined) return introductionPromise;
+    storyStartPhase = "introducing";
+    introductionStopRequested = false;
+    applyVoiceStatePresentation(
+      "processing",
+      "Preparing your companions",
+      voicePresentation,
+    );
+    applyStoryStartPresentation(
+      storyStartPhase,
+      controller.state,
+      preflight.voiceAvailable,
+      storyStartPresentation,
+    );
+    const abort = new AbortController();
+    introductionAbort = abort;
+    const operation = (async () => {
+      const prepared = await coordinator.prepareRoleIntroduction(
+        {
+          interactionId: ROLE_INTRODUCTION_INTERACTION_ID,
+          messages: ROLE_INTRODUCTION,
+        },
+        abort.signal,
+      );
+      if (prepared.outcome === "ready") {
+        const playing = controller.playPrepared(
+          ROLE_INTRODUCTION_INTERACTION_ID,
+        );
+        if (introductionStopRequested) await controller.stop();
+        await playing;
+      }
+      storyStartPhase = "story-ready";
+      presentControllerState();
+      await updateEvidence();
+    })();
+    introductionPromise = operation;
+    try {
+      await operation;
+    } catch {
+      storyStartPhase = "story-ready";
+      presentControllerState();
+    } finally {
+      if (introductionAbort === abort) introductionAbort = undefined;
+    }
+  }
+
   async function primaryAction(): Promise<void> {
-    if (storyStartPhase === "ready") await startStory();
+    if (storyStartPhase === "welcome") await startIntroduction();
+    else if (storyStartPhase === "story-ready") await startStory();
     else if (storyStartPhase === "started") await toggleCapture();
   }
 
@@ -756,6 +925,13 @@ async function run(): Promise<void> {
   }
 
   async function stopActive(): Promise<void> {
+    previewAbort?.abort(new Error("Player stopped the voice sample."));
+    previewAbort = undefined;
+    await previewPlayback?.stop();
+    if (storyStartPhase === "introducing") {
+      introductionStopRequested = true;
+      introductionAbort?.abort(new Error("Player stopped the introduction."));
+    }
     if (storyStartPhase === "starting" || openingNarrationRetryActive) {
       openingStopRequested = true;
       openingAbort?.abort(new Error("Player stopped the story opening."));
@@ -764,11 +940,104 @@ async function run(): Promise<void> {
     await updateEvidence();
   }
 
+  async function previewVoice(
+    role: "guide" | "narrator",
+    port: OpenAiLivePlaybackPort,
+    abort: AbortController,
+  ): Promise<void> {
+    previewGuide.disabled = true;
+    previewNarrator.disabled = true;
+    applyVoiceStatePresentation(
+      "processing",
+      `Preparing ${role} sample`,
+      voicePresentation,
+    );
+    try {
+      await port.play(
+        {
+          narrationId: `voice-preview-${++previewId}`,
+          role,
+          text:
+            role === "guide"
+              ? "I’m your Dungeon Guide. I can clarify your intent without taking over the adventure."
+              : "West of House. You are standing in an open field west of a white house.",
+          sourceEventId: "voice-settings",
+          correlationId: "voice-settings",
+        },
+        abort.signal,
+        {
+          onStarted: () =>
+            applyVoiceStatePresentation(
+              role === "guide" ? "guide-speaking" : "narrator-speaking",
+              `Playing ${role} sample`,
+              voicePresentation,
+            ),
+        },
+      );
+    } finally {
+      if (previewAbort === abort) {
+        previewAbort = undefined;
+        previewGuide.disabled = false;
+        previewNarrator.disabled = false;
+        presentControllerState();
+      }
+    }
+  }
+
+  function startVoicePreview(role: "guide" | "narrator"): void {
+    if (
+      controller.state !== "ready" &&
+      controller.state !== "recoverable-error"
+    ) {
+      applyVoiceStatePresentation(
+        "blocked",
+        "Finish the current voice action first",
+        voicePresentation,
+      );
+      return;
+    }
+    previewAbort?.abort(new Error("A new voice sample was requested."));
+    void previewPlayback?.stop();
+    const port = new OpenAiLivePlaybackPort({
+      sessionToken: token,
+      speechPreference: (previewRole) =>
+        openAiSpeechPreferenceForRole(voicePreferences, previewRole),
+    });
+    const abort = new AbortController();
+    previewPlayback = port;
+    previewAbort = abort;
+    port.activateFromUserGesture();
+    runControl(() => previewVoice(role, port, abort));
+  }
+
   function runControl(operation: () => Promise<unknown>): void {
     void operation().catch(() => {
       applyVoiceStatePresentation("blocked", "Try again", voicePresentation);
     });
   }
+
+  const modalOpenChanged = (): void => runControl(updateEvidence);
+  createModalController({
+    dialog: transcriptPanel,
+    trigger: transcriptButton,
+    closeButton: transcriptCloseButton,
+    reducedMotion,
+    onOpenChange: modalOpenChanged,
+  });
+  createModalController({
+    dialog: settingsPanel,
+    trigger: settingsButton,
+    closeButton: settingsCloseButton,
+    reducedMotion,
+    onOpenChange: modalOpenChanged,
+  });
+  createModalController({
+    dialog: debugPanel,
+    trigger: debugButton,
+    closeButton: debugCloseButton,
+    reducedMotion,
+    onOpenChange: modalOpenChanged,
+  });
 
   projection = {
     ...projection,
@@ -797,18 +1066,25 @@ async function run(): Promise<void> {
     controller.activatePlaybackFromUserGesture();
     runControl(repeatLastNarration);
   });
-  transcriptButton.addEventListener("click", () => {
-    transcriptPanel.hidden = !transcriptPanel.hidden;
-    transcriptButton.setAttribute(
-      "aria-expanded",
-      String(!transcriptPanel.hidden),
-    );
-    runControl(updateEvidence);
+  guideVoice.addEventListener("change", () =>
+    updateVoicePreferences({ guideVoice: guideVoice.value as OpenAiTtsVoice }),
+  );
+  narratorVoice.addEventListener("change", () =>
+    updateVoicePreferences({
+      narratorVoice: narratorVoice.value as OpenAiTtsVoice,
+    }),
+  );
+  guideRate.addEventListener("input", () =>
+    updateVoicePreferences({ guideRate: Number(guideRate.value) }),
+  );
+  narratorRate.addEventListener("input", () =>
+    updateVoicePreferences({ narratorRate: Number(narratorRate.value) }),
+  );
+  previewGuide.addEventListener("click", () => {
+    startVoicePreview("guide");
   });
-  debugButton.addEventListener("click", () => {
-    debugPanel.hidden = !debugPanel.hidden;
-    debugButton.setAttribute("aria-expanded", String(!debugPanel.hidden));
-    runControl(updateEvidence);
+  previewNarrator.addEventListener("click", () => {
+    startVoicePreview("narrator");
   });
   textForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -836,7 +1112,12 @@ async function run(): Promise<void> {
         runControl(toggleCapture);
       }
     }
-    if (event.code === "Escape") runControl(stopActive);
+    if (
+      event.code === "Escape" &&
+      document.querySelector("dialog[open]") === null
+    ) {
+      runControl(stopActive);
+    }
   });
 }
 
@@ -868,8 +1149,8 @@ function publishStartupFailure(): void {
     turns: 0,
     finalRevision: 0,
     eventTypes: [],
-    transcriptHidden: transcriptPanel?.hidden !== false,
-    debugHidden: debugPanel?.hidden !== false,
+    transcriptHidden: !(transcriptPanel?.hasAttribute("open") ?? false),
+    debugHidden: !(debugPanel?.hasAttribute("open") ?? false),
     errorCode: "startup-failed",
   };
   window.__OPENAI_LIVE_SMOKE__ = evidence;

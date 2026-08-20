@@ -49,15 +49,117 @@ describe("voice shell accessibility markup", () => {
     expect(css).toMatch(/\.action-log \{[\s\S]*?max-height:/u);
     expect(css).toMatch(/\.action-log \{[\s\S]*?overflow-y: auto;/u);
     expect(css).toMatch(
-      /\.action-log::before \{[\s\S]*?content: "Recent game commands";/u,
+      /\.action-log::before \{[\s\S]*?content: "Recent commands";/u,
     );
     expect(css).toMatch(
-      /\.action-log__item \{[\s\S]*?justify-content: center;/u,
+      /\.action-log__item \{[\s\S]*?justify-content: flex-start;/u,
     );
-    expect(css).toMatch(/\.action-log__item \{[^}]*color: #aeb8b0;/u);
+    expect(css).toMatch(
+      /\.action-log__item \{[^}]*color: rgb\(174 184 176 \/ 66%\);/u,
+    );
     expect(css).toMatch(/\.action-log__item\[data-state="requested"\] \{/u);
     expect(css).not.toMatch(/\.action-log__item \{[^}]*opacity:/u);
     expect(css).toMatch(/\.action-log:focus-visible \{/u);
+    expect(css).toMatch(
+      /#voice-shell:has\(\.activity-indicator\[data-state="idle"\]\) #status/u,
+    );
+  });
+
+  it("separates contextual playback actions from optional utilities", async () => {
+    for (const path of [
+      "apps/web/openai-live-smoke.html",
+      "apps/web/voice-shell-smoke.html",
+    ]) {
+      const html = await readFile(new URL(path, repositoryRoot), "utf8");
+      expect(html).toMatch(
+        /class="session-actions" role="group" aria-label="Playback"[\s\S]*?id="stop"[\s\S]*?id="pause"[\s\S]*?id="repeat"/u,
+      );
+      expect(html).toMatch(
+        /<\/main>\s*<footer class="app-footer">[\s\S]*?<nav class="utility-actions" aria-label="More options"/u,
+      );
+      expect(html).toMatch(
+        /id="transcript-panel"[\s\S]*?aria-modal="true"[\s\S]*?id="close-transcript"/u,
+      );
+      expect(html).toMatch(
+        /id="debug-panel"[\s\S]*?aria-modal="true"[\s\S]*?id="close-debug"[\s\S]*?id="debug-content"/u,
+      );
+    }
+    const css = await readFile(
+      new URL("apps/web/voice-shell.css", repositoryRoot),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.session-actions button:disabled \{\s*display: none;/u,
+    );
+    expect(css).toMatch(/\.utility-actions \{[\s\S]*?border-radius: 999px;/u);
+    expect(css).toMatch(/\.app-footer \{[\s\S]*?position: fixed;/u);
+    expect(css).toMatch(/dialog\.utility-modal \{[\s\S]*?opacity: 0;/u);
+  });
+
+  it("keeps a visual narrator line and bounded muted history separate from the accessible transcript", async () => {
+    for (const path of [
+      "apps/web/openai-live-smoke.html",
+      "apps/web/voice-shell-smoke.html",
+    ]) {
+      const html = await readFile(new URL(path, repositoryRoot), "utf8");
+      expect(html).toMatch(
+        /id="spoken-transcript"[^>]*aria-hidden="true"[^>]*hidden/u,
+      );
+      expect(html).toContain('id="spoken-line"');
+      expect(html).toContain('id="spoken-history"');
+    }
+    const css = await readFile(
+      new URL("apps/web/voice-shell.css", repositoryRoot),
+      "utf8",
+    );
+    expect(css).toMatch(/\.spoken-word\.is-visible \{[\s\S]*?opacity: 1;/u);
+    expect(css).toMatch(/\.spoken-history \{[\s\S]*?overflow: auto;/u);
+    expect(css).toMatch(/\.spoken-history li \{[\s\S]*?color:/u);
+    expect(css).toMatch(
+      /#voice-shell:has\(\.spoken-transcript:not\(\[hidden\]\)\) \.activity-indicator \{\s*display: none;/u,
+    );
+    expect(css).toMatch(
+      /#voice-shell:has\(\.spoken-transcript:not\(\[hidden\]\)\) \.status-feedback \{\s*min-height: 0;/u,
+    );
+    expect(css).toMatch(
+      /\.spoken-transcript\[data-playback-state="settled"\] \{[\s\S]*?min-height: 0;[\s\S]*?align-content: start;/u,
+    );
+    expect(css).toMatch(
+      /#voice-shell:has\(\.activity-indicator\[data-state="processing"\]\) #status \{[\s\S]*?font-size: 0\.72rem;[\s\S]*?text-transform: uppercase;/u,
+    );
+  });
+
+  it("keeps voice preferences optional, labeled, and transparent", async () => {
+    const html = await readFile(
+      new URL("apps/web/openai-live-smoke.html", repositoryRoot),
+      "utf8",
+    );
+    expect(html).toMatch(/id="toggle-settings"[^>]*aria-expanded="false"/u);
+    expect(html).toMatch(
+      /id="toggle-settings"[^>]*aria-controls="settings-panel"/u,
+    );
+    expect(html).toMatch(
+      /<dialog[\s\S]*?id="settings-panel"[\s\S]*?aria-labelledby="settings-heading"[\s\S]*?aria-modal="true"/u,
+    );
+    expect(html).toContain('aria-label="Close voice preferences"');
+    expect(html).toContain("These are AI-generated voices.");
+    expect(html).toContain("Samples make a billable speech request.");
+    for (const id of [
+      "guide-voice",
+      "guide-rate",
+      "narrator-voice",
+      "narrator-rate",
+    ]) {
+      expect(html).toContain(`for="${id}"`);
+      expect(html).toContain(`id="${id}"`);
+    }
+    const css = await readFile(
+      new URL("apps/web/voice-shell.css", repositoryRoot),
+      "utf8",
+    );
+    expect(css).toMatch(/dialog\.utility-modal\[open\] \{[\s\S]*?opacity: 1;/u);
+    expect(css).toMatch(/dialog\.utility-modal::backdrop \{/u);
+    expect(css).toMatch(/dialog\.utility-modal\.is-closing \{/u);
   });
 
   it("disables every decorative animation for reduced motion", async () => {
@@ -106,17 +208,15 @@ describe("voice shell accessibility markup", () => {
       "utf8",
     );
     expect(css).toMatch(
-      /#voice-shell\[data-story-phase="ready"\] \.status-feedback::before \{/u,
+      /#voice-shell\[data-story-phase="welcome"\] \.status-feedback::before \{/u,
     );
     expect(css).toMatch(
-      /#voice-shell\[data-story-phase="ready"\] #status,[\s\S]*?transition: none;/u,
+      /#voice-shell\[data-story-phase="welcome"\] #status \{[\s\S]*?transition: none;/u,
     );
     expect(css).toMatch(
       /\.status-stage \{[\s\S]*?transform: translateY\(0\.45rem\);/u,
     );
-    expect(css).toMatch(
-      /\.primary-action \{[\s\S]*?transform: translateY\(0\.3rem\);/u,
-    );
+    expect(css).toMatch(/\.primary-action \{[\s\S]*?margin-top: 0\.3rem;/u);
     expect(css).toMatch(/animation: wayfinder-turn 32s linear infinite;/u);
     expect(css).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation: none !important;/u,

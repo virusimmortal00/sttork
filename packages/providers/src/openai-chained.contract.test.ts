@@ -5,6 +5,7 @@ import type { ProviderAdapterError } from "./contracts.js";
 import {
   OPENAI_CHAINED_PROFILE_2026_08_18,
   OPENAI_CHAINED_PROFILE_2026_08_19,
+  normalizeOpenAiNarrationDelivery,
   OpenAiChainedProvider,
 } from "./openai-chained.js";
 
@@ -93,6 +94,32 @@ describe("OpenAiChainedProvider", () => {
     expect(body).toBeInstanceOf(FormData);
     expect((body as FormData).get("model")).toBe("gpt-transcribe");
     expect(usage).toHaveBeenCalledOnce();
+  });
+
+  it("forwards only bounded transcription context in provider form fields", async () => {
+    let body: FormData | undefined;
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async (_input, init) => {
+        body = init?.body as FormData;
+        return jsonResponse({ text: "open mailbox", languages: [] });
+      },
+    });
+
+    await provider.transcribe(
+      new Uint8Array([1]),
+      "audio/webm",
+      new AbortController().signal,
+      {
+        prompt: "One short interactive-fiction command.",
+        keywords: ["open", "mailbox"],
+        languages: ["en"],
+      },
+    );
+
+    expect(body?.get("prompt")).toBe("One short interactive-fiction command.");
+    expect(body?.getAll("keywords[]")).toEqual(["open", "mailbox"]);
+    expect(body?.getAll("languages[]")).toEqual(["en"]);
   });
 
   it("preserves multiple detected languages without collapsing them", async () => {
@@ -897,6 +924,8 @@ describe("OpenAiChainedProvider", () => {
         model: "gpt-4o-mini-tts",
         voice: "nova",
         input: "Which door?",
+        instructions:
+          "Speak warmly and conversationally with clear diction and concise, grounded delivery. Do not add or omit words.",
         response_format: "mp3",
         speed: 1,
       },
@@ -904,17 +933,79 @@ describe("OpenAiChainedProvider", () => {
         model: "gpt-4o-mini-tts",
         voice: "onyx",
         input: "Exact game prose.\n\n> ",
+        instructions:
+          "Use measured classic adventure narration with clear diction and restrained drama. Do not add, omit, or paraphrase words.",
         response_format: "mp3",
         speed: 1,
       },
     ]);
-    expect([...guide.bytes]).toEqual([9, 8, 7]);
-    expect([...narrator.bytes]).toEqual([9, 8, 7]);
+    expect([
+      ...new Uint8Array(await new Response(guide.body).arrayBuffer()),
+    ]).toEqual([9, 8, 7]);
+    expect([
+      ...new Uint8Array(await new Response(narrator.body).arrayBuffer()),
+    ]).toEqual([9, 8, 7]);
     expect(guide.usage).toMatchObject({
       capability: "narration",
       model: "gpt-4o-mini-tts",
       inputCharacters: 11,
     });
+  });
+
+  it("pronounces the exact Zork I title as Zork One without changing canonical text", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async (_input, init) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        });
+      },
+    });
+    const exact = "ZORK I: The Great Underground Empire\n\nWest of House";
+
+    await provider.synthesize(exact, "narrator", new AbortController().signal);
+
+    expect(requestBody?.input).toBe(
+      "ZORK One: The Great Underground Empire\n\nWest of House",
+    );
+    expect(exact).toBe("ZORK I: The Great Underground Empire\n\nWest of House");
+    expect(normalizeOpenAiNarrationDelivery(exact, "guide")).toBe(exact);
+    expect(
+      normalizeOpenAiNarrationDelivery(
+        "ZORK I: An unrelated line\nI am here.",
+        "narrator",
+      ),
+    ).toBe("ZORK I: An unrelated line\nI am here.");
+  });
+
+  it("pads the authenticated opening location heading without adding prose", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async (_input, init) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        });
+      },
+    });
+    const exact =
+      "ZORK I: The Great Underground Empire\n\nWest of House\nYou are standing in an open field west of a white house, with a boarded front door.\nThere is a small mailbox here.";
+
+    await provider.synthesize(exact, "narrator", new AbortController().signal);
+
+    expect(requestBody?.input).toBe(
+      "ZORK One: The Great Underground Empire\n\nWest of House.\n\nYou are standing in an open field west of a white house, with a boarded front door.\nThere is a small mailbox here.",
+    );
+    expect(exact).toContain("West of House\nYou are standing");
+    expect(
+      normalizeOpenAiNarrationDelivery(
+        "West of House\nThis is unrelated prose.",
+        "narrator",
+      ),
+    ).toBe("West of House\nThis is unrelated prose.");
   });
 
   it("takes role voice IDs from the provider profile", async () => {
@@ -923,6 +1014,7 @@ describe("OpenAiChainedProvider", () => {
       apiKey: testKey,
       profile: {
         ...OPENAI_CHAINED_PROFILE_2026_08_18,
+        narrationVoices: ["guide-test-voice", "narrator-test-voice"],
         guideVoice: "guide-test-voice",
         narratorVoice: "narrator-test-voice",
       },
@@ -949,6 +1041,30 @@ describe("OpenAiChainedProvider", () => {
       expect.objectContaining({ voice: "guide-test-voice" }),
       expect.objectContaining({ voice: "narrator-test-voice" }),
     ]);
+  });
+
+  it("applies allowlisted per-request voice and rate preferences", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async (_input, init) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        });
+      },
+    });
+
+    await provider.synthesize(
+      "Guide response.",
+      "guide",
+      new AbortController().signal,
+      { voice: "marin", speed: 1.15 },
+    );
+
+    expect(requestBody).toEqual(
+      expect.objectContaining({ voice: "marin", speed: 1.15 }),
+    );
   });
 
   it("rejects an unsafe configured voice before a provider request", async () => {

@@ -420,7 +420,7 @@ async function serveApi(
     if (method !== "GET" && method !== "HEAD") {
       const maximum =
         pathname === "/api/live/openai/transcribe"
-          ? audioRequestLimit
+          ? audioRequestLimit + jsonRequestLimit
           : jsonRequestLimit;
       const body = await readBoundedRequestBody(request, maximum);
       requestInit.body = Uint8Array.from(body).buffer;

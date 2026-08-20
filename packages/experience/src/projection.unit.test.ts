@@ -133,6 +133,51 @@ function appendOpeningPreparation(sequence: EventSequence) {
 }
 
 describe("experience projection", () => {
+  it("keeps authored Guide and Narrator introductions attributed in transcript order", () => {
+    let id = 0;
+    const sequence = new EventSequence({
+      sessionId: "introduction",
+      now: () => "2026-08-20T12:00:00.000Z",
+      nextId: () => `intro-event-${++id}`,
+    });
+    const events = [
+      sequence.append({
+        type: "experience.role-introduction",
+        correlationId: "role-introduction",
+        visibility: "accessible",
+        payload: {
+          role: "guide" as const,
+          text: "I am your guide.",
+          position: 1,
+          total: 2,
+          retention: "session-only" as const,
+        },
+      }),
+      sequence.append({
+        type: "experience.role-introduction",
+        correlationId: "role-introduction",
+        visibility: "accessible",
+        payload: {
+          role: "narrator" as const,
+          text: "I speak for the story.",
+          position: 2,
+          total: 2,
+          retention: "session-only" as const,
+        },
+      }),
+    ];
+
+    const projection = projectExperience(events);
+
+    expect(
+      projection.transcript.map(({ role, text }) => ({ role, text })),
+    ).toEqual([
+      { role: "guide", text: "I am your guide." },
+      { role: "narrator", text: "I speak for the story." },
+    ]);
+    expect(projection.storyStartPhase).toBe("ready");
+  });
+
   it("replays exact attributed transcript and audio delivery state", () => {
     const events = fixtureEvents();
     const projection = projectExperience(events);

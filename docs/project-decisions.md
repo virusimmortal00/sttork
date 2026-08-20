@@ -74,6 +74,10 @@ spoken excerpt for `START STORY`. The excerpt is bound to the exact story ID,
 artifact hash, and known opening; any mismatch speaks the full output. No model
 or provider summarizes it, and ordinary command-result narration remains exact.
 
+[ADR-0017](adr/0017-authored-role-introduction-before-story-start.md) precedes
+that canonical opening with a fixed, attributed Guide and Narrator welcome. Its
+terminal outcome exposes `THE STORY BEGINS`; it never touches engine state.
+
 ### Provider-neutral core
 
 Game state, guide policy, command grounding, event history, saves, and tests do
@@ -193,6 +197,11 @@ an undocumented workaround.
   preference before settling this presentation choice.
 - What measured latency and cost budgets are achievable on representative
   desktop and mobile networks?
+- Does the developer-smoke visual narration experiment improve comprehension
+  enough to justify revising ADR-0013's quiet-screen contract? Its estimated
+  word cadence, bounded muted line stack, mobile layout, reduced-motion mode,
+  and relationship to user-enabled captions require device and accessibility
+  evidence before it can become a default surface.
 - Which project name can be used without implying trademark sponsorship?
 
 Resolve these questions with prototypes, measurements, license review, or user

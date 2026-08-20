@@ -62,6 +62,18 @@ revision-zero `engine.output`. Repeat retains and reuses that same selected
 text; it does not rerun a model, select a different excerpt, republish engine
 output, or advance the engine.
 
+The provider boundary applies one documented pronunciation normalization to that
+otherwise unchanged request: the exact whole title line
+`ZORK I: The Great Underground Empire` is supplied to narrator synthesis as
+`ZORK One: The Great Underground Empire`. This prevents probabilistic
+letter-versus-number readings. For this same authenticated opening, it also
+supplies the standalone `West of House` heading with terminal punctuation and a
+blank line before the room description. That punctuation-only padding gives the
+location heading its own short beat without adding connective prose. Both
+mappings are exact-line and narrator-only; they do not alter
+`narration.requested`, engine output, visible text, Guide speech, near matches,
+or unrelated uses of `I`.
+
 Ordinary command-result narration remains exact. This decision is a narrow
 first-run presentation exception, not permission to summarize parser responses
 or later game prose.
@@ -101,7 +113,11 @@ Hermetic tests must prove the exact Release 119 tuple selects exactly the
 output, and no input is partially matched or normalized. Integration and replay
 tests must prove one full revision-zero `engine.output`, one
 `narration.requested` containing the actual selected text and linked source ID,
-no command or revision advance, and identical selected text on Repeat.
+no command or revision advance, and identical selected text on Repeat. Provider
+contract coverage must prove only the exact narrator title receives the
+`I`-to-`One` pronunciation mapping, only the authenticated opening location and
+description pair receives punctuation padding, and near matches remain
+unchanged.
 
 Accessibility tests must prove the full exact opening remains available when the
 player cannot hear the excerpt. A future manual browser smoke should record that

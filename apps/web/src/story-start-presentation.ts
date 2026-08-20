@@ -1,8 +1,8 @@
 import type { VoiceAudioState } from "../../../packages/audio/src/index.js";
-import type { StoryStartPhase } from "../../../packages/experience/src/index.js";
 import type { OpeningNarrationResult } from "../../../packages/session/src/index.js";
 
-export type { StoryStartPhase } from "../../../packages/experience/src/index.js";
+export type StoryStartPhase =
+  "welcome" | "introducing" | "story-ready" | "starting" | "started";
 
 export interface OpeningPreparationDisposition {
   readonly retryAvailable: boolean;
@@ -51,16 +51,26 @@ export function applyStoryStartPresentation(
 ): void {
   elements.shell.dataset.storyPhase = phase;
   if (phase !== "started") {
-    elements.primaryButton.textContent = "BEGIN";
-    elements.primaryButton.setAttribute("aria-label", "Start story");
+    const introducing = phase === "introducing";
+    const storyGate = phase === "story-ready" || phase === "starting";
+    elements.primaryButton.textContent = storyGate
+      ? "THE STORY BEGINS"
+      : introducing
+        ? "LISTEN"
+        : "ENTER";
+    elements.primaryButton.setAttribute(
+      "aria-label",
+      storyGate ? "Start story" : "Meet your guide and narrator",
+    );
     elements.primaryButton.removeAttribute("aria-pressed");
-    elements.primaryButton.disabled = phase === "starting";
-    elements.stopButton.disabled = phase !== "starting";
+    elements.primaryButton.disabled = introducing || phase === "starting";
+    elements.stopButton.disabled = !introducing && phase !== "starting";
     elements.pauseButton.disabled = true;
     elements.repeatButton.disabled = true;
     elements.textInput.disabled = true;
     elements.textSubmitButton.disabled = true;
-    elements.primaryCue.textContent = "Use Start story to hear the opening.";
+    elements.primaryCue.textContent =
+      phase === "story-ready" ? "Begin the adventure." : "";
     return;
   }
 
@@ -78,11 +88,17 @@ export function applyStoryStartPresentation(
   );
   elements.primaryButton.setAttribute("aria-pressed", String(listening));
   elements.primaryButton.disabled = !voiceAvailable || captureBusy;
-  elements.stopButton.disabled = false;
-  elements.pauseButton.disabled = false;
-  elements.repeatButton.disabled = false;
   const textReady =
     voiceState === "ready" || voiceState === "recoverable-error";
+  const active =
+    voiceState === "requesting-microphone" ||
+    voiceState === "listening" ||
+    voiceState === "processing" ||
+    voiceState === "guide-speaking" ||
+    voiceState === "narrator-speaking";
+  elements.stopButton.disabled = !active;
+  elements.pauseButton.disabled = !active && voiceState !== "paused";
+  elements.repeatButton.disabled = !textReady;
   elements.textInput.disabled = !textReady;
   elements.textSubmitButton.disabled = !textReady;
   elements.primaryCue.textContent = "or press V";

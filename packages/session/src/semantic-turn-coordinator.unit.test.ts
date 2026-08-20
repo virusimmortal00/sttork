@@ -202,6 +202,49 @@ const turn = {
 } as const;
 
 describe("SemanticTurnCoordinator", () => {
+  it("prepares an attributed authored introduction without touching the engine", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const published: SemanticEvent[] = [];
+    const subject = coordinator(engine, narrator, undefined, (event) =>
+      published.push(event),
+    );
+    const input = {
+      interactionId: "role-introduction",
+      messages: [
+        { role: "guide" as const, text: "I am your guide." },
+        { role: "narrator" as const, text: "I speak for the story." },
+      ],
+    };
+
+    const [first, duplicate] = await Promise.all([
+      subject.prepareRoleIntroduction(input, new AbortController().signal),
+      subject.prepareRoleIntroduction(input, new AbortController().signal),
+    ]);
+
+    expect(first.outcome).toBe("ready");
+    expect(duplicate).toEqual(first);
+    expect(engine.inspectCalls).toBe(0);
+    expect(engine.executeCalls).toEqual([]);
+    expect(narrator.requests.map(({ role, text }) => ({ role, text }))).toEqual(
+      input.messages,
+    );
+    expect(published.map((event) => event.type)).toEqual([
+      "experience.role-introduction",
+      "narration.requested",
+      "narration.ready",
+      "experience.role-introduction",
+      "narration.requested",
+      "narration.ready",
+    ]);
+    expect(published[0]?.payload).toMatchObject({
+      role: "guide",
+      position: 1,
+      total: 2,
+      retention: "session-only",
+    });
+  });
+
   it("publishes and prepares the exact authenticated opening once", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();

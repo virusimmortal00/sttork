@@ -19,9 +19,21 @@ export interface ProviderTranscription {
   readonly usage: ProviderUsage;
 }
 
+export interface ProviderTranscriptionContext {
+  readonly prompt?: string;
+  readonly keywords?: readonly string[];
+  readonly languages?: readonly string[];
+}
+
+export interface ProviderSpeechOptions {
+  readonly voice?: string;
+  readonly speed?: number;
+}
+
 export interface ProviderSpeech {
-  readonly bytes: Uint8Array;
+  readonly body: ReadableStream<Uint8Array>;
   readonly mediaType: string;
+  readonly contentLength?: number;
   readonly usage: ProviderUsage;
 }
 

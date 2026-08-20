@@ -568,6 +568,7 @@ export class BrowserMicrophoneCapturePort implements CapturePort {
 export interface OpenAiLiveTranscriberOptions {
   readonly sessionToken: string;
   readonly store: CapturedAudioBlobStore;
+  readonly observedObjects?: () => readonly string[];
   readonly fetch?: typeof fetch;
   readonly maxAudioBytes?: number;
   readonly maxResponseBytes?: number;
@@ -576,6 +577,7 @@ export interface OpenAiLiveTranscriberOptions {
 export class OpenAiLiveTranscriber implements TranscriberPort {
   readonly #sessionToken: string;
   readonly #store: CapturedAudioBlobStore;
+  readonly #observedObjects: () => readonly string[];
   readonly #fetch: typeof fetch;
   readonly #maxAudioBytes: number;
   readonly #maxResponseBytes: number;
@@ -583,6 +585,7 @@ export class OpenAiLiveTranscriber implements TranscriberPort {
   public constructor(options: OpenAiLiveTranscriberOptions) {
     this.#sessionToken = boundedSessionToken(options.sessionToken);
     this.#store = options.store;
+    this.#observedObjects = options.observedObjects ?? (() => []);
     this.#fetch = options.fetch ?? globalThis.fetch;
     this.#maxAudioBytes = boundedInteger(
       options.maxAudioBytes ?? DEFAULT_MAX_AUDIO_BYTES,
@@ -621,14 +624,29 @@ export class OpenAiLiveTranscriber implements TranscriberPort {
         "Captured audio could not be transcribed safely.",
       );
     }
-    const mediaType = normalizedAudioMediaType(blob.type);
+    normalizedAudioMediaType(blob.type);
+    const body = new FormData();
+    body.set("audio", blob, "turn-audio");
+    const objects = this.#observedObjects();
+    if (!Array.isArray(objects) || objects.length > 32) {
+      throw new OpenAiLiveAudioError(
+        "invalid-input",
+        "Observed transcription vocabulary exceeded its configured limit.",
+      );
+    }
+    for (const object of [...new Set(objects)]) {
+      body.append(
+        "observedObjects[]",
+        boundedText(object, "observed transcription object", 80, false),
+      );
+    }
     const response = await safeFetch(
       this.#fetch,
       TRANSCRIBE_PATH,
       {
         method: "POST",
-        headers: liveHeaders(this.#sessionToken, mediaType),
-        body: blob,
+        headers: liveHeaders(this.#sessionToken),
+        body,
       },
       signal,
     );
@@ -929,11 +947,43 @@ export interface OpenAiLivePlaybackPortOptions {
   readonly playbackStartTimeoutMs?: number;
   readonly maxRequestBytes?: number;
   readonly maxResponseBytes?: number;
+  readonly speechPreference?: (
+    role: "guide" | "narrator",
+  ) => OpenAiLiveSpeechPreference;
+  readonly prepareAudioSource?: LiveAudioSourceFactory;
 }
+
+export interface OpenAiLiveSpeechPreference {
+  readonly voice: string;
+  readonly speed: number;
+}
+
+export interface PreparedLiveAudioSource {
+  readonly objectUrl: string;
+  readonly completion: Promise<void>;
+  readonly cacheBlob?: () => Blob;
+  readonly cancel: () => void;
+}
+
+export type LiveAudioSourceFactory = (
+  response: Response,
+  mediaType: string,
+  signal: AbortSignal,
+  maximumBytes: number,
+) => Promise<PreparedLiveAudioSource>;
 
 interface ActivePlayback {
   readonly abort: AbortController;
   objectUrl: string | undefined;
+  cancelSource: (() => void) | undefined;
+}
+
+interface CachedPlayback {
+  readonly role: "guide" | "narrator";
+  readonly text: string;
+  readonly voice: string;
+  readonly speed: number;
+  readonly blob: Blob;
 }
 
 type PlaybackActivationState =
@@ -970,9 +1020,15 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
   readonly #playbackStartTimeoutMs: number;
   readonly #maxRequestBytes: number;
   readonly #maxResponseBytes: number;
+  readonly #speechPreference: (
+    role: "guide" | "narrator",
+  ) => OpenAiLiveSpeechPreference;
+  readonly #prepareAudioSource: LiveAudioSourceFactory;
   #activation: PlaybackActivationState = { phase: "idle" };
   #activationObjectUrl: string | undefined;
   #active: ActivePlayback | undefined;
+  #cached: CachedPlayback | undefined;
+  #synthesisRequests = 0;
 
   public constructor(options: OpenAiLivePlaybackPortOptions) {
     this.#sessionToken = boundedSessionToken(options.sessionToken);
@@ -1012,6 +1068,26 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       1,
       DEFAULT_MAX_SPEECH_BYTES,
     );
+    this.#speechPreference =
+      options.speechPreference ??
+      ((role) => ({
+        voice: role === "guide" ? "nova" : "onyx",
+        speed: 1,
+      }));
+    this.#prepareAudioSource =
+      options.prepareAudioSource ??
+      ((response, mediaType, signal, maximumBytes) =>
+        prepareLiveAudioSource(
+          response,
+          mediaType,
+          signal,
+          maximumBytes,
+          this.#createObjectUrl,
+        ));
+  }
+
+  public get synthesisRequests(): number {
+    return this.#synthesisRequests;
   }
 
   /**
@@ -1100,6 +1176,18 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
     boundedId(request.narrationId, "narration");
     boundedId(request.correlationId, "correlation");
     boundedId(request.sourceEventId, "source event");
+    const preference = this.#speechPreference(request.role);
+    const voice = boundedText(preference.voice, "speech voice", 100, false);
+    if (
+      !Number.isFinite(preference.speed) ||
+      preference.speed < 0.75 ||
+      preference.speed > 1.25
+    ) {
+      throw new OpenAiLiveAudioError(
+        "invalid-input",
+        "Speech rate was outside the supported preference range.",
+      );
+    }
     const body = encodeJson(
       {
         text: boundedText(
@@ -1109,12 +1197,16 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
           true,
         ),
         role: request.role,
+        voice,
+        speed: Math.round(preference.speed * 100) / 100,
       },
       this.#maxRequestBytes,
     );
+    const speed = Math.round(preference.speed * 100) / 100;
     const active: ActivePlayback = {
       abort: new AbortController(),
       objectUrl: undefined,
+      cancelSource: undefined,
     };
     this.#active = active;
     const abort = () => active.abort.abort(signal.reason);
@@ -1132,45 +1224,74 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
           "Audio playback requires a player gesture.",
         );
       }
-      const response = await safeFetch(
-        this.#fetch,
-        SPEECH_PATH,
-        {
-          method: "POST",
-          headers: liveHeaders(this.#sessionToken, "application/json"),
-          body,
-        },
-        active.abort.signal,
-      );
-      const mediaType = response.headers.get("content-type")?.split(";", 1)[0];
-      if (mediaType === undefined || !mediaType.startsWith("audio/")) {
-        throw new OpenAiLiveAudioError(
-          "malformed-response",
-          "The speech response did not contain audio.",
+      const cached = this.#matchingCache(request, voice, speed);
+      let source: PreparedLiveAudioSource;
+      if (cached === undefined) {
+        this.#synthesisRequests += 1;
+        const response = await safeFetch(
+          this.#fetch,
+          SPEECH_PATH,
+          {
+            method: "POST",
+            headers: liveHeaders(this.#sessionToken, "application/json"),
+            body,
+          },
+          active.abort.signal,
         );
+        const mediaType = response.headers
+          .get("content-type")
+          ?.split(";", 1)[0];
+        if (mediaType === undefined || !mediaType.startsWith("audio/")) {
+          throw new OpenAiLiveAudioError(
+            "malformed-response",
+            "The speech response did not contain audio.",
+          );
+        }
+        source = await this.#prepareAudioSource(
+          response,
+          mediaType,
+          active.abort.signal,
+          this.#maxResponseBytes,
+        );
+      } else {
+        source = {
+          objectUrl: this.#createObjectUrl(cached.blob),
+          completion: Promise.resolve(),
+          cacheBlob: () => cached.blob,
+          cancel: () => undefined,
+        };
       }
-      const bytes = await readBoundedBody(response, this.#maxResponseBytes);
-      const objectUrl = this.#createObjectUrl(
-        new Blob([bytes.buffer], { type: mediaType }),
-      );
-      active.objectUrl = objectUrl;
+      active.objectUrl = source.objectUrl;
+      active.cancelSource = source.cancel;
       this.#audio.pause();
-      this.#audio.src = objectUrl;
+      this.#audio.src = source.objectUrl;
       this.#discardActivationObjectUrl();
       try {
-        await playUntilEnded(
-          this.#audio,
-          active.abort.signal,
-          {
-            onStarted: () => {
-              this.#markPlaybackAuthorized();
-              lifecycle.onStarted();
+        await Promise.all([
+          playUntilEnded(
+            this.#audio,
+            active.abort.signal,
+            {
+              onStarted: () => {
+                this.#markPlaybackAuthorized();
+                lifecycle.onStarted();
+              },
             },
-          },
-          this.#playbackStartTimeoutMs,
-          this.#schedule,
-          this.#cancelScheduled,
-        );
+            this.#playbackStartTimeoutMs,
+            this.#schedule,
+            this.#cancelScheduled,
+          ),
+          source.completion,
+        ]);
+        if (cached === undefined && source.cacheBlob !== undefined) {
+          this.#cached = {
+            role: request.role,
+            text: request.text,
+            voice,
+            speed,
+            blob: source.cacheBlob(),
+          };
+        }
       } catch (error) {
         if (
           error instanceof OpenAiLiveAudioError &&
@@ -1202,7 +1323,24 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
     this.#disposePlayback(active);
   }
 
+  #matchingCache(
+    request: NarrationRequest,
+    voice: string,
+    speed: number,
+  ): CachedPlayback | undefined {
+    const cached = this.#cached;
+    return cached !== undefined &&
+      cached.role === request.role &&
+      cached.text === request.text &&
+      cached.voice === voice &&
+      cached.speed === speed
+      ? cached
+      : undefined;
+  }
+
   #disposePlayback(active: ActivePlayback): void {
+    active.cancelSource?.();
+    active.cancelSource = undefined;
     if (active.objectUrl !== undefined) {
       this.#audio.pause();
       this.#revokeObjectUrl(active.objectUrl);
@@ -1391,9 +1529,9 @@ function stopTracks(stream: LiveMediaStream): void {
   for (const track of stream.getTracks()) track.stop();
 }
 
-function liveHeaders(sessionToken: string, contentType: string): Headers {
+function liveHeaders(sessionToken: string, contentType?: string): Headers {
   return new Headers({
-    "content-type": contentType,
+    ...(contentType === undefined ? {} : { "content-type": contentType }),
     [SESSION_HEADER]: sessionToken,
   });
 }
@@ -1487,6 +1625,204 @@ async function readLiveFailureCode(
     await response.body?.cancel().catch(() => undefined);
     return "provider-rejected";
   }
+}
+
+async function prepareLiveAudioSource(
+  response: Response,
+  mediaType: string,
+  signal: AbortSignal,
+  maximumBytes: number,
+  createObjectUrl: (blob: Blob) => string,
+): Promise<PreparedLiveAudioSource> {
+  const declaredValue = response.headers.get("content-length");
+  if (declaredValue !== null) {
+    const declared = Number(declaredValue);
+    if (
+      !Number.isSafeInteger(declared) ||
+      declared <= 0 ||
+      declared > maximumBytes
+    ) {
+      throw new OpenAiLiveAudioError(
+        "malformed-response",
+        "The live provider response size was invalid.",
+      );
+    }
+  }
+
+  if (
+    mediaType === "audio/mpeg" &&
+    typeof MediaSource === "function" &&
+    MediaSource.isTypeSupported(mediaType) &&
+    response.body !== null
+  ) {
+    return prepareMediaSourceAudio(
+      response.body,
+      mediaType,
+      signal,
+      maximumBytes,
+    );
+  }
+
+  const bytes = await readBoundedBody(response, maximumBytes);
+  const blob = new Blob([bytes.buffer], { type: mediaType });
+  const objectUrl = createObjectUrl(blob);
+  return {
+    objectUrl,
+    completion: Promise.resolve(),
+    cacheBlob: () => blob,
+    cancel: () => undefined,
+  };
+}
+
+function prepareMediaSourceAudio(
+  stream: ReadableStream<Uint8Array>,
+  mediaType: string,
+  signal: AbortSignal,
+  maximumBytes: number,
+): PreparedLiveAudioSource {
+  const mediaSource = new MediaSource();
+  const objectUrl = URL.createObjectURL(mediaSource);
+  const abort = new AbortController();
+  const chunks: Uint8Array[] = [];
+  const forwardAbort = () => abort.abort(signal.reason);
+  signal.addEventListener("abort", forwardAbort, { once: true });
+  if (signal.aborted) forwardAbort();
+
+  const completion = (async () => {
+    const sourceBuffer = await mediaSourceBuffer(
+      mediaSource,
+      mediaType,
+      abort.signal,
+    );
+    const reader = stream.getReader();
+    let received = 0;
+    try {
+      while (true) {
+        abort.signal.throwIfAborted();
+        const result = await reader.read();
+        if (result.done) break;
+        if (result.value.byteLength === 0) continue;
+        received += result.value.byteLength;
+        if (received > maximumBytes) {
+          throw new OpenAiLiveAudioError(
+            "malformed-response",
+            "The live provider response exceeded its configured limit.",
+          );
+        }
+        chunks.push(result.value.slice());
+        await appendMediaSourceChunk(sourceBuffer, result.value, abort.signal);
+      }
+      if (received === 0) {
+        throw new OpenAiLiveAudioError(
+          "malformed-response",
+          "The live provider response was empty.",
+        );
+      }
+      if (mediaSource.readyState === "open") mediaSource.endOfStream();
+    } finally {
+      signal.removeEventListener("abort", forwardAbort);
+      if (abort.signal.aborted) {
+        await reader.cancel(abort.signal.reason).catch(() => undefined);
+      }
+      reader.releaseLock();
+    }
+  })();
+
+  return {
+    objectUrl,
+    completion,
+    cacheBlob: () =>
+      new Blob(
+        chunks.map((chunk) => chunk.slice().buffer),
+        { type: mediaType },
+      ),
+    cancel: () =>
+      abort.abort(
+        new OpenAiLiveAudioError("aborted", "Streaming narration stopped."),
+      ),
+  };
+}
+
+function mediaSourceBuffer(
+  mediaSource: MediaSource,
+  mediaType: string,
+  signal: AbortSignal,
+): Promise<SourceBuffer> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      mediaSource.removeEventListener("sourceopen", opened);
+      signal.removeEventListener("abort", aborted);
+    };
+    const aborted = () => {
+      cleanup();
+      reject(signal.reason);
+    };
+    const opened = () => {
+      cleanup();
+      try {
+        resolve(mediaSource.addSourceBuffer(mediaType));
+      } catch (error) {
+        reject(
+          new OpenAiLiveAudioError(
+            "playback-failed",
+            "The browser could not initialize streaming narration.",
+            { cause: error },
+          ),
+        );
+      }
+    };
+    mediaSource.addEventListener("sourceopen", opened, { once: true });
+    signal.addEventListener("abort", aborted, { once: true });
+    if (signal.aborted) aborted();
+  });
+}
+
+function appendMediaSourceChunk(
+  sourceBuffer: SourceBuffer,
+  chunk: Uint8Array,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      sourceBuffer.removeEventListener("updateend", updated);
+      sourceBuffer.removeEventListener("error", failed);
+      sourceBuffer.removeEventListener("abort", failed);
+      signal.removeEventListener("abort", aborted);
+    };
+    const updated = () => {
+      cleanup();
+      resolve();
+    };
+    const failed = () => {
+      cleanup();
+      reject(
+        new OpenAiLiveAudioError(
+          "playback-failed",
+          "The browser could not append streaming narration.",
+        ),
+      );
+    };
+    const aborted = () => {
+      cleanup();
+      reject(signal.reason);
+    };
+    sourceBuffer.addEventListener("updateend", updated, { once: true });
+    sourceBuffer.addEventListener("error", failed, { once: true });
+    sourceBuffer.addEventListener("abort", failed, { once: true });
+    signal.addEventListener("abort", aborted, { once: true });
+    try {
+      sourceBuffer.appendBuffer(chunk.slice().buffer);
+    } catch (error) {
+      cleanup();
+      reject(
+        new OpenAiLiveAudioError(
+          "playback-failed",
+          "The browser rejected streaming narration audio.",
+          { cause: error },
+        ),
+      );
+    }
+  });
 }
 
 async function readBoundedBody(

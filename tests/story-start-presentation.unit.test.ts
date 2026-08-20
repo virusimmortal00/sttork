@@ -48,23 +48,46 @@ describe("story start presentation", () => {
     });
   });
 
-  it("offers one non-capture start action even without a microphone", () => {
+  it("offers an introduction action even without a microphone", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("ready", "ready", false, subject);
+    applyStoryStartPresentation("welcome", "ready", false, subject);
 
-    expect(subject.primaryButton.textContent).toBe("BEGIN");
+    expect(subject.primaryButton.textContent).toBe("ENTER");
     expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
       "aria-label",
-      "Start story",
+      "Meet your guide and narrator",
     );
-    expect(subject.shell.dataset.storyPhase).toBe("ready");
+    expect(subject.shell.dataset.storyPhase).toBe("welcome");
     expect(subject.primaryButton.disabled).toBe(false);
     expect(subject.primaryButton.removeAttribute).toHaveBeenCalledWith(
       "aria-pressed",
     );
     expect(subject.stopButton.disabled).toBe(true);
     expect(subject.textInput.disabled).toBe(true);
+    expect(subject.primaryCue.textContent).toBe("");
+  });
+
+  it("allows Stop while the role introduction plays", () => {
+    const subject = elements();
+
+    applyStoryStartPresentation("introducing", "guide-speaking", true, subject);
+
+    expect(subject.primaryButton.textContent).toBe("LISTEN");
+    expect(subject.primaryButton.disabled).toBe(true);
+    expect(subject.stopButton.disabled).toBe(false);
+    expect(subject.pauseButton.disabled).toBe(true);
+  });
+
+  it("presents a distinct story gate after the introduction", () => {
+    const subject = elements();
+
+    applyStoryStartPresentation("story-ready", "ready", false, subject);
+
+    expect(subject.primaryButton.textContent).toBe("THE STORY BEGINS");
+    expect(subject.primaryButton.disabled).toBe(false);
+    expect(subject.stopButton.disabled).toBe(true);
+    expect(subject.primaryCue.textContent).toBe("Begin the adventure.");
   });
 
   it("allows Stop but no second activation while the opening is playing", () => {
@@ -72,7 +95,7 @@ describe("story start presentation", () => {
 
     applyStoryStartPresentation("starting", "narrator-speaking", true, subject);
 
-    expect(subject.primaryButton.textContent).toBe("BEGIN");
+    expect(subject.primaryButton.textContent).toBe("THE STORY BEGINS");
     expect(subject.shell.dataset.storyPhase).toBe("starting");
     expect(subject.primaryButton.disabled).toBe(true);
     expect(subject.stopButton.disabled).toBe(false);
@@ -96,6 +119,8 @@ describe("story start presentation", () => {
       "aria-pressed",
       "false",
     );
+    expect(subject.stopButton.disabled).toBe(true);
+    expect(subject.pauseButton.disabled).toBe(true);
     expect(subject.repeatButton.disabled).toBe(false);
     expect(subject.textInput.disabled).toBe(false);
     expect(subject.primaryCue.textContent).toBe("or press V");
@@ -110,6 +135,19 @@ describe("story start presentation", () => {
       "aria-pressed",
       "true",
     );
+    expect(subject.stopButton.disabled).toBe(false);
+    expect(subject.pauseButton.disabled).toBe(false);
+    expect(subject.repeatButton.disabled).toBe(true);
     expect(subject.textInput.disabled).toBe(true);
+  });
+
+  it("shows only Resume while the session is paused", () => {
+    const subject = elements();
+
+    applyStoryStartPresentation("started", "paused", true, subject);
+
+    expect(subject.stopButton.disabled).toBe(true);
+    expect(subject.pauseButton.disabled).toBe(false);
+    expect(subject.repeatButton.disabled).toBe(true);
   });
 });

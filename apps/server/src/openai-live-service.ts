@@ -1,6 +1,7 @@
 import {
   createOpeningCommandKnowledge,
   isPendingOpeningObjectIntent,
+  OPENING_OBSERVED_OBJECTS,
   resolvePendingOpeningContextualObjectActionChoiceObject,
   resolvePendingOpeningReadExamineChoiceObject,
   type PendingOpeningObjectIntent,
@@ -8,10 +9,12 @@ import {
 import { validateInitialGuideModelDecision } from "@zork-voice/guide-core";
 import type {
   GuideDecisionWithUsage,
+  ProviderSpeechOptions,
   ProviderSpeech,
   ProviderTranscription,
+  ProviderTranscriptionContext,
 } from "@zork-voice/providers";
-import { ProviderAdapterError } from "@zork-voice/providers";
+import { OPENAI_TTS_VOICES, ProviderAdapterError } from "@zork-voice/providers";
 import { parseOpenAiLiveOrigin } from "./local-live-harness.js";
 
 export interface OpenAiLiveProviderPort {
@@ -19,6 +22,7 @@ export interface OpenAiLiveProviderPort {
     bytes: Uint8Array,
     mediaType: string,
     signal: AbortSignal,
+    context?: ProviderTranscriptionContext,
   ): Promise<ProviderTranscription>;
   decideWithUsage(
     input: {
@@ -35,6 +39,7 @@ export interface OpenAiLiveProviderPort {
     text: string,
     role: "guide" | "narrator",
     signal: AbortSignal,
+    options?: ProviderSpeechOptions,
   ): Promise<ProviderSpeech>;
 }
 
@@ -47,6 +52,7 @@ export interface OpenAiLiveServiceOptions {
 const sessionHeader = "x-zork-voice-live-session";
 const jsonLimit = 16 * 1024;
 const audioLimit = 2 * 1024 * 1024;
+const transcriptionRequestLimit = audioLimit + jsonLimit;
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -87,6 +93,23 @@ async function boundedJson(request: Request): Promise<unknown> {
   } catch {
     throw new TypeError("invalid-json");
   }
+}
+
+async function boundedFormData(
+  request: Request,
+  maximum: number,
+): Promise<FormData> {
+  const contentType = request.headers.get("content-type");
+  if (contentType === null || !contentType.startsWith("multipart/form-data;")) {
+    throw new TypeError("invalid-form-content-type");
+  }
+  const bytes = await boundedBody(request, maximum);
+  const replay = new Request("https://local.invalid/form", {
+    method: "POST",
+    headers: { "content-type": contentType },
+    body: new Blob([bytes.slice()]),
+  });
+  return replay.formData();
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -141,6 +164,56 @@ function observedObjects(value: unknown): readonly string[] {
   return value.map((item) => boundedString(item, 160));
 }
 
+function transcriptionObservedObjects(form: FormData): readonly string[] {
+  const values = form.getAll("observedObjects[]");
+  if (
+    values.length > 32 ||
+    values.some(
+      (value) =>
+        typeof value !== "string" ||
+        !OPENING_OBSERVED_OBJECTS.includes(
+          value as (typeof OPENING_OBSERVED_OBJECTS)[number],
+        ),
+    )
+  ) {
+    throw new TypeError("invalid-transcription-observed-objects");
+  }
+  return [...new Set(values as string[])];
+}
+
+function transcriptionContext(
+  objects: readonly string[],
+): ProviderTranscriptionContext {
+  const knowledge = createOpeningCommandKnowledge({ observedObjects: objects });
+  return {
+    prompt:
+      "A player speaking one short interactive-fiction command or asking the Dungeon Guide for help.",
+    keywords: [
+      ...new Set([
+        ...knowledge.rules.flatMap((rule) => rule.aliases),
+        ...objects,
+      ]),
+    ],
+    languages: ["en"],
+  };
+}
+
+function speechOptions(input: Record<string, unknown>): ProviderSpeechOptions {
+  if (
+    typeof input.voice !== "string" ||
+    !OPENAI_TTS_VOICES.includes(
+      input.voice as (typeof OPENAI_TTS_VOICES)[number],
+    ) ||
+    typeof input.speed !== "number" ||
+    !Number.isFinite(input.speed) ||
+    input.speed < 0.75 ||
+    input.speed > 1.25
+  ) {
+    throw new TypeError("invalid-speech-preferences");
+  }
+  return { voice: input.voice, speed: Math.round(input.speed * 100) / 100 };
+}
+
 function pendingOpeningIntent(
   value: unknown,
 ): PendingOpeningObjectIntent | undefined {
@@ -186,18 +259,28 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
     const pathname = new URL(request.url).pathname;
     try {
       if (pathname === "/api/live/openai/transcribe") {
-        const mediaType = request.headers.get("content-type")?.split(";", 1)[0];
+        const form = await boundedFormData(request, transcriptionRequestLimit);
+        const audio = form.get("audio");
+        if (!(audio instanceof Blob)) {
+          throw new TypeError("missing-transcription-audio");
+        }
+        const mediaType = audio.type.split(";", 1)[0];
         if (
           mediaType === undefined ||
           !["audio/webm", "audio/mp4", "audio/ogg"].includes(mediaType)
         ) {
           return failure("unsupported-audio", 415);
         }
-        const bytes = await boundedBody(request, audioLimit);
+        if (audio.size === 0 || audio.size > audioLimit) {
+          throw new RangeError("request-too-large");
+        }
+        const bytes = new Uint8Array(await audio.arrayBuffer());
+        const objects = transcriptionObservedObjects(form);
         const result = await options.provider.transcribe(
           bytes,
           mediaType,
           request.signal,
+          transcriptionContext(objects),
         );
         return json({
           text: result.text,
@@ -273,16 +356,20 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
         if (input.role !== "guide" && input.role !== "narrator") {
           throw new TypeError("invalid-role");
         }
+        const preferences = speechOptions(input);
         const result = await options.provider.synthesize(
           text,
           input.role,
           request.signal,
+          preferences,
         );
-        return new Response(result.bytes.slice(), {
+        return new Response(result.body, {
           status: 200,
           headers: {
             "content-type": result.mediaType,
-            "content-length": String(result.bytes.byteLength),
+            ...(result.contentLength === undefined
+              ? {}
+              : { "content-length": String(result.contentLength) }),
             "cache-control": "no-store",
             "x-content-type-options": "nosniff",
             "x-zork-voice-provider": result.usage.provider,
