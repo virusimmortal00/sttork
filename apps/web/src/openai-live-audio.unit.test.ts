@@ -309,7 +309,7 @@ describe("OpenAiLiveTranscriber", () => {
         expect(init).toEqual(
           expect.objectContaining({
             method: "POST",
-            body: expect.any(Blob),
+            body: expect.any(FormData),
             cache: "no-store",
             credentials: "same-origin",
             mode: "same-origin",
@@ -318,7 +318,10 @@ describe("OpenAiLiveTranscriber", () => {
         );
         const headers = new Headers(init?.headers);
         expect(headers.get("x-zork-voice-live-session")).toBe(sessionToken);
-        expect(headers.get("content-type")).toBe("audio/webm;codecs=opus");
+        expect(headers.get("content-type")).toBeNull();
+        const body = init?.body as FormData;
+        expect(body.get("audio")).toBeInstanceOf(Blob);
+        expect(body.getAll("observedObjects[]")).toEqual(["house", "mailbox"]);
         return jsonResponse({
           text: "go north",
           languages: ["en"],
@@ -330,6 +333,7 @@ describe("OpenAiLiveTranscriber", () => {
       sessionToken,
       store,
       fetch: fetchMock,
+      observedObjects: () => ["house", "mailbox"],
     });
 
     await expect(
@@ -636,6 +640,66 @@ describe("OpenAiLiveGuideModel", () => {
 });
 
 describe("OpenAiLivePlaybackPort", () => {
+  it("replays a completed matching clip from bounded session memory", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Uint8Array([4, 5, 6]), {
+          headers: { "content-type": "audio/mpeg" },
+        }),
+    );
+    const audio = new FakeAudioElement();
+    const blobs: Blob[] = [];
+    let voice = "onyx";
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createAudio: () => audio,
+      createObjectUrl: (blob) => {
+        blobs.push(blob);
+        return `blob:cached-${blobs.length}`;
+      },
+      revokeObjectUrl: vi.fn(),
+      speechPreference: () => ({ voice, speed: 1 }),
+    });
+    const request = narration("narrator", "Cache this exact line.");
+    playback.activateFromUserGesture();
+
+    const first = playback.play(request, new AbortController().signal, {
+      onStarted: vi.fn(),
+    });
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
+    audio.start();
+    audio.end();
+    await first;
+
+    const repeated = playback.play(request, new AbortController().signal, {
+      onStarted: vi.fn(),
+    });
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(3));
+    audio.start();
+    audio.end();
+    await repeated;
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(playback.synthesisRequests).toBe(1);
+    expect(blobs.map((blob) => [blob.size, blob.type])).toEqual([
+      [4_044, "audio/wav"],
+      [3, "audio/mpeg"],
+      [3, "audio/mpeg"],
+    ]);
+
+    voice = "cedar";
+    const changedVoice = playback.play(request, new AbortController().signal, {
+      onStarted: vi.fn(),
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(4));
+    audio.start();
+    audio.end();
+    await changedVoice;
+    expect(playback.synthesisRequests).toBe(2);
+  });
+
   it("keeps guide and narrator roles separate and revokes every audio URL", async () => {
     const bodies: unknown[] = [];
     const fetchMock = vi.fn(
@@ -690,8 +754,18 @@ describe("OpenAiLivePlaybackPort", () => {
     expect(createAudio).toHaveBeenCalledOnce();
 
     expect(bodies).toEqual([
-      { text: "Guide response.", role: "guide" },
-      { text: "Exact line one.\nExact line two.", role: "narrator" },
+      {
+        text: "Guide response.",
+        role: "guide",
+        voice: "nova",
+        speed: 1,
+      },
+      {
+        text: "Exact line one.\nExact line two.",
+        role: "narrator",
+        voice: "onyx",
+        speed: 1,
+      },
     ]);
     expect(createdBlobs.map((blob) => [blob.size, blob.type])).toEqual([
       [4_044, "audio/wav"],
@@ -711,6 +785,50 @@ describe("OpenAiLivePlaybackPort", () => {
     expect(activationView.getUint32(24, true)).toBe(8_000);
     expect(activationView.getUint32(40, true)).toBe(4_000);
     expect(revoked).toEqual(["blob:voice-1", "blob:voice-2", "blob:voice-3"]);
+  });
+
+  it("starts playback from a prepared streaming source before the stream completes", async () => {
+    let finishStream!: () => void;
+    const completion = new Promise<void>((resolve) => {
+      finishStream = resolve;
+    });
+    const audio = new FakeAudioElement();
+    const onStarted = vi.fn();
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: vi.fn(
+        async () =>
+          new Response(new Uint8Array([1]), {
+            headers: { "content-type": "audio/mpeg" },
+          }),
+      ),
+      createAudio: () => audio,
+      createObjectUrl: () => "blob:activation",
+      revokeObjectUrl: vi.fn(),
+      prepareAudioSource: async () => ({
+        objectUrl: "blob:streaming-source",
+        completion,
+        cancel: vi.fn(),
+      }),
+    });
+    playback.activateFromUserGesture();
+
+    let settled = false;
+    const playing = playback
+      .play(narration("guide"), new AbortController().signal, { onStarted })
+      .finally(() => {
+        settled = true;
+      });
+    await vi.waitFor(() => expect(audio.src).toBe("blob:streaming-source"));
+    audio.start();
+    expect(onStarted).toHaveBeenCalledOnce();
+    expect(settled).toBe(false);
+    audio.end();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    finishStream();
+    await playing;
+    expect(settled).toBe(true);
   });
 
   it("primes synchronously without blocking synthesis on media readiness", async () => {
