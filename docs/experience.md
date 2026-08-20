@@ -142,11 +142,15 @@ The browser playback adapter primes one persistent media element synchronously
 from an audio-related player gesture, then reuses that element for synthesized
 responses. Speech synthesis and download may outlive transient browser
 activation, so they must not be followed by first-time playback on a newly
-created element. Priming is local, silent, makes no provider request, emits no
-semantic playback event, and can be retried only from another explicit player
-gesture after authorization is denied. While Repeat or a new turn actively
-retries blocked narration, Processing and the activity indicator supersede the
-stale blocked projection.
+created element. Priming uses a short valid local clip, is silent, makes no
+provider request, and emits no semantic playback event. Its readiness promise
+must never gate synthesis indefinitely: it is bounded, while the synthesized
+element's actual `playing` event remains authoritative. A bounded first-playing
+deadline converts a stalled browser media promise into the recoverable playback
+authorization path. Stop invalidates pending priming so another explicit player
+gesture can retry. While Repeat or a new turn actively retries blocked
+narration, Processing and the activity indicator supersede the stale blocked
+projection.
 
 ## First-run flow
 

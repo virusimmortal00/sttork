@@ -22,6 +22,8 @@ const DEFAULT_MAX_JSON_BYTES = 16 * 1024;
 const DEFAULT_MAX_SPEECH_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_DURATION_MS = 15_000;
 const DEFAULT_DATA_TIMESLICE_MS = 250;
+const DEFAULT_PLAYBACK_ACTIVATION_TIMEOUT_MS = 1_500;
+const DEFAULT_PLAYBACK_START_TIMEOUT_MS = 5_000;
 const MAX_TRANSCRIPT_CHARACTERS = 2_000;
 const MAX_NARRATION_CHARACTERS = 4_000;
 const MAX_FAILURE_RESPONSE_BYTES = 1_024;
@@ -755,6 +757,13 @@ export interface OpenAiLivePlaybackPortOptions {
   readonly createAudio?: () => LiveAudioElement;
   readonly createObjectUrl?: (blob: Blob) => string;
   readonly revokeObjectUrl?: (url: string) => void;
+  readonly schedule?: (
+    callback: () => void,
+    delayMs: number,
+  ) => ScheduledHandle;
+  readonly cancelScheduled?: (handle: ScheduledHandle) => void;
+  readonly activationTimeoutMs?: number;
+  readonly playbackStartTimeoutMs?: number;
   readonly maxRequestBytes?: number;
   readonly maxResponseBytes?: number;
 }
@@ -769,6 +778,7 @@ type PlaybackActivationState =
   | {
       readonly phase: "pending";
       readonly promise: Promise<PlaybackActivationResult>;
+      readonly cancel: () => void;
     }
   | {
       readonly phase: "settled";
@@ -777,15 +787,10 @@ type PlaybackActivationState =
 
 type PlaybackActivationResult = "authorized" | "denied";
 
-// One unmuted, zero-amplitude 16-bit PCM sample. The browser consumes this
-// local blob only to authorize the persistent media element from a player
-// gesture; it is never provider input or a narration lifecycle event.
-const PLAYBACK_ACTIVATION_WAV = new Uint8Array([
-  0x52, 0x49, 0x46, 0x46, 0x26, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66,
-  0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x40, 0x1f,
-  0x00, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74,
-  0x61, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-]);
+// A short unmuted, zero-amplitude PCM clip gives WebKit enough media duration
+// to reach its playing boundary. It is local-only activation material, never
+// provider input or a narration lifecycle event.
+const PLAYBACK_ACTIVATION_WAV = createSilentPcmWav(8_000, 250);
 
 export class OpenAiLivePlaybackPort implements PlaybackPort {
   readonly #sessionToken: string;
@@ -793,6 +798,13 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
   readonly #audio: LiveAudioElement;
   readonly #createObjectUrl: (blob: Blob) => string;
   readonly #revokeObjectUrl: (url: string) => void;
+  readonly #schedule: (
+    callback: () => void,
+    delayMs: number,
+  ) => ScheduledHandle;
+  readonly #cancelScheduled: (handle: ScheduledHandle) => void;
+  readonly #activationTimeoutMs: number;
+  readonly #playbackStartTimeoutMs: number;
   readonly #maxRequestBytes: number;
   readonly #maxResponseBytes: number;
   #activation: PlaybackActivationState = { phase: "idle" };
@@ -807,6 +819,24 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       options.createObjectUrl ?? ((blob) => URL.createObjectURL(blob));
     this.#revokeObjectUrl =
       options.revokeObjectUrl ?? ((url) => URL.revokeObjectURL(url));
+    this.#schedule =
+      options.schedule ??
+      ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
+    this.#cancelScheduled =
+      options.cancelScheduled ??
+      ((handle) => globalThis.clearTimeout(handle as number));
+    this.#activationTimeoutMs = boundedInteger(
+      options.activationTimeoutMs ?? DEFAULT_PLAYBACK_ACTIVATION_TIMEOUT_MS,
+      "playback activation timeout",
+      50,
+      10_000,
+    );
+    this.#playbackStartTimeoutMs = boundedInteger(
+      options.playbackStartTimeoutMs ?? DEFAULT_PLAYBACK_START_TIMEOUT_MS,
+      "playback start timeout",
+      250,
+      30_000,
+    );
     this.#maxRequestBytes = boundedInteger(
       options.maxRequestBytes ?? DEFAULT_MAX_JSON_BYTES,
       "maximum speech request bytes",
@@ -863,30 +893,28 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       return;
     }
 
+    const attempt = boundedPlaybackActivation(
+      playPromise,
+      this.#activationTimeoutMs,
+      this.#schedule,
+      this.#cancelScheduled,
+    );
     const activationPromise: Promise<PlaybackActivationResult> =
-      playPromise.then(
-        () => {
-          if (
-            this.#activation.phase === "pending" &&
-            this.#activation.promise === activationPromise
-          ) {
-            this.#activation = { phase: "settled", result: "authorized" };
-            this.#discardActivationObjectUrl();
-          }
-          return "authorized";
-        },
-        () => {
-          if (
-            this.#activation.phase === "pending" &&
-            this.#activation.promise === activationPromise
-          ) {
-            this.#activation = { phase: "settled", result: "denied" };
-            this.#discardActivationObjectUrl();
-          }
-          return "denied";
-        },
-      );
-    this.#activation = { phase: "pending", promise: activationPromise };
+      attempt.promise.then((result) => {
+        if (
+          this.#activation.phase === "pending" &&
+          this.#activation.promise === activationPromise
+        ) {
+          this.#activation = { phase: "settled", result };
+          this.#discardActivationObjectUrl();
+        }
+        return result;
+      });
+    this.#activation = {
+      phase: "pending",
+      promise: activationPromise,
+      cancel: attempt.cancel,
+    };
   }
 
   public async play(
@@ -932,13 +960,10 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
 
     try {
       const activation = this.#activation;
-      const activationResult =
-        activation.phase === "pending"
-          ? await awaitWithAbort(activation.promise, active.abort.signal)
-          : activation.phase === "settled"
-            ? activation.result
-            : "denied";
-      if (activationResult !== "authorized") {
+      if (
+        activation.phase === "idle" ||
+        (activation.phase === "settled" && activation.result !== "authorized")
+      ) {
         throw new OpenAiLiveAudioError(
           "playback-authorization-required",
           "Audio playback requires a player gesture.",
@@ -970,7 +995,19 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       this.#audio.src = objectUrl;
       this.#discardActivationObjectUrl();
       try {
-        await playUntilEnded(this.#audio, active.abort.signal, lifecycle);
+        await playUntilEnded(
+          this.#audio,
+          active.abort.signal,
+          {
+            onStarted: () => {
+              this.#markPlaybackAuthorized();
+              lifecycle.onStarted();
+            },
+          },
+          this.#playbackStartTimeoutMs,
+          this.#schedule,
+          this.#cancelScheduled,
+        );
       } catch (error) {
         if (
           error instanceof OpenAiLiveAudioError &&
@@ -988,6 +1025,12 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
   }
 
   public async stop(): Promise<void> {
+    const activation = this.#activation;
+    if (activation.phase === "pending") {
+      this.#activation = { phase: "idle" };
+      activation.cancel();
+      this.#discardActivationObjectUrl();
+    }
     const active = this.#active;
     if (active === undefined) return;
     active.abort.abort(
@@ -1021,6 +1064,96 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
       // Gesture activation is non-throwing by contract.
     }
   }
+
+  #markPlaybackAuthorized(): void {
+    const activation = this.#activation;
+    this.#activation = { phase: "settled", result: "authorized" };
+    if (activation.phase === "pending") activation.cancel();
+    this.#discardActivationObjectUrl();
+  }
+}
+
+function createSilentPcmWav(
+  sampleRate: number,
+  durationMs: number,
+): Uint8Array {
+  const sampleCount = Math.round((sampleRate * durationMs) / 1_000);
+  const dataBytes = sampleCount * 2;
+  const bytes = new Uint8Array(44 + dataBytes);
+  const view = new DataView(bytes.buffer);
+  const writeAscii = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      bytes[offset + index] = value.charCodeAt(index);
+    }
+  };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  return bytes;
+}
+
+interface BoundedPlaybackActivation {
+  readonly promise: Promise<PlaybackActivationResult>;
+  readonly cancel: () => void;
+}
+
+function boundedPlaybackActivation(
+  playPromise: Promise<void>,
+  timeoutMs: number,
+  schedule: (callback: () => void, delayMs: number) => ScheduledHandle,
+  cancelScheduled: (handle: ScheduledHandle) => void,
+): BoundedPlaybackActivation {
+  let finish: (result: PlaybackActivationResult) => void = () => undefined;
+  const promise = new Promise<PlaybackActivationResult>((resolve) => {
+    let settled = false;
+    let scheduled: ScheduledHandle | undefined;
+    finish = (result: PlaybackActivationResult) => {
+      if (settled) return;
+      settled = true;
+      if (scheduled !== undefined) {
+        try {
+          cancelScheduled(scheduled);
+        } catch {
+          // Activation settlement must remain non-throwing.
+        }
+        scheduled = undefined;
+      }
+      resolve(result);
+    };
+    try {
+      scheduled = schedule(() => {
+        scheduled = undefined;
+        finish("denied");
+      }, timeoutMs);
+    } catch {
+      void playPromise.catch(() => undefined);
+      finish("denied");
+      return;
+    }
+    if (settled && scheduled !== undefined) {
+      try {
+        cancelScheduled(scheduled);
+      } catch {
+        // Activation settlement must remain non-throwing.
+      }
+      scheduled = undefined;
+    }
+    playPromise.then(
+      () => finish("authorized"),
+      () => finish("denied"),
+    );
+  });
+  return { promise, cancel: () => finish("denied") };
 }
 
 function boundedInteger(
@@ -1281,37 +1414,6 @@ async function readJsonObject(
   return value as Record<string, unknown>;
 }
 
-async function awaitWithAbort<T>(
-  promise: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> {
-  signal.throwIfAborted();
-  return await new Promise<T>((resolve, reject) => {
-    const aborted = () => {
-      cleanup();
-      reject(
-        signal.reason ??
-          new OpenAiLiveAudioError(
-            "aborted",
-            "Narration playback was stopped.",
-          ),
-      );
-    };
-    const cleanup = () => signal.removeEventListener("abort", aborted);
-    signal.addEventListener("abort", aborted, { once: true });
-    promise.then(
-      (value) => {
-        cleanup();
-        resolve(value);
-      },
-      (error: unknown) => {
-        cleanup();
-        reject(error);
-      },
-    );
-  });
-}
-
 function playbackFailure(error?: unknown): OpenAiLiveAudioError {
   let name: unknown;
   try {
@@ -1334,26 +1436,45 @@ async function playUntilEnded(
   audio: LiveAudioElement,
   signal: AbortSignal,
   lifecycle: PlaybackLifecycle,
+  startTimeoutMs: number,
+  schedule: (callback: () => void, delayMs: number) => ScheduledHandle,
+  cancelScheduled: (handle: ScheduledHandle) => void,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     let started = false;
+    let settled = false;
+    let startDeadline: ScheduledHandle | undefined;
+    const cancelStartDeadline = () => {
+      if (startDeadline === undefined) return;
+      try {
+        cancelScheduled(startDeadline);
+      } catch {
+        // Playback cleanup must not replace the actual terminal outcome.
+      }
+      startDeadline = undefined;
+    };
     const cleanup = () => {
+      cancelStartDeadline();
       audio.removeEventListener("playing", playing);
       audio.removeEventListener("ended", ended);
       audio.removeEventListener("error", failed);
       signal.removeEventListener("abort", aborted);
     };
     const playing = () => {
-      if (started) return;
+      if (started || settled) return;
       started = true;
+      cancelStartDeadline();
       try {
         lifecycle.onStarted();
       } catch (error) {
+        settled = true;
         cleanup();
         reject(error);
       }
     };
     const ended = () => {
+      if (settled) return;
+      settled = true;
       cleanup();
       if (!started) {
         reject(
@@ -1367,10 +1488,14 @@ async function playUntilEnded(
       resolve();
     };
     const failed = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
       cleanup();
       reject(playbackFailure(error));
     };
     const aborted = () => {
+      if (settled) return;
+      settled = true;
       cleanup();
       reject(
         signal.reason ??
@@ -1388,6 +1513,24 @@ async function playUntilEnded(
       aborted();
       return;
     }
+    try {
+      startDeadline = schedule(() => {
+        startDeadline = undefined;
+        if (started || settled) return;
+        settled = true;
+        cleanup();
+        reject(
+          new OpenAiLiveAudioError(
+            "playback-authorization-required",
+            "Audio playback did not begin after the player gesture.",
+          ),
+        );
+      }, startTimeoutMs);
+    } catch (error) {
+      failed(error);
+      return;
+    }
+    if (settled) cancelStartDeadline();
     try {
       void audio.play().catch(failed);
     } catch (error) {

@@ -574,7 +574,7 @@ describe("OpenAiLivePlaybackPort", () => {
       { text: "Exact line one.\nExact line two.", role: "narrator" },
     ]);
     expect(createdBlobs.map((blob) => [blob.size, blob.type])).toEqual([
-      [46, "audio/wav"],
+      [4_044, "audio/wav"],
       [3, "audio/mpeg"],
       [3, "audio/mpeg"],
     ]);
@@ -583,10 +583,17 @@ describe("OpenAiLivePlaybackPort", () => {
         new Uint8Array(await createdBlobs[0]!.arrayBuffer()).slice(-2),
       ),
     ).toEqual([0, 0]);
+    const activationBytes = await createdBlobs[0]!.arrayBuffer();
+    const activationView = new DataView(activationBytes);
+    expect(new TextDecoder().decode(activationBytes.slice(0, 4))).toBe("RIFF");
+    expect(new TextDecoder().decode(activationBytes.slice(8, 12))).toBe("WAVE");
+    expect(activationView.getUint32(4, true)).toBe(4_036);
+    expect(activationView.getUint32(24, true)).toBe(8_000);
+    expect(activationView.getUint32(40, true)).toBe(4_000);
     expect(revoked).toEqual(["blob:voice-1", "blob:voice-2", "blob:voice-3"]);
   });
 
-  it("primes synchronously and waits for authorization before spending a speech request", async () => {
+  it("primes synchronously without blocking synthesis on media readiness", async () => {
     let authorize!: () => void;
     const authorization = new Promise<void>((resolve) => {
       authorize = resolve;
@@ -615,15 +622,205 @@ describe("OpenAiLivePlaybackPort", () => {
       new AbortController().signal,
       { onStarted: vi.fn() },
     );
-    await Promise.resolve();
-    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
 
     authorize();
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
+    audio.start();
+    audio.end();
+    await expect(playing).resolves.toBeUndefined();
+  });
+
+  it("does not gate speech on a never-settling activation promise", async () => {
+    const audio = new FakeAudioElement();
+    audio.play.mockImplementationOnce(() => new Promise<void>(() => undefined));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        }),
+    );
+    let activationTimeout: (() => void) | undefined;
+    const cancelScheduled = vi.fn();
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createObjectUrl: () => "blob:pending-activation",
+      revokeObjectUrl: vi.fn(),
+      createAudio: () => audio,
+      activationTimeoutMs: 250,
+      schedule: (callback, delayMs) => {
+        if (delayMs === 250) {
+          activationTimeout = callback;
+          return "activation-timeout";
+        }
+        expect(delayMs).toBe(5_000);
+        return "playback-start-timeout";
+      },
+      cancelScheduled,
+    });
+
+    playback.activateFromUserGesture();
+    const playing = playback.play(
+      narration("narrator"),
+      new AbortController().signal,
+      { onStarted: vi.fn() },
+    );
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
     audio.start();
     audio.end();
     await expect(playing).resolves.toBeUndefined();
+
+    activationTimeout?.();
+    expect(cancelScheduled).toHaveBeenCalledWith("activation-timeout");
+  });
+
+  it("times out a pending activation and permits a fresh successful gesture", async () => {
+    const audio = new FakeAudioElement();
+    audio.play.mockImplementationOnce(() => new Promise<void>(() => undefined));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Uint8Array([1]), {
+          headers: { "content-type": "audio/mpeg" },
+        }),
+    );
+    const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
+    const cancelled: string[] = [];
+    let objectUrl = 0;
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createObjectUrl: () => `blob:activation-retry-${++objectUrl}`,
+      revokeObjectUrl: vi.fn(),
+      createAudio: () => audio,
+      activationTimeoutMs: 250,
+      playbackStartTimeoutMs: 500,
+      schedule: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs });
+        return `timer-${scheduled.length}`;
+      },
+      cancelScheduled: (handle) => cancelled.push(String(handle)),
+    });
+
+    playback.activateFromUserGesture();
+    expect(scheduled[0]?.delayMs).toBe(250);
+    scheduled[0]?.callback();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await expect(
+      playback.play(narration("narrator"), new AbortController().signal, {
+        onStarted: vi.fn(),
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({ code: "playback-authorization-required" }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    playback.activateFromUserGesture();
+    await vi.waitFor(() => expect(cancelled).toContain("timer-2"));
+    const retried = playback.play(
+      narration("narrator"),
+      new AbortController().signal,
+      { onStarted: vi.fn() },
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(3));
+    audio.start();
+    audio.end();
+    await expect(retried).resolves.toBeUndefined();
+  });
+
+  it("stops and replaces a pending activation without accepting stale settlement", async () => {
+    let authorizeStale!: () => void;
+    const staleAuthorization = new Promise<void>((resolve) => {
+      authorizeStale = resolve;
+    });
+    const audio = new FakeAudioElement();
+    audio.play.mockImplementationOnce(async () => staleAuthorization);
+    const revoked = vi.fn();
+    const cancelled: string[] = [];
+    let timer = 0;
+    let objectUrl = 0;
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: vi.fn(
+        async () =>
+          new Response(new Uint8Array([1]), {
+            headers: { "content-type": "audio/mpeg" },
+          }),
+      ),
+      createObjectUrl: () => `blob:stale-${++objectUrl}`,
+      revokeObjectUrl: revoked,
+      createAudio: () => audio,
+      schedule: () => `timer-${++timer}`,
+      cancelScheduled: (handle) => cancelled.push(String(handle)),
+    });
+
+    playback.activateFromUserGesture();
+    await playback.stop();
+    expect(cancelled).toContain("timer-1");
+    expect(revoked).toHaveBeenCalledWith("blob:stale-1");
+
+    playback.activateFromUserGesture();
+    await vi.waitFor(() => expect(cancelled).toContain("timer-2"));
+    authorizeStale();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const playing = playback.play(
+      narration("narrator"),
+      new AbortController().signal,
+      { onStarted: vi.fn() },
+    );
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(3));
+    audio.start();
+    audio.end();
+    await expect(playing).resolves.toBeUndefined();
+  });
+
+  it("bounds synthesized playback that never reaches the playing event", async () => {
+    const audio = new FakeAudioElement();
+    const scheduled: Array<{ callback: () => void; delayMs: number }> = [];
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: vi.fn(
+        async () =>
+          new Response(new Uint8Array([1]), {
+            headers: { "content-type": "audio/mpeg" },
+          }),
+      ),
+      createObjectUrl: (blob) => `blob:start-timeout-${blob.size}`,
+      revokeObjectUrl: vi.fn(),
+      createAudio: () => audio,
+      activationTimeoutMs: 250,
+      playbackStartTimeoutMs: 500,
+      schedule: (callback, delayMs) => {
+        scheduled.push({ callback, delayMs });
+        return `timer-${scheduled.length}`;
+      },
+      cancelScheduled: vi.fn(),
+    });
+
+    playback.activateFromUserGesture();
+    await Promise.resolve();
+    await Promise.resolve();
+    const playing = playback.play(
+      narration("narrator"),
+      new AbortController().signal,
+      { onStarted: vi.fn() },
+    );
+    await vi.waitFor(() =>
+      expect(scheduled.some(({ delayMs }) => delayMs === 500)).toBe(true),
+    );
+    scheduled.find(({ delayMs }) => delayMs === 500)?.callback();
+
+    await expect(playing).rejects.toEqual(
+      expect.objectContaining({ code: "playback-authorization-required" }),
+    );
+    playback.activateFromUserGesture();
+    expect(audio.play).toHaveBeenCalledTimes(3);
   });
 
   it("classifies denied playback and allows the next gesture to re-prime the same element", async () => {
@@ -714,6 +911,44 @@ describe("OpenAiLivePlaybackPort", () => {
     expect(revoked).toHaveBeenCalledWith("blob:sync-activation-failure");
   });
 
+  it("consumes a late prime rejection when activation scheduling is unavailable", async () => {
+    let rejectPrime!: (reason: unknown) => void;
+    const prime = new Promise<void>((_resolve, reject) => {
+      rejectPrime = reject;
+    });
+    const audio = new FakeAudioElement();
+    audio.play.mockImplementationOnce(async () => prime);
+    const revoked = vi.fn();
+    const fetchMock = vi.fn();
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createObjectUrl: () => "blob:scheduler-failure",
+      revokeObjectUrl: revoked,
+      createAudio: () => audio,
+      schedule: () => {
+        throw new Error("timer unavailable");
+      },
+      cancelScheduled: vi.fn(),
+    });
+
+    expect(() => playback.activateFromUserGesture()).not.toThrow();
+    await vi.waitFor(() =>
+      expect(revoked).toHaveBeenCalledWith("blob:scheduler-failure"),
+    );
+    rejectPrime({ name: "NotAllowedError" });
+    await Promise.resolve();
+
+    await expect(
+      playback.play(narration("narrator"), new AbortController().signal, {
+        onStarted: vi.fn(),
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({ code: "playback-authorization-required" }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("aborts active playback, pauses audio, and revokes its object URL", async () => {
     const audio = new FakeAudioElement();
     const revoked = vi.fn();
@@ -777,7 +1012,7 @@ describe("OpenAiLivePlaybackPort", () => {
     ).rejects.toEqual(expect.objectContaining({ code: "malformed-response" }));
     expect(createObjectUrl).toHaveBeenCalledOnce();
     expect(createObjectUrl.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ size: 46, type: "audio/wav" }),
+      expect.objectContaining({ size: 4_044, type: "audio/wav" }),
     );
     expect(onStarted).not.toHaveBeenCalled();
   });

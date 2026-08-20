@@ -359,9 +359,11 @@ Required assertions include:
   another `engine.output`, selection pass, or revision advance;
 - browser playback activation happens synchronously before any asynchronous
   speech request, one media element is reused across utterances, local and
-  synthesized object URLs are revoked, denied playback can be re-primed from
-  Repeat, and local priming emits no provider request or semantic playback
-  event;
+  synthesized object URLs are revoked, a never-settling prime cannot block the
+  speech path indefinitely, Stop and timeout invalidate stale priming, denied
+  playback can be re-primed from Repeat, and a bounded missing-`playing`
+  deadline produces a recoverable terminal event. Local priming itself emits no
+  provider request or semantic playback event;
 - a narration retry visibly projects Processing while work is active, and a
   recoverable audio failure does not reveal the transcript or move keyboard or
   screen-reader focus;

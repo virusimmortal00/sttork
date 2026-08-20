@@ -26,11 +26,13 @@ support.
 
 The live playback adapter synchronously primes one persistent browser audio
 element from `START STORY`, speaking, text-submit, and Repeat gestures before
-any speech fetch. It reuses that element for later responses and revokes every
-local or synthesized object URL. A denied browser play request is recoverable
-through Repeat and remains distinct from the process request limit; neither
-failure exposes provider response text or moves focus into the optional
-transcript.
+any speech fetch. It uses a short valid local clip, bounds both prime settlement
+and the first synthesized `playing` event, and never lets an unsettled prime
+block speech indefinitely. It reuses that element for later responses and
+revokes every local or synthesized object URL. Stop invalidates pending priming;
+a denied or stalled browser play request is recoverable through Repeat and
+remains distinct from the process request limit. Neither failure exposes
+provider response text or moves focus into the optional transcript.
 
 For another phone, tablet, or computer, configure an exact HTTPS browser origin
 before serving:

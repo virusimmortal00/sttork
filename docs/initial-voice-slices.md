@@ -351,9 +351,13 @@ interpreter, provider, or product is release-qualified.
   Repeat retains the same source and actual spoken selection. A failed terminal
   remains visibly blocked and recoverable while those controls stay usable.
   Browser playback now primes and reuses one media element from explicit
-  audio-related gestures; safe failures distinguish playback authorization and
-  the request cap, and active retries replace a stale blocked heading with
-  Processing.
+  audio-related gestures. A 2026-08-19 mobile regression showed that an
+  ultra-short primer could leave its browser play promise pending after
+  `narration.ready`; the primer and first-playing waits are now bounded, pending
+  activation cannot indefinitely gate synthesis, and Stop makes priming
+  retryable. Safe failures distinguish playback authorization and the request
+  cap, and active retries replace a stale blocked heading with Processing. This
+  correction remains pending a fresh real-device confirmation.
 - A 2026-08-19 private-HTTPS in-app browser smoke exercised the live text path
   without microphone permission. A social greeting produced one grounded
   clarification with revision zero; one movement request produced exactly one
