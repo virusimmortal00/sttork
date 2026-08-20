@@ -31,11 +31,9 @@ import {
   OpenAiLiveTranscriber,
 } from "./openai-live-audio.js";
 import {
-  loadOpenAiLiveVoicePreferences,
-  normalizeOpenAiLiveVoicePreferences,
+  OpenAiLiveVoicePreferenceSession,
   OPENAI_TTS_VOICES,
   openAiSpeechPreferenceForRole,
-  saveOpenAiLiveVoicePreferences,
   type OpenAiLiveVoicePreferences,
   type OpenAiTtsVoice,
 } from "./openai-live-preferences.js";
@@ -419,7 +417,9 @@ async function run(): Promise<void> {
     return;
   }
   const token = sessionToken();
-  let voicePreferences = loadOpenAiLiveVoicePreferences(localStorage);
+  const voicePreferenceSession = new OpenAiLiveVoicePreferenceSession(
+    localStorage,
+  );
 
   for (const voice of OPENAI_TTS_VOICES) {
     guideVoice.add(new Option(voice, voice));
@@ -427,6 +427,7 @@ async function run(): Promise<void> {
   }
 
   function renderVoicePreferences(): void {
+    const voicePreferences = voicePreferenceSession.current;
     guideVoice.value = voicePreferences.guideVoice;
     narratorVoice.value = voicePreferences.narratorVoice;
     guideRate.value = String(voicePreferences.guideRate);
@@ -437,17 +438,8 @@ async function run(): Promise<void> {
 
   function updateVoicePreferences(
     update: Partial<OpenAiLiveVoicePreferences>,
-  ): void {
-    voicePreferences = normalizeOpenAiLiveVoicePreferences({
-      ...voicePreferences,
-      ...update,
-    });
-    try {
-      saveOpenAiLiveVoicePreferences(localStorage, voicePreferences);
-    } catch {
-      // Preferences still apply for this session when storage is unavailable.
-    }
-    renderVoicePreferences();
+  ): OpenAiLiveVoicePreferences {
+    return voicePreferenceSession.update(update);
   }
 
   renderVoicePreferences();
@@ -540,7 +532,7 @@ async function run(): Promise<void> {
   const playback = new OpenAiLivePlaybackPort({
     sessionToken: token,
     speechPreference: (role) =>
-      openAiSpeechPreferenceForRole(voicePreferences, role),
+      openAiSpeechPreferenceForRole(voicePreferenceSession.current, role),
   });
   let previewPlayback: OpenAiLivePlaybackPort | undefined;
   let previewAbort: AbortController | undefined;
@@ -599,8 +591,8 @@ async function run(): Promise<void> {
         spokenTranscript.start(
           narration.text,
           narration.role === "guide"
-            ? voicePreferences.guideRate
-            : voicePreferences.narratorRate,
+            ? voicePreferenceSession.current.guideRate
+            : voicePreferenceSession.current.narratorRate,
           narration.role,
         );
       }
@@ -1007,7 +999,10 @@ async function run(): Promise<void> {
     const port = new OpenAiLivePlaybackPort({
       sessionToken: token,
       speechPreference: (previewRole) =>
-        openAiSpeechPreferenceForRole(voicePreferences, previewRole),
+        openAiSpeechPreferenceForRole(
+          voicePreferenceSession.current,
+          previewRole,
+        ),
     });
     const abort = new AbortController();
     previewPlayback = port;
@@ -1038,7 +1033,10 @@ async function run(): Promise<void> {
     trigger: settingsButton,
     closeButton: settingsCloseButton,
     reducedMotion,
-    onOpenChange: modalOpenChanged,
+    onOpenChange: (open) => {
+      if (!open) voicePreferenceSession.persist();
+      modalOpenChanged();
+    },
   });
   createModalController({
     dialog: debugPanel,
@@ -1079,20 +1077,33 @@ async function run(): Promise<void> {
     controller.activatePlaybackFromUserGesture();
     runControl(repeatLastNarration);
   });
-  guideVoice.addEventListener("change", () =>
-    updateVoicePreferences({ guideVoice: guideVoice.value as OpenAiTtsVoice }),
-  );
-  narratorVoice.addEventListener("change", () =>
+  guideVoice.addEventListener("change", () => {
+    updateVoicePreferences({ guideVoice: guideVoice.value as OpenAiTtsVoice });
+    voicePreferenceSession.persist();
+  });
+  narratorVoice.addEventListener("change", () => {
     updateVoicePreferences({
       narratorVoice: narratorVoice.value as OpenAiTtsVoice,
-    }),
+    });
+    voicePreferenceSession.persist();
+  });
+  guideRate.addEventListener("input", () => {
+    const preferences = updateVoicePreferences({
+      guideRate: Number(guideRate.value),
+    });
+    guideRateValue.value = `${preferences.guideRate.toFixed(2)}×`;
+  });
+  narratorRate.addEventListener("input", () => {
+    const preferences = updateVoicePreferences({
+      narratorRate: Number(narratorRate.value),
+    });
+    narratorRateValue.value = `${preferences.narratorRate.toFixed(2)}×`;
+  });
+  guideRate.addEventListener("change", () => voicePreferenceSession.persist());
+  narratorRate.addEventListener("change", () =>
+    voicePreferenceSession.persist(),
   );
-  guideRate.addEventListener("input", () =>
-    updateVoicePreferences({ guideRate: Number(guideRate.value) }),
-  );
-  narratorRate.addEventListener("input", () =>
-    updateVoicePreferences({ narratorRate: Number(narratorRate.value) }),
-  );
+  window.addEventListener("pagehide", () => voicePreferenceSession.persist());
   previewGuide.addEventListener("click", () => {
     startVoicePreview("guide");
   });
