@@ -1,6 +1,8 @@
 import {
   createOpeningCommandKnowledge,
   isPendingOpeningObjectIntent,
+  resolvePendingOpeningContextualObjectActionChoiceObject,
+  resolvePendingOpeningReadExamineChoiceObject,
   type PendingOpeningObjectIntent,
 } from "@zork-voice/command-knowledge";
 import { validateInitialGuideModelDecision } from "@zork-voice/guide-core";
@@ -148,6 +150,13 @@ function pendingOpeningIntent(
   }
   if ("action" in value) return { action: value.action };
   if (value.kind === "content-object") return { kind: "content-object" };
+  if (value.kind === "contextual-object-action-choice") {
+    return {
+      kind: "contextual-object-action-choice",
+      objectValueId: value.objectValueId,
+      suggestedActions: [value.suggestedActions[0], value.suggestedActions[1]],
+    };
+  }
   return {
     kind: "read-examine-choice",
     objectValueId: value.objectValueId,
@@ -206,14 +215,20 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
         const knowledge = createOpeningCommandKnowledge({
           observedObjects: objects,
         });
-        if (
+        const invalidPendingObjectChoice =
           pendingIntent !== undefined &&
           "kind" in pendingIntent &&
-          pendingIntent.kind === "read-examine-choice" &&
-          !knowledge.observedObjectOptions.some(
-            (option) => option.id === pendingIntent.objectValueId,
-          )
-        ) {
+          ((pendingIntent.kind === "read-examine-choice" &&
+            resolvePendingOpeningReadExamineChoiceObject(
+              pendingIntent,
+              knowledge,
+            ) === undefined) ||
+            (pendingIntent.kind === "contextual-object-action-choice" &&
+              resolvePendingOpeningContextualObjectActionChoiceObject(
+                pendingIntent,
+                knowledge,
+              ) === undefined));
+        if (invalidPendingObjectChoice) {
           throw new TypeError("stale-pending-intent");
         }
         const confidence = input.transcriptConfidence;

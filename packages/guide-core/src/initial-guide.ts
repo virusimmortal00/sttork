@@ -1,8 +1,10 @@
 import {
+  createPendingOpeningContextualObjectActionChoiceIntent,
   createPendingOpeningContentObjectIntent,
   createPendingOpeningReadExamineChoiceIntent,
   createOpeningCommandKnowledge,
   groundOpeningCommand,
+  groundPendingOpeningContextualObjectActionChoiceReply,
   groundPendingOpeningObjectReply,
   groundPendingOpeningReadExamineChoiceReply,
   identifyNonlexicalOpeningContentRequest,
@@ -14,6 +16,7 @@ import {
   openingActionOptionsRequested,
   openingCommandHelp,
   openingGlobalActionHelpScopeRequested,
+  openingObjectActionMentioned,
   openingObjectObservationDirectlyRequested,
   openingObjectSelectionUniquelyMentioned,
   openingReadExamineActionMentioned,
@@ -21,12 +24,15 @@ import {
   openingScopedActionOptionsRequested,
   openingUtteranceMatchesObjectFocus,
   resolveOpeningSceneGuidance,
+  resolveOpeningSceneObjectActionSuggestion,
   resolvePendingOpeningContentObjectReply,
   resolveOpeningCommandComparisonQuestion,
   resolveOpeningCommandIntent,
   resolvePendingOpeningReadExamineChoiceObject,
+  resolvePendingOpeningContextualObjectActionChoiceForScene,
   type OpeningCommandKnowledge,
   type OpeningObservedObjectOption,
+  type OpeningSceneObjectActionSuggestion,
   type OpeningSceneProjection,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
@@ -117,15 +123,92 @@ function clarification(
   };
 }
 
-function readExamineClarification(
-  selectedObject: OpeningObservedObjectOption,
+function contextualActionChoiceClarification(
+  suggestion: OpeningSceneObjectActionSuggestion,
+  style: "initial" | "options" = "initial",
 ): InitialGuideResult {
-  const objectLabel = selectedObject.label;
+  const objectLabel = suggestion.selectedObject.label;
+  const isReadExamineChoice =
+    suggestion.suggestedActions[0] === "examine" &&
+    suggestion.suggestedActions[1] === "read";
+  const actionDescription = (action: string): string => {
+    switch (action) {
+      case "examine":
+        return isReadExamineChoice
+          ? "EXAMINE inspects it without taking it"
+          : "EXAMINE inspects it without changing it";
+      case "open":
+        return "OPEN tries to open it";
+      case "read":
+        return "READ asks the game to read it and may take it";
+      case "take":
+        return "TAKE tries to take it";
+      default:
+        throw new TypeError("Unsupported contextual object action.");
+    }
+  };
+  const initialActionPhrase = (action: string): string => {
+    switch (action) {
+      case "examine":
+        return isReadExamineChoice
+          ? `examine the ${objectLabel} without taking it`
+          : `examine the ${objectLabel} without changing it`;
+      case "open":
+        return "try to open it";
+      case "read":
+        return "use READ, which may take it";
+      case "take":
+        return "try to take it";
+      default:
+        throw new TypeError("Unsupported contextual object action.");
+    }
+  };
+  const [first, second] = suggestion.suggestedActions;
+  const question =
+    style === "initial"
+      ? `Would you like me to ${initialActionPhrase(first)}, or ${initialActionPhrase(second)}?`
+      : `For the ${objectLabel}, ${actionDescription(first)}; ${actionDescription(second)}. Which should I try?`;
   return clarification(
-    `Would you like me to examine the ${objectLabel} without taking it, or use READ, which may take it?`,
-    "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object.",
-    createPendingOpeningReadExamineChoiceIntent(selectedObject),
-    [`examine ${objectLabel}`, `read ${objectLabel}`],
+    question,
+    isReadExamineChoice
+      ? "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object."
+      : "The current scene offers two useful attempts, but neither is the only parser command the player may explicitly request.",
+    createPendingOpeningContextualObjectActionChoiceIntent(
+      suggestion.selectedObject,
+      suggestion.suggestedActions,
+    ),
+    [`${first} ${objectLabel}`, `${second} ${objectLabel}`] as readonly [
+      string,
+      string,
+    ],
+  );
+}
+
+function contextualContentClarification(
+  selectedObject: OpeningObservedObjectOption,
+  scene: OpeningSceneProjection | undefined,
+): InitialGuideResult {
+  const suggestion =
+    scene === undefined
+      ? undefined
+      : resolveOpeningSceneObjectActionSuggestion(scene, selectedObject.id);
+  return suggestion === undefined
+    ? clarification(
+        `What single action would you like me to try with the ${selectedObject.label}?`,
+        "The current scene does not provide two source-backed contextual suggestions for that object.",
+      )
+    : contextualActionChoiceClarification(suggestion);
+}
+
+function exactlyContextualSuggestionSources(
+  sourceIds: readonly string[],
+  suggestion: OpeningSceneObjectActionSuggestion,
+): boolean {
+  return (
+    sourceIds.length === suggestion.suggestedActions.length &&
+    suggestion.suggestedActions.every((action) =>
+      sourceIds.includes(`grammar.${action}`),
+    )
   );
 }
 
@@ -258,6 +341,16 @@ export async function decideInitialGuideTurn(
           knowledge,
         )
       : undefined;
+  const pendingContextualSuggestion =
+    input.pendingIntent !== undefined &&
+    "kind" in input.pendingIntent &&
+    input.pendingIntent.kind === "contextual-object-action-choice" &&
+    input.scene !== undefined
+      ? resolvePendingOpeningContextualObjectActionChoiceForScene(
+          input.scene,
+          input.pendingIntent,
+        )
+      : undefined;
   if (
     input.pendingIntent !== undefined &&
     "kind" in input.pendingIntent &&
@@ -267,6 +360,17 @@ export async function decideInitialGuideTurn(
     return clarification(
       "That object is no longer in the observed scene. What would you like to do instead?",
       "The pending READ-or-EXAMINE choice no longer has a currently observed object.",
+    );
+  }
+  if (
+    input.pendingIntent !== undefined &&
+    "kind" in input.pendingIntent &&
+    input.pendingIntent.kind === "contextual-object-action-choice" &&
+    pendingContextualSuggestion === undefined
+  ) {
+    return clarification(
+      "Those object suggestions are no longer current. What would you like to do instead?",
+      "The pending object focus or its source-backed suggestion pair is no longer current.",
     );
   }
 
@@ -283,6 +387,29 @@ export async function decideInitialGuideTurn(
     knowledge,
   );
   if (commandComparison.kind === "resolved") {
+    if (
+      pendingContextualSuggestion !== undefined &&
+      exactlyContextualSuggestionSources(
+        commandComparison.sourceIds,
+        pendingContextualSuggestion,
+      ) &&
+      (!openingGlobalActionHelpScopeRequested(input.playerUtterance) ||
+        openingObjectSelectionUniquelyMentioned(
+          pendingContextualSuggestion.selectedObject,
+          input.playerUtterance,
+          knowledge,
+        )) &&
+      openingUtteranceMatchesObjectFocus(
+        pendingContextualSuggestion.selectedObject,
+        input.playerUtterance,
+        knowledge,
+      )
+    ) {
+      return contextualActionChoiceClarification(
+        pendingContextualSuggestion,
+        "options",
+      );
+    }
     if (
       input.pendingIntent !== undefined &&
       "kind" in input.pendingIntent &&
@@ -343,7 +470,7 @@ export async function decideInitialGuideTurn(
   }
 
   if (localContentAmbiguity !== undefined) {
-    return readExamineClarification(localContentAmbiguity);
+    return contextualContentClarification(localContentAmbiguity, input.scene);
   }
 
   if (
@@ -355,6 +482,15 @@ export async function decideInitialGuideTurn(
     if (pendingReadExamineObject !== undefined) {
       return readExamineOptionsClarification(pendingReadExamineObject);
     }
+  }
+  if (
+    pendingContextualSuggestion !== undefined &&
+    openingScopedActionOptionsRequested(input.playerUtterance)
+  ) {
+    return contextualActionChoiceClarification(
+      pendingContextualSuggestion,
+      "options",
+    );
   }
 
   if (input.scene !== undefined) {
@@ -404,7 +540,47 @@ export async function decideInitialGuideTurn(
         knowledge,
       );
       if (contentObjectReply.ok) {
-        return readExamineClarification(contentObjectReply.selectedObject);
+        return contextualContentClarification(
+          contentObjectReply.selectedObject,
+          input.scene,
+        );
+      }
+    } else if (input.pendingIntent.kind === "contextual-object-action-choice") {
+      const contextualReply =
+        groundPendingOpeningContextualObjectActionChoiceReply(
+          input.pendingIntent,
+          input.playerUtterance,
+          knowledge,
+        );
+      if (contextualReply.ok) {
+        const decision = {
+          kind: "execute" as const,
+          command: contextualReply.command,
+          intentSummary:
+            "Apply the player's explicit action to the still-current focused object.",
+          confidence: 1,
+        };
+        return {
+          kind: "execute",
+          command: contextualReply.command,
+          decision,
+          groundingSourceId: contextualReply.ruleId,
+        };
+      }
+      if (contextualReply.code === "unobserved-object") {
+        return clarification(
+          "Those object suggestions are no longer current. What would you like to do instead?",
+          "The pending object focus is no longer current.",
+        );
+      }
+      if (
+        contextualReply.code === "not-direct-action-request" &&
+        openingObjectActionMentioned(input.playerUtterance)
+      ) {
+        return clarification(
+          "Please state the single parser action you want me to try.",
+          "A question, condition, or quoted command does not authorize the pending action.",
+        );
       }
     } else {
       const choiceReply = groundPendingOpeningReadExamineChoiceReply(
@@ -507,7 +683,10 @@ export async function decideInitialGuideTurn(
         knowledge,
       );
     if (deterministicAmbiguity !== undefined) {
-      return readExamineClarification(deterministicAmbiguity);
+      return contextualContentClarification(
+        deterministicAmbiguity,
+        input.scene,
+      );
     }
     const pendingIntent = inferPendingOpeningObjectIntent(
       input.playerUtterance,
@@ -533,6 +712,30 @@ export async function decideInitialGuideTurn(
           reason: "not-observed",
         },
       };
+    }
+    const contextualFocusMatches =
+      pendingContextualSuggestion !== undefined &&
+      (!openingGlobalActionHelpScopeRequested(input.playerUtterance) ||
+        openingObjectSelectionUniquelyMentioned(
+          pendingContextualSuggestion.selectedObject,
+          input.playerUtterance,
+          knowledge,
+        )) &&
+      openingUtteranceMatchesObjectFocus(
+        pendingContextualSuggestion.selectedObject,
+        input.playerUtterance,
+        knowledge,
+      );
+    if (contextualFocusMatches) {
+      return exactlyContextualSuggestionSources(
+        decision.sourceIds,
+        pendingContextualSuggestion,
+      )
+        ? contextualActionChoiceClarification(
+            pendingContextualSuggestion,
+            "options",
+          )
+        : genericProviderClarification();
     }
     if (
       input.pendingIntent !== undefined &&
@@ -610,7 +813,7 @@ export async function decideInitialGuideTurn(
           knowledge,
         );
         if (ambiguity !== undefined) {
-          return readExamineClarification(ambiguity);
+          return contextualContentClarification(ambiguity, input.scene);
         }
         return {
           kind: "rejected",
@@ -670,7 +873,7 @@ export async function decideInitialGuideTurn(
           knowledge,
         );
     if (readExamineAmbiguity !== undefined) {
-      return readExamineClarification(readExamineAmbiguity);
+      return contextualContentClarification(readExamineAmbiguity, input.scene);
     }
     const semanticFallbackAllowed =
       !lexicalGrounding.ok &&

@@ -233,12 +233,19 @@ event sequence; it does not create a new decision, event, or save shape. A local
 answer cannot execute a command or claim that an attempted action will work.
 
 Dialogue focus remains separate from that world projection. A bounded
-`read-examine-choice` may retain one current observed-object ID across help
-about those two active options. The provider receives only that validated frame,
-not an unbounded transcript; local policy revalidates the object and rule IDs
-and renders the response. Scoped help preserves the frame as a clarification,
-while global help or an unrelated accepted turn supersedes it. See
-[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md).
+`contextual-object-action-choice` retains one current observed-object ID and
+exactly two scene-derived `suggestedActions` across help about those options.
+The legacy `read-examine-choice` remains accepted during migration. The provider
+receives only a validated frame, not an unbounded transcript; local policy
+revalidates the object and current suggestion IDs and renders the response.
+Suggested actions are advice, not execution authorization. A direct affirmative
+action such as `read it` may use the single current object focus even when READ
+was not suggested, but it still passes the ordinary grammar, lexical, risk,
+revision, and commit gates. Scoped help preserves the frame as a clarification,
+while missing or stale scene context, global help, or an unrelated accepted turn
+clears or supersedes it. See
+[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md) and
+[ADR-0016](adr/0016-separate-contextual-suggestions-from-parser-authority.md).
 
 An execute decision contains one command. A multi-step player request is stored
 as a pending goal and advanced through successive decisions, one command per
@@ -304,6 +311,17 @@ or recalling the source-backed direction of the house. It is not a hidden map or
 navigation planner, and a remembered relation may never be compiled into a
 movement command on the player's behalf. This bounded projection does not relax
 navigation grounding or introduce a new event or save schema.
+
+Object-scoped content guidance uses the same distinction. The trusted opening
+scene recommends EXAMINE and OPEN for the closed mailbox, while the revealed
+leaflet recommends EXAMINE and READ. The grammar registry remains broader: an
+explicit `READ MAILBOX` is still eligible for ordinary T3 grounding even though
+READ is not a mailbox recommendation. A committed attempt does not prove its
+effect. The correlated exact engine output determines the next scene; the
+reviewed Release 119 rejection of `READ MAILBOX` retains the mailbox as current
+instead of applying READ's conservative implicit-take assumption. Without a
+trusted current scene, the guide gives a generic non-mutating clarification
+rather than deriving suggestions from an object label or the global grammar.
 
 The normal guide context never includes the complete object table, map, puzzle
 solutions, or engine memory. `inspectPublicState` exposes only supported public

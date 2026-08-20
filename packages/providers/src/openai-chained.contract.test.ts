@@ -439,12 +439,12 @@ describe("OpenAiChainedProvider", () => {
     });
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
-        "content wording could reasonably mean either lower-risk grammar.examine or higher-risk grammar.read",
+        "Content wording alone does not authorize or suggest grammar.read",
       ),
     });
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
-        "return clarify instead of execute",
+        "return clarify instead of inventing an action",
       ),
     });
     expect(requestBody).toMatchObject({
@@ -454,7 +454,7 @@ describe("OpenAiChainedProvider", () => {
     });
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
-        "For an ambiguous EXAMINE/READ clarification, choices must offer both EXAMINE and READ",
+        "suggested actions are contextual advice, not an exhaustive command list, execution authorization, or a prohibition",
       ),
     });
     expect(requestBody).toMatchObject({
@@ -499,6 +499,70 @@ describe("OpenAiChainedProvider", () => {
       ),
     });
     expect(JSON.stringify(requestBody)).not.toContain(testKey);
+  });
+
+  it("serializes contextual object suggestions as non-authoritative focus", async () => {
+    let requestBody: {
+      readonly input?: string;
+      readonly instructions?: string;
+    } = {};
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: async (_input, init) => {
+        requestBody = JSON.parse(String(init?.body)) as typeof requestBody;
+        return jsonResponse({
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    decision: {
+                      kind: "explain",
+                      response: "EXAMINE and OPEN are the current suggestions.",
+                      basis: "command-help",
+                      sourceIds: ["grammar.examine", "grammar.open"],
+                    },
+                  }),
+                },
+              ],
+            },
+          ],
+        });
+      },
+    });
+
+    await provider.decide(
+      {
+        ...guideInput(),
+        playerUtterance: "What were those options?",
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice",
+          objectValueId: "observed-object:mailbox",
+          suggestedActions: ["examine", "open"],
+        },
+        knowledge: createOpeningCommandKnowledge({
+          observedObjects: ["mailbox"],
+        }),
+      },
+      new AbortController().signal,
+    );
+
+    expect(JSON.parse(requestBody.input ?? "{}") as unknown).toMatchObject({
+      pendingIntent: {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:mailbox",
+        suggestedActions: ["examine", "open"],
+      },
+    });
+    expect(requestBody.instructions).toContain(
+      "exactly the two grammar source IDs obtained by prefixing each pendingIntent.suggestedActions value with grammar.",
+    );
+    expect(requestBody.instructions).toContain(
+      "not an exhaustive command list, execution authorization, or a prohibition",
+    );
   });
 
   it.each([
@@ -572,6 +636,61 @@ describe("OpenAiChainedProvider", () => {
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects stale contextual focus or missing suggested grammar before spending", async () => {
+    const fetchMock = vi.fn();
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: fetchMock,
+    });
+    const knowledge = createOpeningCommandKnowledge({
+      observedObjects: ["mailbox"],
+    });
+
+    for (const input of [
+      {
+        ...guideInput(),
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice" as const,
+          objectValueId: "observed-object:hidden object",
+          suggestedActions: ["examine", "open"] as const,
+        },
+        knowledge,
+      },
+      {
+        ...guideInput(),
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice" as const,
+          objectValueId: "observed-object:mailbox",
+          suggestedActions: ["examine", "open"] as const,
+        },
+        knowledge: {
+          ...knowledge,
+          sourceIds: knowledge.sourceIds.filter(
+            (sourceId) => sourceId !== "grammar.open",
+          ),
+        },
+      },
+      {
+        ...guideInput(),
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice",
+          objectValueId: "observed-object:mailbox",
+          suggestedActions: ["examine", "open"],
+          injected: true,
+        } as never,
+        knowledge,
+      },
+    ]) {
+      await expect(
+        provider.decide(input, new AbortController().signal),
+      ).rejects.toMatchObject({ code: "invalid-input" });
+    }
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

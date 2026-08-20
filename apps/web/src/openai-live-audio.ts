@@ -651,6 +651,164 @@ export interface OpenAiLiveGuideModelOptions {
   readonly maxResponseBytes?: number;
 }
 
+type PendingLiveGuideIntent = NonNullable<
+  InitialGuideModelInput["pendingIntent"]
+>;
+type PendingLiveGuideAction = "examine" | "open" | "read" | "take";
+
+const pendingLiveGuideActions: readonly PendingLiveGuideAction[] = [
+  "examine",
+  "open",
+  "read",
+  "take",
+];
+
+function liveGuideExactKeys(
+  value: object,
+  expectedKeys: readonly string[],
+): boolean {
+  const keys = Reflect.ownKeys(value);
+  return (
+    keys.length === expectedKeys.length &&
+    keys.every((key) => typeof key === "string" && expectedKeys.includes(key))
+  );
+}
+
+function invalidPendingLiveGuideInput(): never {
+  throw new OpenAiLiveAudioError(
+    "invalid-input",
+    "Pending guide focus was invalid.",
+  );
+}
+
+function normalizePendingLiveGuidePair(
+  value: unknown,
+  exactReadExamine: boolean,
+): readonly [PendingLiveGuideAction, PendingLiveGuideAction] {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    Reflect.ownKeys(value).some(
+      (key) => !["0", "1", "length"].includes(String(key)),
+    )
+  ) {
+    return invalidPendingLiveGuideInput();
+  }
+  const first = value[0] as unknown;
+  const second = value[1] as unknown;
+  if (
+    typeof first !== "string" ||
+    typeof second !== "string" ||
+    !pendingLiveGuideActions.includes(first as PendingLiveGuideAction) ||
+    !pendingLiveGuideActions.includes(second as PendingLiveGuideAction) ||
+    first === second ||
+    (exactReadExamine
+      ? first !== "examine" || second !== "read"
+      : pendingLiveGuideActions.indexOf(first as PendingLiveGuideAction) >=
+        pendingLiveGuideActions.indexOf(second as PendingLiveGuideAction))
+  ) {
+    return invalidPendingLiveGuideInput();
+  }
+  return [first as PendingLiveGuideAction, second as PendingLiveGuideAction];
+}
+
+function validatePendingLiveGuideSources(
+  objectValueId: string,
+  actions: readonly [PendingLiveGuideAction, PendingLiveGuideAction],
+  knowledge: InitialGuideModelInput["knowledge"],
+): void {
+  if (
+    !knowledge.observedObjectOptions.some(
+      (option) => option.id === objectValueId,
+    )
+  ) {
+    invalidPendingLiveGuideInput();
+  }
+  for (const action of actions) {
+    const sourceId = `grammar.${action}`;
+    const rules = knowledge.rules.filter((rule) => rule.id === sourceId);
+    const rule = rules[0];
+    if (
+      rules.length !== 1 ||
+      rule === undefined ||
+      !knowledge.sourceIds.includes(sourceId) ||
+      !rule.objectRequired ||
+      rule.slots.length !== 1 ||
+      rule.slots[0]?.slotId !== "object" ||
+      !rule.slots[0].allowedValueIds.includes(objectValueId)
+    ) {
+      invalidPendingLiveGuideInput();
+    }
+  }
+}
+
+function normalizePendingLiveGuideIntent(
+  value: PendingLiveGuideIntent | undefined,
+  knowledge: InitialGuideModelInput["knowledge"],
+): PendingLiveGuideIntent | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalidPendingLiveGuideInput();
+  }
+  if (liveGuideExactKeys(value, ["action"])) {
+    const action = Reflect.get(value, "action") as unknown;
+    if (
+      typeof action !== "string" ||
+      !pendingLiveGuideActions.includes(action as PendingLiveGuideAction)
+    ) {
+      return invalidPendingLiveGuideInput();
+    }
+    return { action: action as PendingLiveGuideAction };
+  }
+  if (
+    liveGuideExactKeys(value, ["kind"]) &&
+    Reflect.get(value, "kind") === "content-object"
+  ) {
+    return { kind: "content-object" };
+  }
+
+  const kind = Reflect.get(value, "kind") as unknown;
+  const objectValueId = Reflect.get(value, "objectValueId") as unknown;
+  if (typeof objectValueId !== "string") {
+    return invalidPendingLiveGuideInput();
+  }
+  if (kind === "read-examine-choice") {
+    if (
+      !liveGuideExactKeys(value, ["kind", "objectValueId", "allowedActions"])
+    ) {
+      return invalidPendingLiveGuideInput();
+    }
+    const actions = normalizePendingLiveGuidePair(
+      Reflect.get(value, "allowedActions"),
+      true,
+    );
+    validatePendingLiveGuideSources(objectValueId, actions, knowledge);
+    return {
+      kind: "read-examine-choice",
+      objectValueId,
+      allowedActions: ["examine", "read"],
+    };
+  }
+  if (kind === "contextual-object-action-choice") {
+    if (
+      !liveGuideExactKeys(value, ["kind", "objectValueId", "suggestedActions"])
+    ) {
+      return invalidPendingLiveGuideInput();
+    }
+    const actions = normalizePendingLiveGuidePair(
+      Reflect.get(value, "suggestedActions"),
+      false,
+    );
+    validatePendingLiveGuideSources(objectValueId, actions, knowledge);
+    return {
+      kind: "contextual-object-action-choice",
+      objectValueId,
+      suggestedActions: [actions[0], actions[1]],
+    };
+  }
+  return invalidPendingLiveGuideInput();
+}
+
 export class OpenAiLiveGuideModel implements GuideModel {
   readonly #sessionToken: string;
   readonly #fetch: typeof fetch;
@@ -697,6 +855,10 @@ export class OpenAiLiveGuideModel implements GuideModel {
         "Observed objects exceeded the guide boundary.",
       );
     }
+    const pendingIntent = normalizePendingLiveGuideIntent(
+      input.pendingIntent,
+      input.knowledge,
+    );
     const body = encodeJson(
       {
         interactionId: boundedId(input.interactionId, "interaction"),
@@ -712,9 +874,7 @@ export class OpenAiLiveGuideModel implements GuideModel {
         observedObjects: input.observedObjects.map((object) =>
           boundedText(object, "observed object", 160, false),
         ),
-        ...(input.pendingIntent === undefined
-          ? {}
-          : { pendingIntent: input.pendingIntent }),
+        ...(pendingIntent === undefined ? {} : { pendingIntent }),
       },
       this.#maxRequestBytes,
     );

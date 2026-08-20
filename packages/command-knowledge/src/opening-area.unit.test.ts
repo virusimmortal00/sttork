@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   OPENING_AREA_KNOWLEDGE_VERSION,
+  PENDING_OPENING_CONTEXTUAL_OBJECT_ACTIONS,
   createPendingOpeningContentObjectIntent,
+  createPendingOpeningContextualObjectActionChoiceIntent,
   createPendingOpeningReadExamineChoiceIntent,
   createOpeningCommandKnowledge,
   groundOpeningCommand,
   groundObservedObjectContentQuestion,
   groundPendingOpeningObjectReply,
+  groundPendingOpeningContextualObjectActionChoiceReply,
   groundPendingOpeningReadExamineChoiceReply,
   identifyNonlexicalOpeningContentRequest,
   identifyNonlexicalOpeningReadExamineAmbiguity,
@@ -17,11 +20,13 @@ import {
   isPendingOpeningObjectIntent,
   openingActionOptionsRequested,
   openingGlobalActionHelpScopeRequested,
+  openingObjectActionMentioned,
   openingObjectObservationDirectlyRequested,
   openingObjectSelectionMentioned,
   openingReadExamineActionMentioned,
   openingScopedActionOptionsRequested,
   resolvePendingOpeningContentObjectReply,
+  resolvePendingOpeningContextualObjectActionChoiceObject,
   resolvePendingOpeningReadExamineChoiceObject,
   resolveOpeningCommandComparisonQuestion,
   openingCommandHelp,
@@ -62,6 +67,16 @@ describe("opening-area command knowledge", () => {
         createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
       ),
     ).toMatchObject({ ok: true, command: "read leaflet" });
+  });
+
+  it("keeps explicit READ available for every current observed object", () => {
+    expect(
+      groundOpeningCommand("read mailbox", "Read the mailbox.", knowledge),
+    ).toEqual({
+      ok: true,
+      command: "read mailbox",
+      ruleId: "grammar.read",
+    });
   });
 
   it.each([
@@ -530,6 +545,16 @@ describe("opening-area command knowledge", () => {
     expect(openingReadExamineActionMentioned("Should I inspect it?")).toBe(
       true,
     );
+    expect(openingObjectActionMentioned("Would OPEN it be useful?")).toBe(true);
+    expect(openingObjectActionMentioned("What if I pick it up?")).toBe(true);
+    expect(
+      openingObjectActionMentioned(
+        "Could you remind me what those choices were?",
+      ),
+    ).toBe(false);
+    expect(openingReadExamineActionMentioned("Would OPEN it be useful?")).toBe(
+      false,
+    );
   });
 
   it.each(["grammar.examine", "grammar.read"])(
@@ -899,6 +924,107 @@ describe("opening-area command knowledge", () => {
           knowledge,
         ),
       ).toMatchObject({ ok: true, command });
+    }
+  });
+
+  it("stores exactly two canonical suggestions without narrowing explicit object actions", () => {
+    const mailbox = knowledge.observedObjectOptions.find(
+      (option) => option.label === "mailbox",
+    );
+    if (mailbox === undefined) throw new Error("Expected current mailbox.");
+    const choice = createPendingOpeningContextualObjectActionChoiceIntent(
+      mailbox,
+      ["open", "examine"],
+    );
+
+    expect(choice).toEqual({
+      kind: "contextual-object-action-choice",
+      objectValueId: "observed-object:mailbox",
+      suggestedActions: ["examine", "open"],
+    });
+    expect(PENDING_OPENING_CONTEXTUAL_OBJECT_ACTIONS).toEqual([
+      "examine",
+      "open",
+      "read",
+      "take",
+    ]);
+    expect(Object.isFrozen(choice)).toBe(true);
+    expect(Object.isFrozen(choice.suggestedActions)).toBe(true);
+    expect(isPendingOpeningObjectIntent(choice)).toBe(true);
+    expect(
+      resolvePendingOpeningContextualObjectActionChoiceObject(
+        choice,
+        knowledge,
+      ),
+    ).toEqual(mailbox);
+    expect(
+      resolvePendingOpeningContextualObjectActionChoiceObject(
+        choice,
+        createOpeningCommandKnowledge({ observedObjects: ["leaflet"] }),
+      ),
+    ).toBeUndefined();
+
+    for (const [utterance, command] of [
+      ["examine it", "examine mailbox"],
+      ["open it", "open mailbox"],
+      ["read it", "read mailbox"],
+      ["take it", "take mailbox"],
+    ] as const) {
+      expect(
+        groundPendingOpeningContextualObjectActionChoiceReply(
+          choice,
+          utterance,
+          knowledge,
+        ),
+      ).toEqual({
+        ok: true,
+        command,
+        ruleId: `grammar.${command.split(" ")[0]}`,
+      });
+    }
+    expect(
+      groundPendingOpeningContextualObjectActionChoiceReply(
+        choice,
+        "Should I read it?",
+        knowledge,
+      ),
+    ).toEqual({ ok: false, code: "not-direct-action-request" });
+  });
+
+  it("rejects malformed contextual suggestion pairs", () => {
+    const mailbox = {
+      id: "observed-object:mailbox",
+      label: "mailbox",
+    } as const;
+    expect(() =>
+      createPendingOpeningContextualObjectActionChoiceIntent(mailbox, [
+        "read",
+        "read",
+      ]),
+    ).toThrow(TypeError);
+    for (const intent of [
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:mailbox",
+        suggestedActions: ["open", "examine"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:mailbox",
+        suggestedActions: ["examine", "examine"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:mailbox",
+        suggestedActions: ["examine", "dance"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:mailbox",
+        suggestedActions: ["examine", "open", "read"],
+      },
+    ]) {
+      expect(isPendingOpeningObjectIntent(intent)).toBe(false);
     }
   });
 

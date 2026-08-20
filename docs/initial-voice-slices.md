@@ -169,6 +169,22 @@ navigation, does not relax grounding, and adds no event or save schema. This is
 a hermetic implementation refinement, not live-provider evidence, and it does
 not complete M2.
 
+Contextual-suggestion refinement, 2026-08-20: accepted
+[ADR-0016](adr/0016-separate-contextual-suggestions-from-parser-authority.md)
+supersedes the fixed suggestion pair described in the earlier grounding and
+dialogue-focus notes. The trusted current scene recommends EXAMINE/OPEN for the
+closed mailbox and EXAMINE/READ for the revealed leaflet. A bounded
+`contextual-object-action-choice` retains one object ID and exactly two distinct
+`suggestedActions`; the legacy `read-examine-choice` remains accepted during
+migration. Suggestions are not execution authorization. A direct affirmative
+action outside the pair, including `READ MAILBOX` or `read it`, may use the
+revalidated object focus but still passes the ordinary grammar, lexical, risk,
+revision, and commit gates. Missing or stale scene context fails closed instead
+of deriving suggestions from the object name or global grammar. Correlated exact
+engine output, not the attempted verb, determines the next scene. This records
+the hermetic policy refinement; it is not fresh provider, browser, or device
+evidence, and it does not complete M2.
+
 ### Deliverables
 
 - Implement the provider-neutral guide decision contract and deterministic
@@ -441,11 +457,14 @@ the exact configuration of the recorded slice evidence; this update requires
 fresh live evidence before it changes that result.
 
 Dialogue-focus evolution on 2026-08-20 accepted
-[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md). The bounded
-READ-versus-EXAMINE frame now preserves one current object through help about
-those two options, including a validated provider fallback for unseen help
-paraphrases. This is hermetic implementation evidence only; it does not claim a
-general conversation-memory system or fresh live-device qualification.
+[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md), followed by
+[ADR-0016](adr/0016-separate-contextual-suggestions-from-parser-authority.md).
+The bounded focus preserves one current object through help about its exact
+scene-derived suggestion pair, including a validated provider fallback for
+unseen help paraphrases. The suggestions do not restrict a player's explicit
+parser command. The decision does not by itself claim a general
+conversation-memory system, hermetic qualification, or fresh live-device
+qualification.
 
 ### Evidence still required
 

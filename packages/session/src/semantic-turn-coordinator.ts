@@ -126,6 +126,16 @@ function copyPendingOpeningObjectIntent(
 ): PendingOpeningObjectIntent {
   if ("action" in intent) return { action: intent.action };
   if (intent.kind === "content-object") return { kind: "content-object" };
+  if (intent.kind === "contextual-object-action-choice") {
+    return {
+      kind: "contextual-object-action-choice",
+      objectValueId: intent.objectValueId,
+      suggestedActions: [
+        intent.suggestedActions[0],
+        intent.suggestedActions[1],
+      ],
+    };
+  }
   return {
     kind: "read-examine-choice",
     objectValueId: intent.objectValueId,
@@ -145,6 +155,18 @@ function samePendingOpeningObjectIntent(
   if (left.kind !== right.kind) return false;
   if (left.kind === "content-object" || right.kind === "content-object") {
     return left.kind === right.kind;
+  }
+  if (
+    left.kind === "contextual-object-action-choice" ||
+    right.kind === "contextual-object-action-choice"
+  ) {
+    return (
+      left.kind === "contextual-object-action-choice" &&
+      right.kind === "contextual-object-action-choice" &&
+      left.objectValueId === right.objectValueId &&
+      left.suggestedActions[0] === right.suggestedActions[0] &&
+      left.suggestedActions[1] === right.suggestedActions[1]
+    );
   }
   return (
     left.objectValueId === right.objectValueId &&

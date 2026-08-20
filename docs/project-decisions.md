@@ -51,6 +51,13 @@ validated observed-object focus across help about an active READ-versus-EXAMINE
 choice. It does not add unbounded transcript memory or let provider prose become
 command authority.
 
+[ADR-0016](adr/0016-separate-contextual-suggestions-from-parser-authority.md)
+generalizes that focus to an exact scene-derived pair of contextual suggestions.
+The closed mailbox recommends EXAMINE and OPEN, while the revealed leaflet
+recommends EXAMINE and READ. Suggestions are not a parser allowlist: a direct
+affirmative action outside the pair may still use the revalidated object focus
+and must pass the ordinary grounding and risk gates.
+
 It does not silently solve puzzles, invent game facts, or expose unseen world
 state.
 

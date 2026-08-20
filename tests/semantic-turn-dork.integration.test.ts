@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   createOpeningObjectProjection,
+  OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
   projectOpeningObjectsFromEngineOutput,
   projectOpeningObjectsFromEvent,
 } from "../packages/command-knowledge/src/index.js";
@@ -214,6 +215,15 @@ describe("semantic turn through the isolated Dork engine", () => {
           confidence: 0.99,
         };
       }
+      if (input.playerUtterance === "Check my inventory.") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.inventory",
+          slots: [],
+          intentSummary: "List the player's possessions",
+          confidence: 0.99,
+        };
+      }
       throw new Error(`Unexpected guide input: ${input.playerUtterance}`);
     });
     const subject = new SemanticTurnCoordinator({
@@ -309,6 +319,98 @@ describe("semantic turn through the isolated Dork engine", () => {
     ).toEqual([]);
     expect(await engine.inspectPublicState()).toMatchObject({ revision: 0 });
 
+    const mailboxSuggestions = await subject.submitTurn(
+      {
+        interactionId: "mailbox-content",
+        transcript: "What's inside the mailbox?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(mailboxSuggestions).toMatchObject({ outcome: "clarified" });
+    expect(
+      mailboxSuggestions.events.find(
+        (event) => event.type === "guide.clarification",
+      ),
+    ).toMatchObject({
+      payload: {
+        choices: ["examine mailbox", "open mailbox"],
+      },
+    });
+    expect(guide.calls).toBe(0);
+    expect(
+      published.filter((event) => event.type === "engine.command.requested"),
+    ).toHaveLength(0);
+
+    const readInput = {
+      interactionId: "read-mailbox",
+      transcript: "Read it.",
+      transcriptConfidence: 0.99,
+      observedObjects: ["house", "door", "mailbox"],
+    } as const;
+    const read = await subject.submitTurn(
+      readInput,
+      new AbortController().signal,
+    );
+    expect(read).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        status: "committed",
+        previousRevision: 0,
+        revision: 1,
+        command: "read mailbox",
+        output: OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
+      },
+      checkpoint: { revision: 1 },
+    });
+    expect(
+      await subject.submitTurn(readInput, new AbortController().signal),
+    ).toEqual(read);
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual(["read mailbox"]);
+    expect(guide.calls).toBe(0);
+
+    const suggestionsAfterRead = await subject.submitTurn(
+      {
+        interactionId: "mailbox-content-after-read",
+        transcript: "What's inside the mailbox?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(
+      suggestionsAfterRead.events.find(
+        (event) => event.type === "guide.clarification",
+      ),
+    ).toMatchObject({
+      payload: { choices: ["examine mailbox", "open mailbox"] },
+    });
+
+    const inventory = await subject.submitTurn(
+      {
+        interactionId: "inventory-after-read",
+        transcript: "Check my inventory.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(inventory).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        previousRevision: 1,
+        revision: 2,
+        command: "inventory",
+        output: "You are empty-handed.\n\n>",
+      },
+    });
+    expect(guide.calls).toBe(1);
+
     const opened = await subject.submitTurn(
       {
         interactionId: "open-mailbox",
@@ -322,27 +424,138 @@ describe("semantic turn through the isolated Dork engine", () => {
       outcome: "committed",
       engineResult: {
         status: "committed",
-        previousRevision: 0,
-        revision: 1,
+        previousRevision: 2,
+        revision: 3,
         command: "open mailbox",
         output: "Opening the small mailbox reveals a leaflet.\n\n>",
       },
-      checkpoint: { revision: 1 },
+      checkpoint: { revision: 3 },
     });
-    expect(guide.calls).toBe(1);
+    expect(guide.calls).toBe(2);
     expect(
       published
         .filter((event) => event.type === "engine.command.committed")
         .map((event) => event.payload.command),
-    ).toEqual(["open mailbox"]);
+    ).toEqual(["read mailbox", "inventory", "open mailbox"]);
     expect(
       published.flatMap((event) =>
-        event.type === "engine.output" && event.payload.revision === 1
+        event.type === "engine.output" && event.payload.revision === 3
           ? [event.payload.exactText]
           : [],
       ),
     ).toEqual(["Opening the small mailbox reveals a leaflet.\n\n>"]);
-    expect(await engine.inspectPublicState()).toMatchObject({ revision: 1 });
+    expect(await engine.inspectPublicState()).toMatchObject({ revision: 3 });
+  });
+
+  it("keeps fresh explicit READ MAILBOX available through ordinary T3 grounding", async () => {
+    let messageId = 0;
+    const engine = new DorkWorkerEngine({
+      factory: new RuntimeFactory(),
+      storyBytes: new Uint8Array(await readFile(zorkStoryUrl)),
+      binding: DORK_WORKER_BINDING,
+      nextMessageId: () => `named-read-message-${++messageId}`,
+    });
+    const boot = await engine.boot({
+      storyId: ZORK_STORY_ID,
+      artifactSha256: ZORK_STORY_SHA256,
+    });
+
+    const published: SemanticEvent[] = [];
+    let eventId = 0;
+    let requestId = 0;
+    let narrationId = 0;
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "Read the mailbox.") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.read",
+          slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+          intentSummary: "Read the observed mailbox",
+          confidence: 0.99,
+        };
+      }
+      if (input.playerUtterance === "Check my inventory.") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.inventory",
+          slots: [],
+          intentSummary: "List the player's possessions",
+          confidence: 0.99,
+        };
+      }
+      throw new Error(`Unexpected guide input: ${input.playerUtterance}`);
+    });
+    const subject = new SemanticTurnCoordinator({
+      engine,
+      guide,
+      narrator: { prepare: () => Promise.resolve() },
+      events: new EventSequence({
+        sessionId: "zork-named-read-session",
+        now: () => "2026-08-20T18:00:00.000Z",
+        nextId: () => `named-read-event-${++eventId}`,
+      }),
+      nextRequestId: () => `named-read-request-${++requestId}`,
+      nextNarrationId: () => `named-read-narration-${++narrationId}`,
+      publish: (event) => published.push(event),
+    });
+    await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot,
+        narrationText: selectOpeningNarrationText(boot),
+      },
+      new AbortController().signal,
+    );
+
+    const readInput = {
+      interactionId: "named-read-mailbox",
+      transcript: "Read the mailbox.",
+      transcriptConfidence: 0.99,
+      observedObjects: ["house", "door", "mailbox"],
+    } as const;
+    const read = await subject.submitTurn(
+      readInput,
+      new AbortController().signal,
+    );
+    expect(read).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        previousRevision: 0,
+        revision: 1,
+        command: "read mailbox",
+        output: OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
+      },
+    });
+    expect(
+      await subject.submitTurn(readInput, new AbortController().signal),
+    ).toEqual(read);
+    expect(guide.calls).toBe(1);
+
+    const inventory = await subject.submitTurn(
+      {
+        interactionId: "inventory-after-named-read",
+        transcript: "Check my inventory.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(inventory).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        previousRevision: 1,
+        revision: 2,
+        command: "inventory",
+        output: "You are empty-handed.\n\n>",
+      },
+    });
+    expect(guide.calls).toBe(2);
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual(["read mailbox", "inventory"]);
+    expect(await engine.inspectPublicState()).toMatchObject({ revision: 2 });
   });
 
   it("commits, checkpoints, and requests exact narration once", async () => {
@@ -639,6 +852,15 @@ describe("semantic turn through the isolated Dork engine", () => {
       },
     });
 
+    await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot,
+        narrationText: selectOpeningNarrationText(boot),
+      },
+      new AbortController().signal,
+    );
+
     const opened = await subject.submitTurn(
       {
         interactionId: "open-mailbox",
@@ -759,6 +981,10 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(requestedCommands).not.toContain("read leaflet");
     expect(requestedCommands).not.toContain("take leaflet");
     expect(narration).toEqual([
+      expect.objectContaining({
+        role: "narrator",
+        text: ZORK_RELEASE_119_SPOKEN_OPENING,
+      }),
       expect.objectContaining({
         role: "narrator",
         text: "Opening the small mailbox reveals a leaflet.\n\n>",

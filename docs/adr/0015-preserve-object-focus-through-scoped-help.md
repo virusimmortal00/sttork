@@ -5,6 +5,11 @@
 - Owners: maintainers
 - Supersedes: the pending-help lifecycle clause of ADR-0012
 
+The fixed READ-versus-EXAMINE suggestion shape below is superseded by
+[ADR-0016](0016-separate-contextual-suggestions-from-parser-authority.md). The
+object-focus lifecycle remains accepted and now applies to the revalidated
+contextual action pair.
+
 ## Context
 
 ADR-0012 introduced a session-only READ-versus-EXAMINE choice bound to one

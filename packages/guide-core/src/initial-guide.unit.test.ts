@@ -1,6 +1,7 @@
 import {
   createOpeningSceneProjection,
   OPENING_SCENE_BOOT_OUTPUT,
+  OPENING_SCENE_MAILBOX_REVEAL_OUTPUT,
   OPENING_SCENE_STORY_ID,
   OPENING_SCENE_STORY_SHA256,
   projectOpeningSceneFromEvent,
@@ -23,6 +24,16 @@ const leafletReadExaminePending = {
   kind: "read-examine-choice",
   objectValueId: "observed-object:leaflet",
   allowedActions: ["examine", "read"],
+} as const;
+const leafletContextualPending = {
+  kind: "contextual-object-action-choice",
+  objectValueId: "observed-object:leaflet",
+  suggestedActions: ["examine", "read"],
+} as const;
+const mailboxContextualPending = {
+  kind: "contextual-object-action-choice",
+  objectValueId: "observed-object:mailbox",
+  suggestedActions: ["examine", "open"],
 } as const;
 
 function authenticatedOpeningScene(): OpeningSceneProjection {
@@ -48,6 +59,54 @@ function authenticatedOpeningScene(): OpeningSceneProjection {
       },
     } satisfies SemanticEvent<"engine.output">,
   );
+}
+
+function openedMailboxScene(): OpeningSceneProjection {
+  const opening = authenticatedOpeningScene();
+  const committed = projectOpeningSceneFromEvent(opening, {
+    schemaVersion: 1,
+    id: "open-mailbox-commit",
+    sessionId: "session-1",
+    sequence: 2,
+    occurredAt: "2026-08-20T12:00:01.000Z",
+    type: "engine.command.committed",
+    correlationId: "interaction-open-mailbox",
+    visibility: "debug",
+    payload: {
+      requestId: "open-mailbox-request",
+      previousRevision: 0,
+      revision: 1,
+      command: "open mailbox",
+      boundary: "input-requested",
+    },
+  } satisfies SemanticEvent<"engine.command.committed">);
+  return projectOpeningSceneFromEvent(committed, {
+    schemaVersion: 1,
+    id: "open-mailbox-output",
+    sessionId: "session-1",
+    sequence: 3,
+    occurredAt: "2026-08-20T12:00:02.000Z",
+    type: "engine.output",
+    correlationId: "interaction-open-mailbox",
+    causationId: "open-mailbox-commit",
+    visibility: "accessible",
+    payload: {
+      revision: 1,
+      exactText: OPENING_SCENE_MAILBOX_REVEAL_OUTPUT,
+      boundary: "input-requested",
+      retention: "local-save",
+    },
+  } satisfies SemanticEvent<"engine.output">);
+}
+
+function openedMailboxSceneInput(): {
+  readonly observedObjects: readonly string[];
+  readonly scene: OpeningSceneProjection;
+} {
+  return {
+    observedObjects: ["door", "house", "leaflet", "mailbox"],
+    scene: openedMailboxScene(),
+  };
 }
 
 function movementClearedOpeningScene(): OpeningSceneProjection {
@@ -407,7 +466,7 @@ describe("initial bounded Dungeon Guide", () => {
         {
           ...baseInput,
           playerUtterance,
-          observedObjects: ["leaflet"],
+          ...openedMailboxSceneInput(),
         },
         signal,
       );
@@ -424,10 +483,92 @@ describe("initial bounded Dungeon Guide", () => {
       });
       expect(result).not.toHaveProperty("command");
       expect(result).toMatchObject({
-        pendingIntent: leafletReadExaminePending,
+        pendingIntent: leafletContextualPending,
       });
     },
   );
+
+  it("suggests EXAMINE and OPEN for mailbox contents without narrowing parser authority", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("scene-backed mailbox content help reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What's inside the mailbox?",
+        observedObjects: ["door", "house", "mailbox"],
+        scene: authenticatedOpeningScene(),
+      },
+      signal,
+    );
+
+    expect(result).toEqual({
+      kind: "clarify",
+      decision: {
+        kind: "clarify",
+        question:
+          "Would you like me to examine the mailbox without changing it, or try to open it?",
+        ambiguity:
+          "The current scene offers two useful attempts, but neither is the only parser command the player may explicitly request.",
+        choices: ["examine mailbox", "open mailbox"],
+      },
+      pendingIntent: mailboxContextualPending,
+    });
+    expect(model.calls).toBe(0);
+  });
+
+  it.each(["Read the mailbox.", "read it"])(
+    "keeps the explicit out-of-suggestion parser action available in %s",
+    async (playerUtterance) => {
+      const model = new FakeGuideModel(() => {
+        throw new Error("explicit focused READ reached the provider");
+      });
+      const result = await decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance,
+          observedObjects: ["door", "house", "mailbox"],
+          scene: authenticatedOpeningScene(),
+          pendingIntent: mailboxContextualPending,
+        },
+        signal,
+      );
+
+      expect(result).toMatchObject({
+        kind: "execute",
+        command: "read mailbox",
+        groundingSourceId: "grammar.read",
+      });
+      expect(model.calls).toBe(0);
+    },
+  );
+
+  it("clears a contextual focus when the exact scene suggestion pair changes", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("stale contextual focus reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What were those options?",
+        ...openedMailboxSceneInput(),
+        pendingIntent: mailboxContextualPending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "clarify",
+      decision: {
+        question: expect.stringContaining("no longer current"),
+      },
+    });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(model.calls).toBe(0);
+  });
 
   it("retains an explicitly authorized semantic READ command", async () => {
     expect(
@@ -495,7 +636,7 @@ describe("initial bounded Dungeon Guide", () => {
         {
           ...baseInput,
           playerUtterance,
-          observedObjects: ["leaflet"],
+          ...openedMailboxSceneInput(),
         },
         signal,
       );
@@ -508,7 +649,7 @@ describe("initial bounded Dungeon Guide", () => {
       });
       expect(result).not.toHaveProperty("command");
       expect(result).toMatchObject({
-        pendingIntent: leafletReadExaminePending,
+        pendingIntent: leafletContextualPending,
       });
       expect(model.calls).toBe(0);
     },
@@ -765,7 +906,7 @@ describe("initial bounded Dungeon Guide", () => {
         {
           ...baseInput,
           playerUtterance,
-          observedObjects: ["leaflet"],
+          ...openedMailboxSceneInput(),
         },
         signal,
       );
@@ -832,7 +973,7 @@ describe("initial bounded Dungeon Guide", () => {
         {
           ...baseInput,
           playerUtterance: "What's written on the leaflet?",
-          observedObjects: ["leaflet", "mailbox"],
+          ...openedMailboxSceneInput(),
         },
         signal,
       );
@@ -847,7 +988,7 @@ describe("initial bounded Dungeon Guide", () => {
             "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object.",
           choices: ["examine leaflet", "read leaflet"],
         },
-        pendingIntent: leafletReadExaminePending,
+        pendingIntent: leafletContextualPending,
       });
       expect(model.calls).toBe(0);
     },
@@ -865,7 +1006,7 @@ describe("initial bounded Dungeon Guide", () => {
       {
         ...baseInput,
         playerUtterance: "I'd like details about the leaflet.",
-        observedObjects: ["leaflet"],
+        ...openedMailboxSceneInput(),
       },
       signal,
     );
@@ -880,7 +1021,7 @@ describe("initial bounded Dungeon Guide", () => {
           "The request could mean a non-taking EXAMINE action or the parser's READ action, which may implicitly take the object.",
         choices: ["examine leaflet", "read leaflet"],
       },
-      pendingIntent: leafletReadExaminePending,
+      pendingIntent: leafletContextualPending,
     });
     expect(model.calls).toBe(1);
   });
@@ -955,7 +1096,7 @@ describe("initial bounded Dungeon Guide", () => {
         {
           ...baseInput,
           playerUtterance: "What's written on the leaflet?",
-          observedObjects: ["leaflet", "mailbox"],
+          ...openedMailboxSceneInput(),
         },
         signal,
       ),
@@ -1198,7 +1339,7 @@ describe("initial bounded Dungeon Guide", () => {
     ).toMatchObject({ kind: "clarify" });
   });
 
-  it("clarifies an exact observed-object content question without calling the provider", async () => {
+  it("fails an exact content question closed without trusted scene suggestions", async () => {
     const model = new FakeGuideModel(() => {
       throw new Error(
         "the deterministic content question reached the provider",
@@ -1217,9 +1358,12 @@ describe("initial bounded Dungeon Guide", () => {
       kind: "clarify",
       decision: {
         kind: "clarify",
-        choices: ["examine brass token", "read brass token"],
+        question:
+          "What single action would you like me to try with the brass token?",
       },
     });
+    expect(result.decision).not.toHaveProperty("choices");
+    expect(result).not.toHaveProperty("pendingIntent");
     expect(result).not.toHaveProperty("command");
     expect(model.calls).toBe(0);
   });
@@ -1258,7 +1402,7 @@ describe("initial bounded Dungeon Guide", () => {
     expect(model.calls).toBe(0);
   });
 
-  it("resolves an unknown content object into a typed READ/EXAMINE choice", async () => {
+  it("does not infer action suggestions after resolving an object without a scene", async () => {
     const clarificationModel = new FakeGuideModel(() => {
       throw new Error("the unresolved content request reached the provider");
     });
@@ -1291,14 +1435,12 @@ describe("initial bounded Dungeon Guide", () => {
     expect(resolved).toMatchObject({
       kind: "clarify",
       decision: {
-        choices: ["examine brass token", "read brass token"],
-      },
-      pendingIntent: {
-        kind: "read-examine-choice",
-        objectValueId: "observed-object:brass token",
-        allowedActions: ["examine", "read"],
+        question:
+          "What single action would you like me to try with the brass token?",
       },
     });
+    expect(resolved.decision).not.toHaveProperty("choices");
+    expect(resolved).not.toHaveProperty("pendingIntent");
     expect(answerModel.calls).toBe(0);
   });
 

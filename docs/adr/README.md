@@ -45,7 +45,10 @@ decision with a new ADR and link both records.
 - [ADR-0014: Allow a story-pinned spoken opening excerpt](0014-story-pinned-spoken-opening-excerpt.md)
   — accepted; canonical boot output remains byte-exact.
 - [ADR-0015: Preserve object focus through scoped command help](0015-preserve-object-focus-through-scoped-help.md)
-  — accepted; supersedes ADR-0012's blanket pending-help clearing rule.
+  — accepted; supersedes ADR-0012's blanket pending-help clearing rule, while
+  ADR-0016 supersedes its fixed READ-versus-EXAMINE suggestion shape.
+- [ADR-0016: Separate contextual suggestions from parser authority](0016-separate-contextual-suggestions-from-parser-authority.md)
+  — accepted; contextual advice does not restrict explicit parser commands.
 
 ## Template
 

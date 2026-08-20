@@ -24,35 +24,38 @@ execution. Deterministic help lists only this grammar and the supplied observed
 names.
 
 Nonlexical content, writing, and inscription questions about one explicitly
-named, currently offered object always clarify between EXAMINE and READ,
-regardless of whether the provider proposes either action or a clarification.
+named, currently offered object request contextual guidance; they do not
+authorize an action. When the trusted current scene supplies an exact pair, the
+closed mailbox offers EXAMINE/OPEN and the revealed leaflet offers EXAMINE/READ.
 The exact reviewed “what does [object] say?” matcher is a deterministic
-clarification fast path, not an execution shortcut. Provider-authored
-clarification prose and choices are discarded. Only local recognition or an
-exact validated current-object EXAMINE/READ pair produces the deterministic
-question and typed choices. Every other provider clarification becomes a
-deterministic generic question with only locally inferred pending state. Local
-policy sends no command until the player explicitly chooses. The guide explains
-that EXAMINE observes without taking while the Zork I Release 119 READ action
-may implicitly take the object. Explicit EXAMINE and lexical READ choices
-execute through ordinary grounding only when they are also imperatives, direct
-second-person requests, explicit first-person intent or delegation, or `let's`.
-Appearance, description, inspection, and “check out” requests remain
-least-effect T2 EXAMINE observations; `grammar.read` remains T3 with no semantic
-fallback.
+clarification fast path, not an execution shortcut. Without a trusted current
+pair, local policy emits a generic non-mutating clarification rather than
+deriving suggestions from an object label or the global grammar.
+Provider-authored clarification prose and choices are discarded.
+
+Suggestions do not narrow parser support. An explicit affirmative action may use
+the one revalidated focused object even when its verb was not suggested, but it
+executes only through ordinary grounding. EXAMINE remains T2 observation;
+lexical READ remains T3 with no semantic fallback and still requires an
+imperative, direct second-person request, explicit first-person intent or
+delegation, or `let's`. Thus explicit `READ MAILBOX` and direct `read it` remain
+eligible even though READ is not recommended for the mailbox. Appearance,
+description, inspection, and “check out” requests remain least-effect T2 EXAMINE
+observations.
 
 Content wording that omits an object retains the typed `content-object` intent
-while the guide requests one current object. Naming it produces the
-EXAMINE-versus-READ clarification, not an action. Its session-memory choice
-stores only the current object value ID and allowed actions `examine` and
-`read`; neither state is written to an event or save. A following `READ`,
-`read it`, `EXAMINE`, or `examine it` is rebound and revalidated against current
-knowledge before it can execute. Stale objects fail closed. Scoped help about
-the active READ/EXAMINE alternatives preserves the same object-bound choice;
-global help clears it, and an unrelated fresh command supersedes it. A bounded
-provider fallback may classify unseen scoped-help wording, but local policy
-accepts only the exact current READ/EXAMINE source pair and renders reviewed
-prose.
+while the guide requests one current object. Naming it produces the current
+contextual clarification, not an action. Its session-memory choice has kind
+`contextual-object-action-choice`, one current object value ID, and exactly two
+distinct `suggestedActions`; neither state is written to an event or save. The
+legacy `read-examine-choice` remains accepted during migration. A following
+explicit or pronominal direct action uses the object focus only after current
+knowledge and the ordinary action gates are revalidated; suggestion membership
+neither authorizes nor forbids it. Missing or stale scene context fails closed.
+Scoped help preserves the same revalidated object-bound pair; global help clears
+it, and an unrelated fresh command supersedes it. A bounded provider fallback
+may classify unseen scoped-help wording, but local policy accepts only the exact
+grammar source IDs for the current suggestions and renders reviewed prose.
 
 Questions that compare offered commands or ask about alternatives without
 choosing one are non-mutating command help and never execute. The bounded local
@@ -101,3 +104,11 @@ authorize a command, compile an inferred relation into movement, expose a hidden
 map, or relax the existing navigation and risk-tier gates. This projection uses
 the existing guide decisions and semantic events and adds no event or save
 schema.
+
+For object-scoped content guidance, `resolveOpeningSceneObjectActionSuggestion`
+returns exactly two distinct ranked actions only from the trusted current
+projection. A committed command alone does not determine whether its target
+moved or was taken; its correlated exact output updates the scene. In
+particular, Release 119's exact rejection of `READ MAILBOX` keeps the mailbox
+current. This preserves the parser's awkward response without turning READ into
+a mailbox recommendation.

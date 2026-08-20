@@ -1,8 +1,14 @@
 import type { SemanticEvent } from "../../contracts/src/index.js";
 
 import {
+  createPendingOpeningContextualObjectActionChoiceIntent,
   createOpeningCommandKnowledge,
+  isPendingOpeningObjectIntent,
   openingActionOptionsRequested,
+  resolvePendingOpeningContextualObjectActionChoiceObject,
+  type OpeningObservedObjectOption,
+  type PendingOpeningContextualObjectAction,
+  type PendingOpeningContextualObjectActionPair,
 } from "./opening-area.js";
 import {
   MAX_OPENING_ENGINE_OUTPUT_LENGTH,
@@ -26,6 +32,8 @@ const WEST_OF_HOUSE_HEADING = "West of House";
 export const OPENING_SCENE_ROOM_OUTPUT = `${WEST_OF_HOUSE_HEADING}\n${OPENING_WEST_OF_HOUSE_DESCRIPTION}\n${OPENING_MAILBOX_HERE_DESCRIPTION}\n\n>`;
 export const OPENING_SCENE_BOOT_OUTPUT = `ZORK I: The Great Underground Empire\nInfocom interactive fiction - a fantasy story\nCopyright (c) 1981, 1982, 1983, 1984, 1985, 1986 Infocom, Inc. All rights reserved.\nZORK is a registered trademark of Infocom, Inc.\nRelease 119 / Serial number 880429\n\n${OPENING_SCENE_ROOM_OUTPUT}`;
 export const OPENING_SCENE_MAILBOX_REVEAL_OUTPUT = `${OPENING_MAILBOX_REVEALED_DESCRIPTION}\n\n>`;
+export const OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT =
+  "How does one read a small mailbox?\n\n>";
 const MOVEMENT_COMMANDS = new Set([
   "north",
   "south",
@@ -104,6 +112,12 @@ export interface OpeningSceneProjection {
 export interface OpeningSceneGuidance {
   readonly response: string;
   readonly basis: "command-help" | "observed-memory";
+  readonly sourceIds: readonly string[];
+}
+
+export interface OpeningSceneObjectActionSuggestion {
+  readonly selectedObject: OpeningObservedObjectOption;
+  readonly suggestedActions: PendingOpeningContextualObjectActionPair;
   readonly sourceIds: readonly string[];
 }
 
@@ -330,6 +344,7 @@ function buildAffordances(
     switch (entity.label) {
       case "leaflet":
         add("grammar.examine", "examining the leaflet", 5, entity);
+        add("grammar.read", "reading the leaflet", 6, entity);
         break;
       case "mailbox":
         add("grammar.examine", "examining the mailbox", 10, entity);
@@ -784,12 +799,15 @@ export function projectOpeningSceneFromEvent(
         pendingCommand.sourceEventId === event.causationId
           ? pendingCommand
           : null;
+      const preservesCurrentMailbox =
+        matchingCommand?.command === "read mailbox" &&
+        event.payload.exactText === OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT;
       const clearsWholeScene =
         (event.payload.revision > 0 && matchingCommand === null) ||
         (matchingCommand !== null &&
           MOVEMENT_COMMANDS.has(matchingCommand.command));
       const invalidatedObjectId =
-        matchingCommand === null
+        matchingCommand === null || preservesCurrentMailbox
           ? undefined
           : commandObjectId(matchingCommand.command);
       if (clearsWholeScene) {
@@ -970,6 +988,30 @@ export function projectOpeningSceneFromEvent(
             ),
           );
         }
+
+        if (preservesCurrentMailbox) {
+          const mailboxId = upsertEntity(
+            entities,
+            "mailbox",
+            event.id,
+            event.payload.revision,
+          );
+          currentEntityIds.add(mailboxId);
+          currentRelationIds.add(
+            upsertRelation(
+              relations,
+              {
+                id: "opening.relation.mailbox-here",
+                subjectId: mailboxId,
+                predicate: "here",
+                confidence: "observed",
+                statement: "The mailbox is here with you.",
+              },
+              event.id,
+              event.payload.revision,
+            ),
+          );
+        }
       }
       if (
         pendingCommand !== null &&
@@ -1006,6 +1048,104 @@ export function openingSceneCurrentObjectLabels(
       .filter((entity) => currentIds.has(entity.id))
       .map((entity) => entity.label),
   );
+}
+
+const CONTEXTUAL_OBJECT_ACTION_BY_RULE_ID: Readonly<
+  Record<string, PendingOpeningContextualObjectAction | undefined>
+> = Object.freeze({
+  "grammar.examine": "examine",
+  "grammar.open": "open",
+  "grammar.read": "read",
+  "grammar.take": "take",
+});
+
+/**
+ * Returns one exact reducer-derived suggestion pair for a current object.
+ * Suggestions describe likely actions only; the global grammar remains the
+ * authority for grounding a player's explicit action.
+ */
+export function resolveOpeningSceneObjectActionSuggestion(
+  projection: OpeningSceneProjection,
+  objectValueId: string,
+): OpeningSceneObjectActionSuggestion | undefined {
+  if (!isOpeningSceneProjection(projection)) return undefined;
+  const currentEntity = projection.entities.find(
+    (entity) =>
+      entity.id === objectValueId &&
+      projection.currentEntityIds.includes(entity.id),
+  );
+  if (currentEntity === undefined) return undefined;
+
+  const knowledge = createOpeningCommandKnowledge({
+    observedObjects: openingSceneCurrentObjectLabels(projection),
+  });
+  const selectedObject = knowledge.observedObjectOptions.find(
+    (option) => option.id === currentEntity.id,
+  );
+  if (selectedObject === undefined) return undefined;
+
+  const affordances = projection.contextualAffordances.filter(
+    (affordance) =>
+      affordance.objectId === currentEntity.id &&
+      CONTEXTUAL_OBJECT_ACTION_BY_RULE_ID[affordance.ruleId] !== undefined,
+  );
+  const actions = affordances.map(
+    (affordance) => CONTEXTUAL_OBJECT_ACTION_BY_RULE_ID[affordance.ruleId]!,
+  );
+  if (actions.length !== 2 || new Set(actions).size !== 2) return undefined;
+
+  const pending = createPendingOpeningContextualObjectActionChoiceIntent(
+    selectedObject,
+    actions as [
+      PendingOpeningContextualObjectAction,
+      PendingOpeningContextualObjectAction,
+    ],
+  );
+  const orderedAffordances = pending.suggestedActions.map((action) =>
+    affordances.find((affordance) => affordance.ruleId === `grammar.${action}`),
+  );
+  if (orderedAffordances.some((affordance) => affordance === undefined)) {
+    return undefined;
+  }
+
+  return Object.freeze({
+    selectedObject: Object.freeze({ ...selectedObject }),
+    suggestedActions: pending.suggestedActions,
+    sourceIds: frozenSources(
+      orderedAffordances.flatMap((affordance) => affordance!.sourceIds),
+    ),
+  });
+}
+
+/** Revalidates session-only focus against the exact current scene pair. */
+export function resolvePendingOpeningContextualObjectActionChoiceForScene(
+  projection: OpeningSceneProjection,
+  intent: unknown,
+): OpeningSceneObjectActionSuggestion | undefined {
+  if (
+    !isOpeningSceneProjection(projection) ||
+    !isPendingOpeningObjectIntent(intent) ||
+    !("kind" in intent) ||
+    intent.kind !== "contextual-object-action-choice"
+  ) {
+    return undefined;
+  }
+  const knowledge = createOpeningCommandKnowledge({
+    observedObjects: openingSceneCurrentObjectLabels(projection),
+  });
+  const selectedObject =
+    resolvePendingOpeningContextualObjectActionChoiceObject(intent, knowledge);
+  if (selectedObject === undefined) return undefined;
+  const suggestion = resolveOpeningSceneObjectActionSuggestion(
+    projection,
+    selectedObject.id,
+  );
+  return suggestion !== undefined &&
+    suggestion.suggestedActions.every(
+      (action, index) => intent.suggestedActions[index] === action,
+    )
+    ? suggestion
+    : undefined;
 }
 
 function normalizedUtterance(value: string): string {

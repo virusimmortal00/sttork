@@ -263,6 +263,8 @@ Maintain labeled cases for:
 - requests for available actions without revealing unobserved content;
 - object-scoped follow-up help that preserves one revalidated dialogue focus
   without expanding into the global command catalog;
+- contextual object suggestions that remain distinct from the broader explicit
+  parser grammar, including direct actions outside the suggested pair;
 - inventory, recap, and spatial recall;
 - exact-story-bound scene replay, including current versus historical facts and
   explicit versus inferred spatial relations;
@@ -406,15 +408,29 @@ later exact reviewed disclosure repopulates the current scene. Directly stated
 relations remain distinct from deterministic inverse inferences.
 
 The bounded dialogue-focus replay must distinguish coordinated content wording
-from multiple actions. `What's on or in the leaflet?` establishes the existing
-READ-versus-EXAMINE choice for one current leaflet; scoped action-options help
-repeats only those two choices and preserves the focus; a following `examine it`
-or `read it` commits exactly once after revalidation. Both clarification turns
-must make no engine request or provider call on the deterministic path. Unseen
-scoped-help paraphrases may use the provider only after the validated pending
-frame is serialized, and local policy must normalize exactly the
-`grammar.examine`/`grammar.read` help pair. Multiple objects, independent action
-clauses, stale focus, and unrelated or global help remain fail-closed contrasts.
+from multiple actions and suggestions from parser authorization. With a trusted
+current scene, `What's inside the mailbox?` establishes an EXAMINE/OPEN
+`contextual-object-action-choice`, while `What's on or in the leaflet?`
+establishes EXAMINE/READ. Scoped action-options help repeats only the exact
+current pair and preserves the object focus. A following direct affirmative
+`read it` may still invoke ordinary T3 READ grounding for the focused mailbox
+even though READ was not suggested; the suggestion frame supplies the referent,
+not action authorization. Each explicit choice commits exactly once after
+revalidation. Clarification turns make no engine request or provider call on the
+deterministic path. Unseen scoped-help paraphrases may use the provider only
+after the validated frame is serialized, and local policy must accept only the
+exact grammar source IDs corresponding to the current suggestions. Malformed
+pairs, multiple objects, independent action clauses, absent or stale scene
+context, stale focus, and unrelated or global help remain fail-closed contrasts.
+
+The real Release 119 replay must keep the parser's awkward behavior available:
+after the mailbox clarification, explicit `READ MAILBOX` commits once and
+preserves the exact response `How does one read a small mailbox?`. A subsequent
+engine-authored inventory result proves whether anything was taken. The
+correlated rejected READ output must retain the mailbox in the current scene;
+the projector may not apply a generic implicit-take assumption after an exact
+known failure. Replaying either interaction ID must not restore stale focus or
+submit the command twice.
 
 The target local turns—walking to an object already observed as here, asking
 what actions are available, and recalling the house's direction—must produce a

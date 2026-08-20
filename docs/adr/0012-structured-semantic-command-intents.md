@@ -8,6 +8,12 @@ The blanket pending-help clearing rule below is superseded by
 [ADR-0015](0015-preserve-object-focus-through-scoped-help.md) for help scoped to
 the active READ-versus-EXAMINE object.
 
+The fixed READ-versus-EXAMINE content suggestion and focus clauses below are
+superseded by
+[ADR-0016](0016-separate-contextual-suggestions-from-parser-authority.md).
+Contextual recommendations now come from the trusted current scene and do not
+restrict a player's explicit parser command.
+
 ## Context
 
 The bounded opening guide originally validated a model-proposed parser command

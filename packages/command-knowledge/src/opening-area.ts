@@ -35,6 +35,19 @@ export interface PendingOpeningContentObjectIntent {
   readonly kind: "content-object";
 }
 
+export type PendingOpeningContextualObjectAction = PendingOpeningObjectAction;
+
+export type PendingOpeningContextualObjectActionPair = readonly [
+  PendingOpeningContextualObjectAction,
+  PendingOpeningContextualObjectAction,
+];
+
+export interface PendingOpeningContextualObjectActionChoiceIntent {
+  readonly kind: "contextual-object-action-choice";
+  readonly objectValueId: string;
+  readonly suggestedActions: PendingOpeningContextualObjectActionPair;
+}
+
 export type PendingOpeningReadExamineAction = "examine" | "read";
 
 export interface PendingOpeningReadExamineChoiceIntent {
@@ -46,6 +59,7 @@ export interface PendingOpeningReadExamineChoiceIntent {
 export type PendingOpeningObjectIntent =
   | PendingOpeningObjectActionIntent
   | PendingOpeningContentObjectIntent
+  | PendingOpeningContextualObjectActionChoiceIntent
   | PendingOpeningReadExamineChoiceIntent;
 
 export interface OpeningObservedObjectOption {
@@ -372,12 +386,10 @@ function directlyRequestsOpeningAction(
   );
 }
 
-const pendingObjectActions: readonly PendingOpeningObjectAction[] = [
-  "examine",
-  "open",
-  "read",
-  "take",
-];
+export const PENDING_OPENING_CONTEXTUAL_OBJECT_ACTIONS: readonly PendingOpeningContextualObjectAction[] =
+  Object.freeze(["examine", "open", "read", "take"]);
+
+const pendingObjectActions = PENDING_OPENING_CONTEXTUAL_OBJECT_ACTIONS;
 
 export const PENDING_OPENING_READ_EXAMINE_ACTIONS: readonly [
   "examine",
@@ -428,6 +440,52 @@ function validPendingReadExamineActions(
   );
 }
 
+function validPendingContextualObjectActions(
+  value: unknown,
+): value is PendingOpeningContextualObjectActionPair {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    Reflect.ownKeys(value).some(
+      (key) => !["0", "1", "length"].includes(String(key)),
+    )
+  ) {
+    return false;
+  }
+  const first = value[0] as unknown;
+  const second = value[1] as unknown;
+  if (
+    typeof first !== "string" ||
+    typeof second !== "string" ||
+    first === second ||
+    !pendingObjectActions.includes(first as PendingOpeningObjectAction) ||
+    !pendingObjectActions.includes(second as PendingOpeningObjectAction)
+  ) {
+    return false;
+  }
+  return (
+    pendingObjectActions.indexOf(first as PendingOpeningObjectAction) <
+    pendingObjectActions.indexOf(second as PendingOpeningObjectAction)
+  );
+}
+
+function validCanonicalObservedObjectOption(
+  value: unknown,
+): value is OpeningObservedObjectOption {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    pendingIntentHasExactKeys(value, ["id", "label"]) &&
+    typeof Reflect.get(value, "label") === "string" &&
+    validPendingObjectValueId(Reflect.get(value, "id")) &&
+    Reflect.get(value, "id") ===
+      `${OBSERVED_OBJECT_VALUE_ID_PREFIX}${stripArticle(
+        normalizeWords(Reflect.get(value, "label") as string),
+      )}`
+  );
+}
+
 export function isPendingOpeningObjectIntent(
   value: unknown,
 ): value is PendingOpeningObjectIntent {
@@ -441,6 +499,21 @@ export function isPendingOpeningObjectIntent(
   }
   if (pendingIntentHasExactKeys(value, ["kind"])) {
     return Reflect.get(value, "kind") === "content-object";
+  }
+  if (
+    pendingIntentHasExactKeys(value, [
+      "kind",
+      "objectValueId",
+      "suggestedActions",
+    ]) &&
+    Reflect.get(value, "kind") === "contextual-object-action-choice"
+  ) {
+    return (
+      validPendingObjectValueId(Reflect.get(value, "objectValueId")) &&
+      validPendingContextualObjectActions(
+        Reflect.get(value, "suggestedActions"),
+      )
+    );
   }
   return (
     pendingIntentHasExactKeys(value, [
@@ -458,17 +531,49 @@ export function createPendingOpeningContentObjectIntent(): PendingOpeningContent
   return pendingOpeningContentObjectIntent;
 }
 
+export function createPendingOpeningContextualObjectActionChoiceIntent(
+  selectedObject: OpeningObservedObjectOption,
+  suggestedActions: PendingOpeningContextualObjectActionPair,
+): PendingOpeningContextualObjectActionChoiceIntent {
+  if (!validCanonicalObservedObjectOption(selectedObject)) {
+    throw new TypeError(
+      "Pending choice requires one canonical observed object.",
+    );
+  }
+  if (
+    !Array.isArray(suggestedActions) ||
+    suggestedActions.length !== 2 ||
+    Reflect.ownKeys(suggestedActions).some(
+      (key) => !["0", "1", "length"].includes(String(key)),
+    ) ||
+    suggestedActions[0] === suggestedActions[1] ||
+    suggestedActions.some(
+      (action) =>
+        !pendingObjectActions.includes(action as PendingOpeningObjectAction),
+    )
+  ) {
+    throw new TypeError(
+      "Pending contextual choice requires exactly two distinct supported actions.",
+    );
+  }
+  const canonicalActions = [...suggestedActions].sort(
+    (left, right) =>
+      pendingObjectActions.indexOf(left) - pendingObjectActions.indexOf(right),
+  ) as [
+    PendingOpeningContextualObjectAction,
+    PendingOpeningContextualObjectAction,
+  ];
+  return Object.freeze({
+    kind: "contextual-object-action-choice",
+    objectValueId: selectedObject.id,
+    suggestedActions: Object.freeze(canonicalActions),
+  });
+}
+
 export function createPendingOpeningReadExamineChoiceIntent(
   selectedObject: OpeningObservedObjectOption,
 ): PendingOpeningReadExamineChoiceIntent {
-  if (
-    typeof selectedObject !== "object" ||
-    selectedObject === null ||
-    !pendingIntentHasExactKeys(selectedObject, ["id", "label"]) ||
-    !validPendingObjectValueId(selectedObject.id) ||
-    selectedObject.id !==
-      `${OBSERVED_OBJECT_VALUE_ID_PREFIX}${stripArticle(normalizeWords(selectedObject.label))}`
-  ) {
+  if (!validCanonicalObservedObjectOption(selectedObject)) {
     throw new TypeError(
       "Pending choice requires one canonical observed object.",
     );
@@ -478,6 +583,37 @@ export function createPendingOpeningReadExamineChoiceIntent(
     objectValueId: selectedObject.id,
     allowedActions: PENDING_OPENING_READ_EXAMINE_ACTIONS,
   });
+}
+
+export function resolvePendingOpeningContextualObjectActionChoiceObject(
+  intent: PendingOpeningObjectIntent,
+  knowledge: OpeningCommandKnowledge,
+): OpeningObservedObjectOption | undefined {
+  if (
+    !isPendingOpeningObjectIntent(intent) ||
+    !("kind" in intent) ||
+    intent.kind !== "contextual-object-action-choice"
+  ) {
+    return undefined;
+  }
+  const selectedObject = knowledge.observedObjectOptions.find(
+    (option) => option.id === intent.objectValueId,
+  );
+  if (selectedObject === undefined) return undefined;
+  return intent.suggestedActions.every((action) => {
+    const rule = knowledge.rules.find(
+      (candidate) => candidate.id === `grammar.${action}`,
+    );
+    return (
+      rule !== undefined &&
+      rule.objectRequired &&
+      rule.slots.length === 1 &&
+      rule.slots[0]?.slotId === OPENING_OBJECT_SLOT_ID &&
+      rule.slots[0].allowedValueIds.includes(selectedObject.id)
+    );
+  })
+    ? selectedObject
+    : undefined;
 }
 
 export function resolvePendingOpeningReadExamineChoiceObject(
@@ -646,6 +782,58 @@ export function groundPendingOpeningReadExamineChoiceReply(
     };
   }
   const action = matchingActions[0] as PendingOpeningReadExamineAction;
+  return {
+    ok: true,
+    command: canonicalizeCommand(`${action} ${selectedObject.label}`),
+    ruleId: `grammar.${action}`,
+  };
+}
+
+export function groundPendingOpeningContextualObjectActionChoiceReply(
+  intent: PendingOpeningObjectIntent,
+  playerUtterance: string,
+  knowledge: OpeningCommandKnowledge,
+): CommandGroundingResult {
+  if (
+    !isPendingOpeningObjectIntent(intent) ||
+    !("kind" in intent) ||
+    intent.kind !== "contextual-object-action-choice"
+  ) {
+    return { ok: false, code: "unsupported-grammar" };
+  }
+  if (appearsMultiStep(playerUtterance)) {
+    return { ok: false, code: "not-grounded-in-utterance" };
+  }
+
+  const selectedObject =
+    resolvePendingOpeningContextualObjectActionChoiceObject(intent, knowledge);
+  if (selectedObject === undefined) {
+    return { ok: false, code: "unobserved-object" };
+  }
+
+  const actionBody = directOpeningActionBody(playerUtterance);
+  const bareSuffixes = ["", " please", " for me", " now"];
+  const matchingActions = pendingObjectActions.filter((action) => {
+    const rule = RULES.find((candidate) => candidate.verb === action);
+    return (
+      rule !== undefined &&
+      ((actionBody !== undefined &&
+        bareSuffixes.some((suffix) => actionBody === `${action}${suffix}`)) ||
+        [selectedObject.label, "it", "this", "that"].some((reference) =>
+          directlyRequestsOpeningAction(playerUtterance, rule, reference),
+        ))
+    );
+  });
+  if (matchingActions.length !== 1) {
+    return {
+      ok: false,
+      code:
+        actionBody === undefined
+          ? "not-direct-action-request"
+          : "not-grounded-in-utterance",
+    };
+  }
+  const action = matchingActions[0]!;
   return {
     ok: true,
     command: canonicalizeCommand(`${action} ${selectedObject.label}`),
@@ -990,17 +1178,34 @@ export function openingGlobalActionHelpScopeRequested(
   );
 }
 
-export function openingReadExamineActionMentioned(
+function openingActionsMentioned(
   playerUtterance: string,
+  actions: readonly PendingOpeningObjectAction[],
 ): boolean {
   const normalized = normalizeWords(playerUtterance);
-  return RULES.filter(
-    (rule) => rule.id === "grammar.examine" || rule.id === "grammar.read",
+  if (
+    actions.includes("take") &&
+    /\bpick (?:it|this|that) up\b/u.test(normalized)
+  ) {
+    return true;
+  }
+  return RULES.filter((rule) =>
+    actions.includes(rule.verb as PendingOpeningObjectAction),
   ).some((rule) =>
     [rule.verb, ...rule.aliases].some((action) =>
       includesPhrase(normalized, normalizeWords(action)),
     ),
   );
+}
+
+export function openingObjectActionMentioned(playerUtterance: string): boolean {
+  return openingActionsMentioned(playerUtterance, pendingObjectActions);
+}
+
+export function openingReadExamineActionMentioned(
+  playerUtterance: string,
+): boolean {
+  return openingActionsMentioned(playerUtterance, ["examine", "read"]);
 }
 
 function mentionedOpeningObjects(

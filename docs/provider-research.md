@@ -134,6 +134,12 @@ exclusions, advice, comparisons, reports, or quoted mentions do not authorize
 execution. Later contextual and confirmation policies in
 [ADR-0012](adr/0012-structured-semantic-command-intents.md) remain open.
 
+The 2026-08-19 observed-content clarification below records the fixed
+EXAMINE/READ policy that first established the action-authority boundary. Its
+fixed suggestion pair is superseded by
+[ADR-0016](adr/0016-separate-contextual-suggestions-from-parser-authority.md);
+the later refinement following this historical description is current.
+
 The 2026-08-19 observed-content clarification makes the distinction between
 `grammar.examine` and `grammar.read` explicit in guide instructions and command
 knowledge. Nonlexical content, writing, and inscription requests about one
@@ -172,6 +178,28 @@ or command authority. An unseen scoped-help paraphrase qualifies only when the
 provider returns `command-help` with exactly `grammar.examine` and
 `grammar.read`; guide core replaces provider prose with the deterministic local
 clarification and choices.
+
+The 2026-08-20 contextual-suggestion refinement separates that advice from the
+broader parser grammar. A trusted current `OpeningSceneProjection` now supplies
+the exact object-specific pair: EXAMINE/OPEN for the closed mailbox and
+EXAMINE/READ for the revealed leaflet. The session serializes a bounded
+`contextual-object-action-choice` with one current object ID and exactly two
+distinct `suggestedActions`; the legacy `read-examine-choice` remains accepted
+during migration. The field describes recommendations, not authorization. A
+direct affirmative `READ MAILBOX` or `read it` may use the single revalidated
+mailbox focus even though READ was not suggested, but READ still requires its
+ordinary lexical T3 speech act, risk, revision, and commit checks.
+
+The provider may classify unseen scoped-help wording only by returning the exact
+grammar source IDs corresponding to the current suggestions. It cannot broaden
+the pair, supply scene facts, or turn a suggestion into command authority; guide
+core discards provider prose and renders deterministic copy. Missing or stale
+scene context produces a generic non-mutating clarification rather than a pair
+inferred from the object label or global grammar. This changes the serialized
+context and guide instructions, so all earlier guide-evaluation evidence remains
+insufficient for the refined profile until the mailbox/leaflet, no-scene,
+stale-focus, provider-broadening, and explicit-outside-suggestion contrast
+families are rerun. No fresh live-provider or device result is claimed here.
 
 Command-comparison questions and alternative-oriented meta questions that do not
 choose an action are non-mutating `explain` decisions with basis `command-help`,

@@ -502,6 +502,116 @@ describe("OpenAiLiveGuideModel", () => {
     ).resolves.toEqual(decision);
   });
 
+  it("clones current contextual suggestions without sending command knowledge", async () => {
+    const decision = {
+      kind: "explain",
+      response: "EXAMINE and OPEN are the current suggestions.",
+      basis: "command-help",
+      sourceIds: ["grammar.examine", "grammar.open"],
+    };
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        expect(body).toEqual({
+          interactionId: "contextual-focus",
+          playerUtterance: "What were those options?",
+          observedObjects: ["mailbox"],
+          pendingIntent: {
+            kind: "contextual-object-action-choice",
+            objectValueId: "observed-object:mailbox",
+            suggestedActions: ["examine", "open"],
+          },
+        });
+        expect(body).not.toHaveProperty("knowledge");
+        return jsonResponse({
+          decision,
+          usage: { capability: "guide", totalTokens: 10 },
+        });
+      },
+    ) as unknown as typeof fetch;
+    const guide = new OpenAiLiveGuideModel({
+      sessionToken,
+      fetch: fetchMock,
+    });
+
+    await expect(
+      guide.decide(
+        {
+          interactionId: "contextual-focus",
+          playerUtterance: "What were those options?",
+          observedObjects: ["mailbox"],
+          pendingIntent: {
+            kind: "contextual-object-action-choice",
+            objectValueId: "observed-object:mailbox",
+            suggestedActions: ["examine", "open"],
+          },
+          knowledge: createOpeningCommandKnowledge({
+            observedObjects: ["mailbox"],
+          }),
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual(decision);
+  });
+
+  it("rejects stale contextual focus or missing suggestion grammar before the BFF", async () => {
+    const fetchMock = vi.fn();
+    const guide = new OpenAiLiveGuideModel({
+      sessionToken,
+      fetch: fetchMock,
+    });
+    const knowledge = createOpeningCommandKnowledge({
+      observedObjects: ["mailbox"],
+    });
+
+    for (const input of [
+      {
+        interactionId: "stale-contextual-focus",
+        playerUtterance: "What were those options?",
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice" as const,
+          objectValueId: "observed-object:hidden object",
+          suggestedActions: ["examine", "open"] as const,
+        },
+        knowledge,
+      },
+      {
+        interactionId: "missing-contextual-source",
+        playerUtterance: "What were those options?",
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice" as const,
+          objectValueId: "observed-object:mailbox",
+          suggestedActions: ["examine", "open"] as const,
+        },
+        knowledge: {
+          ...knowledge,
+          sourceIds: knowledge.sourceIds.filter(
+            (sourceId) => sourceId !== "grammar.open",
+          ),
+        },
+      },
+      {
+        interactionId: "malformed-contextual-focus",
+        playerUtterance: "What were those options?",
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice",
+          objectValueId: "observed-object:mailbox",
+          suggestedActions: ["examine", "open"],
+          injected: true,
+        } as never,
+        knowledge,
+      },
+    ]) {
+      await expect(
+        guide.decide(input, new AbortController().signal),
+      ).rejects.toEqual(expect.objectContaining({ code: "invalid-input" }));
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("bounds request bytes before calling the BFF", async () => {
     const fetchMock = vi.fn();
     const guide = new OpenAiLiveGuideModel({

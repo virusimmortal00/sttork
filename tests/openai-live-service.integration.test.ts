@@ -305,6 +305,51 @@ describe("OpenAI local live service", () => {
     ).not.toContain("hiddenMap");
   });
 
+  it("normalizes and forwards exactly two current contextual suggestions", async () => {
+    const provider = new FakeProvider();
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+
+    const response = await handle(
+      request(
+        "/api/live/openai/guide",
+        JSON.stringify({
+          interactionId: "contextual-focus",
+          playerUtterance: "What were those options?",
+          observedObjects: ["mailbox"],
+          pendingIntent: {
+            kind: "contextual-object-action-choice",
+            objectValueId: "observed-object:mailbox",
+            suggestedActions: ["examine", "open"],
+          },
+        }),
+        "application/json",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(provider.decideWithUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        observedObjects: ["mailbox"],
+        pendingIntent: {
+          kind: "contextual-object-action-choice",
+          objectValueId: "observed-object:mailbox",
+          suggestedActions: ["examine", "open"],
+        },
+        knowledge: expect.objectContaining({
+          sourceIds: expect.arrayContaining([
+            "grammar.examine",
+            "grammar.open",
+          ]),
+        }),
+      }),
+      expect.any(AbortSignal),
+    );
+  });
+
   it("rejects malformed or stale pending guide focus before the provider", async () => {
     const provider = new FakeProvider();
     const handle = createOpenAiLiveService({
@@ -323,6 +368,27 @@ describe("OpenAI local live service", () => {
         kind: "read-examine-choice",
         objectValueId: "observed-object:hidden object",
         allowedActions: ["examine", "read"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:token",
+        suggestedActions: ["open", "examine"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:token",
+        suggestedActions: ["examine", "examine"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:hidden object",
+        suggestedActions: ["examine", "open"],
+      },
+      {
+        kind: "contextual-object-action-choice",
+        objectValueId: "observed-object:token",
+        suggestedActions: ["examine", "open"],
+        extra: "not allowed",
       },
     ]) {
       const response = await handle(

@@ -1,15 +1,19 @@
 import type { SemanticEvent } from "../../contracts/src/index.js";
 import { describe, expect, it } from "vitest";
 
+import { createPendingOpeningContextualObjectActionChoiceIntent } from "./opening-area.js";
 import {
   createOpeningSceneProjection,
   OPENING_SCENE_BOOT_OUTPUT,
   OPENING_SCENE_PROFILE_ID,
+  OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
   OPENING_SCENE_ROOM_OUTPUT,
   OPENING_SCENE_STORY_ID,
   OPENING_SCENE_STORY_SHA256,
   openingSceneCurrentObjectLabels,
   projectOpeningSceneFromEvent,
+  resolveOpeningSceneObjectActionSuggestion,
+  resolvePendingOpeningContextualObjectActionChoiceForScene,
   resolveOpeningSceneGuidance,
 } from "./opening-scene.js";
 
@@ -113,6 +117,74 @@ describe("opening scene projection", () => {
     expect(Object.isFrozen(scene.entities)).toBe(true);
     expect(scene.entities.every(Object.isFrozen)).toBe(true);
     expect(Object.isFrozen(scene.contextualAffordances)).toBe(true);
+  });
+
+  it("suggests EXAMINE and OPEN for the current closed mailbox with exact provenance", () => {
+    const scene = projectOpeningSceneFromEvent(
+      initial(),
+      output("opening-output", 1, 0, OPENING_SCENE_BOOT_OUTPUT),
+    );
+    const suggestion = resolveOpeningSceneObjectActionSuggestion(
+      scene,
+      "observed-object:mailbox",
+    );
+
+    expect(suggestion).toEqual({
+      selectedObject: {
+        id: "observed-object:mailbox",
+        label: "mailbox",
+      },
+      suggestedActions: ["examine", "open"],
+      sourceIds: ["grammar.examine", "opening-output", "grammar.open"],
+    });
+    expect(suggestion?.suggestedActions).not.toContain("read");
+    expect(Object.isFrozen(suggestion)).toBe(true);
+    expect(Object.isFrozen(suggestion?.selectedObject)).toBe(true);
+    expect(Object.isFrozen(suggestion?.suggestedActions)).toBe(true);
+    expect(Object.isFrozen(suggestion?.sourceIds)).toBe(true);
+    if (suggestion === undefined) throw new Error("Expected mailbox options.");
+
+    const matchingFocus =
+      createPendingOpeningContextualObjectActionChoiceIntent(
+        suggestion.selectedObject,
+        suggestion.suggestedActions,
+      );
+    expect(
+      resolvePendingOpeningContextualObjectActionChoiceForScene(
+        scene,
+        matchingFocus,
+      ),
+    ).toEqual(suggestion);
+    expect(
+      resolvePendingOpeningContextualObjectActionChoiceForScene(
+        scene,
+        createPendingOpeningContextualObjectActionChoiceIntent(
+          suggestion.selectedObject,
+          ["examine", "read"],
+        ),
+      ),
+    ).toBeUndefined();
+
+    const moving = projectOpeningSceneFromEvent(
+      scene,
+      committed("north-commit", 2, 1, "north"),
+    );
+    const moved = projectOpeningSceneFromEvent(
+      moving,
+      output(
+        "north-output",
+        3,
+        1,
+        "North of House\nUnknown scene.\n\n>",
+        "north-commit",
+      ),
+    );
+    expect(
+      resolvePendingOpeningContextualObjectActionChoiceForScene(
+        moved,
+        matchingFocus,
+      ),
+    ).toBeUndefined();
   });
 
   it("fails closed for another story and for inexact or quoted opening prose", () => {
@@ -336,7 +408,107 @@ describe("opening scene projection", () => {
         (affordance) => affordance.ruleId === "grammar.open",
       ),
     ).toBe(false);
+    expect(
+      resolveOpeningSceneObjectActionSuggestion(
+        opened,
+        "observed-object:leaflet",
+      ),
+    ).toEqual({
+      selectedObject: {
+        id: "observed-object:leaflet",
+        label: "leaflet",
+      },
+      suggestedActions: ["examine", "read"],
+      sourceIds: ["grammar.examine", "open-output", "grammar.read"],
+    });
+    expect(
+      resolveOpeningSceneObjectActionSuggestion(
+        opened,
+        "observed-object:mailbox",
+      ),
+    ).toBeUndefined();
     expect(opened.locations[0]?.sourceEventIds).toEqual(["opening-output"]);
+  });
+
+  it("reprojects the mailbox from its exact correlated READ refusal", () => {
+    const opening = projectOpeningSceneFromEvent(
+      initial(),
+      output("opening-output", 1, 0, OPENING_SCENE_BOOT_OUTPUT),
+    );
+    const pending = projectOpeningSceneFromEvent(
+      opening,
+      committed("read-commit", 2, 1, "read mailbox"),
+    );
+    const refused = projectOpeningSceneFromEvent(
+      pending,
+      output(
+        "read-output",
+        3,
+        1,
+        OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
+        "read-commit",
+      ),
+    );
+
+    expect(openingSceneCurrentObjectLabels(refused)).toEqual([
+      "door",
+      "house",
+      "mailbox",
+    ]);
+    expect(
+      refused.entities.find((entity) => entity.label === "mailbox"),
+    ).toMatchObject({
+      sourceEventIds: ["opening-output", "read-output"],
+      lastSeenRevision: 1,
+    });
+    expect(
+      refused.relations.find(
+        (relation) => relation.id === "opening.relation.mailbox-here",
+      ),
+    ).toMatchObject({
+      sourceEventIds: ["opening-output", "read-output"],
+      lastSeenRevision: 1,
+    });
+    expect(
+      resolveOpeningSceneObjectActionSuggestion(
+        refused,
+        "observed-object:mailbox",
+      ),
+    ).toEqual({
+      selectedObject: {
+        id: "observed-object:mailbox",
+        label: "mailbox",
+      },
+      suggestedActions: ["examine", "open"],
+      sourceIds: [
+        "grammar.examine",
+        "opening-output",
+        "read-output",
+        "grammar.open",
+      ],
+    });
+
+    const inexactPending = projectOpeningSceneFromEvent(
+      opening,
+      committed("inexact-read-commit", 2, 1, "read mailbox"),
+    );
+    const inexact = projectOpeningSceneFromEvent(
+      inexactPending,
+      output(
+        "inexact-read-output",
+        3,
+        1,
+        "How does one read the small mailbox?\n\n>",
+        "inexact-read-commit",
+      ),
+    );
+    expect(openingSceneCurrentObjectLabels(inexact)).toEqual(["door", "house"]);
+    expect(
+      resolveOpeningSceneObjectActionSuggestion(
+        inexact,
+        "observed-object:mailbox",
+      ),
+    ).toBeUndefined();
   });
 
   it("does not attribute an exact result from another correlation to a pending command", () => {
@@ -427,6 +599,12 @@ describe("opening scene projection", () => {
       resolveOpeningSceneGuidance(
         "What actions are available?",
         forged as typeof scene,
+      ),
+    ).toBeUndefined();
+    expect(
+      resolveOpeningSceneObjectActionSuggestion(
+        forged as typeof scene,
+        "observed-object:mailbox",
       ),
     ).toBeUndefined();
 

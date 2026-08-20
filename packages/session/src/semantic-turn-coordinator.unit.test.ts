@@ -1,5 +1,7 @@
 import {
   OPENING_SCENE_BOOT_OUTPUT,
+  OPENING_SCENE_MAILBOX_REVEAL_OUTPUT,
+  OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
   OPENING_SCENE_STORY_ID,
   OPENING_SCENE_STORY_SHA256,
 } from "@zork-voice/command-knowledge";
@@ -50,6 +52,7 @@ class FakeEngine implements EnginePort {
   public executeGate: Promise<void> | undefined;
   public onExecute: (() => void) | undefined;
   public onCommit: (() => void) | undefined;
+  public readonly outputByCommand = new Map<string, string>();
   readonly #receipts = new Map<string, ExecuteResult>();
 
   public async boot(): Promise<BootResult> {
@@ -79,7 +82,8 @@ class FakeEngine implements EnginePort {
       previousRevision: this.revision,
       revision: this.revision + 1,
       command: input.command,
-      output: `exact:${input.command}`,
+      output:
+        this.outputByCommand.get(input.command) ?? `exact:${input.command}`,
       turnComplete: true,
       boundary: "input-requested",
     };
@@ -164,6 +168,30 @@ function coordinator(
     ...(publish === undefined ? {} : { publish }),
     ...(maxTurns === undefined ? {} : { maxTurns }),
   });
+}
+
+async function prepareAuthenticatedOpening(
+  subject: SemanticTurnCoordinator,
+  engine: FakeEngine,
+): Promise<void> {
+  engine.openingOutput = OPENING_SCENE_BOOT_OUTPUT;
+  const boot = await engine.boot();
+  await subject.prepareOpening(
+    {
+      interactionId: "story-opening",
+      boot: {
+        ...boot,
+        compatibility: {
+          ...boot.compatibility,
+          story: {
+            id: OPENING_SCENE_STORY_ID,
+            artifactSha256: OPENING_SCENE_STORY_SHA256,
+          },
+        },
+      },
+    },
+    new AbortController().signal,
+  );
 }
 
 const turn = {
@@ -744,54 +772,43 @@ describe("SemanticTurnCoordinator", () => {
     expect(engine.revision).toBe(0);
   });
 
-  it("clarifies content object and action before committing one idempotent explicit choice", async () => {
+  it("keeps explicit READ available outside trusted contextual suggestions", async () => {
     const engine = new FakeEngine();
+    engine.outputByCommand.set(
+      "read mailbox",
+      OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
+    );
     const narrator = new FakeNarrator();
     const guide = new FakeGuideModel(() => {
-      throw new Error("deterministic pending choices must not reach the guide");
+      throw new Error("trusted contextual choices must not reach the guide");
     });
     const subject = coordinator(engine, narrator, guide);
-    const first = await subject.submitTurn(
+    await prepareAuthenticatedOpening(subject, engine);
+
+    const suggestions = await subject.submitTurn(
       {
-        interactionId: "pending-object-question",
-        transcript: "What does it say?",
+        interactionId: "mailbox-content-question",
+        transcript: "What's inside the mailbox?",
         transcriptConfidence: 0.99,
-        observedObjects: ["leaflet"],
+        observedObjects: ["untrusted object"],
       },
       new AbortController().signal,
     );
-    expect(first.outcome).toBe("clarified");
-    expect(engine.executeCalls).toHaveLength(0);
-
-    const answer = {
-      interactionId: "pending-object-answer",
-      transcript: "The leaflet",
-      transcriptConfidence: 0.99,
-      observedObjects: ["leaflet"],
-    } as const;
-    const objectResolved = await subject.submitTurn(
-      answer,
-      new AbortController().signal,
-    );
-    expect(objectResolved).toMatchObject({
-      outcome: "clarified",
-    });
+    expect(suggestions).toMatchObject({ outcome: "clarified" });
     expect(
-      objectResolved.events.find(
-        (event) => event.type === "guide.clarification",
-      ),
+      suggestions.events.find((event) => event.type === "guide.clarification"),
     ).toMatchObject({
       payload: {
-        choices: ["examine leaflet", "read leaflet"],
+        choices: ["examine mailbox", "open mailbox"],
       },
     });
     expect(engine.executeCalls).toHaveLength(0);
 
     const choice = {
-      interactionId: "pending-action-answer",
+      interactionId: "explicit-unsuggested-read",
       transcript: "read it",
       transcriptConfidence: 0.99,
-      observedObjects: ["leaflet"],
+      observedObjects: ["untrusted object"],
     } as const;
     const resolved = await subject.submitTurn(
       choice,
@@ -800,15 +817,16 @@ describe("SemanticTurnCoordinator", () => {
     expect(resolved).toMatchObject({
       outcome: "committed",
       engineResult: {
-        command: "read leaflet",
+        command: "read mailbox",
         revision: 1,
+        output: OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
       },
     });
     expect(engine.executeCalls).toEqual([
       {
         requestId: "request-1",
         expectedRevision: 0,
-        command: "read leaflet",
+        command: "read mailbox",
       },
     ]);
     expect(guide.calls).toBe(0);
@@ -818,35 +836,55 @@ describe("SemanticTurnCoordinator", () => {
     ).toEqual(resolved);
     expect(engine.executeCalls).toHaveLength(1);
 
-    expect(
-      await subject.submitTurn(
-        {
-          interactionId: "pending-object-question",
-          transcript: "What does it say?",
-          transcriptConfidence: 0.99,
-          observedObjects: ["leaflet"],
-        },
-        new AbortController().signal,
-      ),
-    ).toEqual(first);
-    const staleAnswer = await subject.submitTurn(
+    const afterRefusal = await subject.submitTurn(
       {
-        ...answer,
-        interactionId: "stale-pending-object-answer",
+        interactionId: "mailbox-content-after-read",
+        transcript: "What's inside the mailbox?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["untrusted object"],
       },
       new AbortController().signal,
     );
-    expect(staleAnswer.outcome).toBe("failed");
+    expect(afterRefusal).toMatchObject({ outcome: "clarified" });
+    expect(
+      afterRefusal.events.find((event) => event.type === "guide.clarification"),
+    ).toMatchObject({
+      payload: { choices: ["examine mailbox", "open mailbox"] },
+    });
     expect(engine.executeCalls).toHaveLength(1);
-    expect(guide.calls).toBe(1);
+    expect(guide.calls).toBe(0);
   });
 
   it("preserves a pending object across scoped action help before one explicit choice", async () => {
     const engine = new FakeEngine();
-    const guide = new FakeGuideModel(() => {
+    engine.outputByCommand.set(
+      "open mailbox",
+      OPENING_SCENE_MAILBOX_REVEAL_OUTPUT,
+    );
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "Open the mailbox.") {
+        return {
+          kind: "execute",
+          affordanceId: "grammar.open",
+          slots: [{ slotId: "object", valueId: "observed-object:mailbox" }],
+          intentSummary: "Open the observed mailbox",
+          confidence: 0.99,
+        };
+      }
       throw new Error("scoped pending help must not reach the guide");
     });
     const subject = coordinator(engine, new FakeNarrator(), guide);
+    await prepareAuthenticatedOpening(subject, engine);
+
+    await subject.submitTurn(
+      {
+        interactionId: "open-mailbox",
+        transcript: "Open the mailbox.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["untrusted object"],
+      },
+      new AbortController().signal,
+    );
 
     expect(
       (
@@ -855,7 +893,7 @@ describe("SemanticTurnCoordinator", () => {
             interactionId: "content-without-object",
             transcript: "What does it say?",
             transcriptConfidence: 0.99,
-            observedObjects: ["leaflet"],
+            observedObjects: ["untrusted object"],
           },
           new AbortController().signal,
         )
@@ -868,7 +906,7 @@ describe("SemanticTurnCoordinator", () => {
             interactionId: "content-object-answer",
             transcript: "The leaflet",
             transcriptConfidence: 0.99,
-            observedObjects: ["leaflet"],
+            observedObjects: ["untrusted object"],
           },
           new AbortController().signal,
         )
@@ -882,7 +920,7 @@ describe("SemanticTurnCoordinator", () => {
             interactionId: "read-examine-options",
             transcript: "What are the action options?",
             transcriptConfidence: 0.99,
-            observedObjects: ["leaflet"],
+            observedObjects: ["untrusted object"],
           },
           new AbortController().signal,
         )
@@ -894,7 +932,7 @@ describe("SemanticTurnCoordinator", () => {
         interactionId: "read-examine-comparison",
         transcript: "What is the difference between read and examine?",
         transcriptConfidence: 0.99,
-        observedObjects: ["leaflet"],
+        observedObjects: ["untrusted object"],
       },
       new AbortController().signal,
     );
@@ -913,16 +951,19 @@ describe("SemanticTurnCoordinator", () => {
         interactionId: "pronoun-after-help",
         transcript: "read it",
         transcriptConfidence: 0.99,
-        observedObjects: ["leaflet"],
+        observedObjects: ["untrusted object"],
       },
       new AbortController().signal,
     );
     expect(afterHelp).toMatchObject({
       outcome: "committed",
-      engineResult: { command: "read leaflet", revision: 1 },
+      engineResult: { command: "read leaflet", revision: 2 },
     });
-    expect(engine.executeCalls).toHaveLength(1);
-    expect(guide.calls).toBe(0);
+    expect(engine.executeCalls.map((request) => request.command)).toEqual([
+      "open mailbox",
+      "read leaflet",
+    ]);
+    expect(guide.calls).toBe(1);
   });
 
   it("clears pending object focus when explicit scene-wide help supersedes it", async () => {
