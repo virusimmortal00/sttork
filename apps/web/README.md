@@ -43,6 +43,15 @@ the temporary presentation attached. Timing and browser-provided heap deltas are
 evidence rather than fixed pass/fail budgets; production-build budgets belong in
 the dedicated performance gate.
 
+Open `http://127.0.0.1:4174/?spoken-benchmark` to measure the progressive
+spoken-text presentation with short (12-word), typical (120-word), and maximum
+(800-word/3,999-character) narration. Machine-readable results are stored in
+`window.__VOICE_SHELL_SMOKE__.spokenTranscriptBenchmark` and the existing
+`data-smoke-evidence` body attribute. The benchmark executes its scheduler on a
+virtual clock, verifies that only one callback is active, confirms every word is
+revealed without presentation selector queries, and removes its temporary DOM
+when complete. Durations are diagnostic evidence rather than CI budgets.
+
 The hidden Voices panel provides separate, locally persisted Guide/Narrator
 voice and rate preferences across the reviewed OpenAI TTS catalog. Its sample
 buttons are explicitly marked as billable AI-generated speech. Transcription

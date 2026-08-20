@@ -34,6 +34,10 @@ import {
   runClientProjectionSoak,
 } from "./optional-event-log-soak.js";
 import {
+  runSpokenTranscriptBenchmark,
+  type SpokenTranscriptBenchmarkEvidence,
+} from "./spoken-transcript-benchmark.js";
+import {
   ROLE_INTRODUCTION,
   ROLE_INTRODUCTION_INTERACTION_ID,
 } from "./role-introduction.js";
@@ -94,6 +98,9 @@ interface SmokeEvidence {
   projectionSoak?:
     | { readonly status: "running" }
     | ClientProjectionSoakEvidence
+    | { readonly status: "failed"; readonly error: string };
+  spokenTranscriptBenchmark?:
+    | SpokenTranscriptBenchmarkEvidence
     | { readonly status: "failed"; readonly error: string };
   error?: string;
 }
@@ -761,6 +768,23 @@ async function run(): Promise<void> {
       publishEvidence({
         ...baseEvidence,
         projectionSoak: {
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown failure",
+        },
+      });
+    }
+  }
+  if (new URLSearchParams(window.location.search).has("spoken-benchmark")) {
+    const baseEvidence = window.__VOICE_SHELL_SMOKE__!;
+    try {
+      publishEvidence({
+        ...baseEvidence,
+        spokenTranscriptBenchmark: runSpokenTranscriptBenchmark(),
+      });
+    } catch (error) {
+      publishEvidence({
+        ...baseEvidence,
+        spokenTranscriptBenchmark: {
           status: "failed",
           error: error instanceof Error ? error.message : "Unknown failure",
         },

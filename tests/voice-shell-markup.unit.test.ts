@@ -119,6 +119,9 @@ describe("voice shell accessibility markup", () => {
       "utf8",
     );
     expect(css).toMatch(/\.spoken-word\.is-visible \{[\s\S]*?opacity: 1;/u);
+    expect(css).not.toMatch(
+      /\.spoken-word \{[^}]*filter:|\.spoken-word\.is-visible \{[^}]*filter:/u,
+    );
     expect(css).toMatch(/\.spoken-history \{[\s\S]*?overflow: auto;/u);
     expect(css).toMatch(/\.spoken-history li \{[\s\S]*?color:/u);
     expect(css).toMatch(
