@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   activityIndicatorIsVisible,
@@ -90,6 +90,9 @@ describe("voice state presentation", () => {
     let textWrites = 0;
     let currentText: string | null = "Processing";
     const status = {
+      dataset: {} as { speakerRole?: string },
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
       get textContent(): string | null {
         return currentText;
       },
@@ -146,6 +149,48 @@ describe("voice state presentation", () => {
     expect(activityIndicator.dataset.state).toBe("processing");
     expect(currentHidden).toBe(false);
     expect(hiddenWrites).toBe(2);
+  });
+
+  it("renders speaking states as a compact role plus verb with a complete accessible label", () => {
+    const status = {
+      textContent: "Processing" as string | null,
+      dataset: {} as { speakerRole?: string },
+      setAttribute: vi.fn(),
+      removeAttribute: vi.fn(),
+    };
+    const activityIndicator = {
+      dataset: {} as { state?: string },
+      hidden: true,
+    };
+
+    applyVoiceStatePresentation("narrator-speaking", "Narrator speaking", {
+      status,
+      activityIndicator,
+    });
+    expect(status.textContent).toBe("speaking");
+    expect(status.dataset.speakerRole).toBe("Narrator");
+    expect(status.setAttribute).toHaveBeenCalledWith(
+      "aria-label",
+      "Narrator speaking",
+    );
+
+    applyVoiceStatePresentation("guide-speaking", "Guide speaking", {
+      status,
+      activityIndicator,
+    });
+    expect(status.dataset.speakerRole).toBe("Guide");
+    expect(status.setAttribute).toHaveBeenLastCalledWith(
+      "aria-label",
+      "Guide speaking",
+    );
+
+    applyVoiceStatePresentation("ready", "Ready", {
+      status,
+      activityIndicator,
+    });
+    expect(status.textContent).toBe("Ready");
+    expect(status.dataset.speakerRole).toBeUndefined();
+    expect(status.removeAttribute).toHaveBeenCalledWith("aria-label");
   });
 
   it("shows only the canonical command and avoids duplicate live-region writes", () => {
