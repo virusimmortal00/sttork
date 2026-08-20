@@ -27,6 +27,10 @@ function guideInput() {
 }
 
 describe("OpenAiChainedProvider", () => {
+  it("pins the live developer smoke request ceiling", () => {
+    expect(OPENAI_CHAINED_PROFILE_2026_08_18.maxRequests).toBe(30);
+  });
+
   it("normalizes transcription and reports bounded usage", async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetchStub: typeof fetch = async (input, init) => {

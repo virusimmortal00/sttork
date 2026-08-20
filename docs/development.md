@@ -159,7 +159,7 @@ origin. HTTPS is required even when the test device and developer machine share
 a trusted home network.
 
 The 2026-08-19 smoke profile uses `gpt-4o-mini-transcribe`, `gpt-5.6-luna`, and
-`tts-1`, with one global maximum of 12 provider requests for the server process.
+`tts-1`, with one global maximum of 30 provider requests for the server process.
 The initial `START STORY` narration uses one speech request without requesting
 microphone permission. For the exact Zork I Release 119 story/build/opening
 tuple, [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) selects the

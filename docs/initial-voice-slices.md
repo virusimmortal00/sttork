@@ -339,7 +339,7 @@ interpreter, provider, or product is release-qualified.
   authenticated proxy and encrypted tunnel. Same-origin and exact-host checks,
   restrictive CSP, microphone Permissions Policy, `no-store`, bounded request
   and response bodies, cancellation, and one-shot audio disposal are enforced.
-- One provider instance enforces a global 12-request ceiling. The ordinary
+- One provider instance enforces a global 30-request ceiling. The ordinary
   hermetic gate contains provider, BFF, browser-adapter, audio-controller, and
   local-harness regressions and makes no provider call. The ignored browser and
   Worker graph builds without credentials.

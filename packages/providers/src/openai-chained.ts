@@ -22,7 +22,7 @@ export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
   guideReasoningContext: "current_turn" as const,
   guideVerbosity: "low" as const,
   guideMaxOutputTokens: 300,
-  maxRequests: 12,
+  maxRequests: 30,
   maxAudioBytes: 2 * 1024 * 1024,
   maxGuideInputCharacters: 8_000,
   maxNarrationCharacters: 4_000,
