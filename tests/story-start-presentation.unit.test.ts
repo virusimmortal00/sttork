@@ -8,8 +8,9 @@ import {
 
 function elements() {
   return {
+    shell: { dataset: {} as { storyPhase?: string } },
     primaryButton: {
-      textContent: "Start speaking",
+      textContent: "SPEAK",
       disabled: true,
       setAttribute: vi.fn<(name: string, value: string) => void>(),
       removeAttribute: vi.fn<(name: string) => void>(),
@@ -52,7 +53,12 @@ describe("story start presentation", () => {
 
     applyStoryStartPresentation("ready", "ready", false, subject);
 
-    expect(subject.primaryButton.textContent).toBe("START STORY");
+    expect(subject.primaryButton.textContent).toBe("BEGIN");
+    expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
+      "aria-label",
+      "Start story",
+    );
+    expect(subject.shell.dataset.storyPhase).toBe("ready");
     expect(subject.primaryButton.disabled).toBe(false);
     expect(subject.primaryButton.removeAttribute).toHaveBeenCalledWith(
       "aria-pressed",
@@ -66,7 +72,8 @@ describe("story start presentation", () => {
 
     applyStoryStartPresentation("starting", "narrator-speaking", true, subject);
 
-    expect(subject.primaryButton.textContent).toBe("START STORY");
+    expect(subject.primaryButton.textContent).toBe("BEGIN");
+    expect(subject.shell.dataset.storyPhase).toBe("starting");
     expect(subject.primaryButton.disabled).toBe(true);
     expect(subject.stopButton.disabled).toBe(false);
     expect(subject.pauseButton.disabled).toBe(true);
@@ -78,7 +85,12 @@ describe("story start presentation", () => {
 
     applyStoryStartPresentation("started", "ready", true, subject);
 
-    expect(subject.primaryButton.textContent).toBe("Start speaking");
+    expect(subject.primaryButton.textContent).toBe("SPEAK");
+    expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
+      "aria-label",
+      "Start speaking",
+    );
+    expect(subject.shell.dataset.storyPhase).toBe("started");
     expect(subject.primaryButton.disabled).toBe(false);
     expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
       "aria-pressed",
@@ -86,9 +98,14 @@ describe("story start presentation", () => {
     );
     expect(subject.repeatButton.disabled).toBe(false);
     expect(subject.textInput.disabled).toBe(false);
+    expect(subject.primaryCue.textContent).toBe("or press V");
 
     applyStoryStartPresentation("started", "listening", true, subject);
-    expect(subject.primaryButton.textContent).toBe("Finish speaking");
+    expect(subject.primaryButton.textContent).toBe("DONE");
+    expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
+      "aria-label",
+      "Finish speaking",
+    );
     expect(subject.primaryButton.setAttribute).toHaveBeenLastCalledWith(
       "aria-pressed",
       "true",

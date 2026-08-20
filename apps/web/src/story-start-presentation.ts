@@ -28,6 +28,7 @@ export function openingPreparationDisposition(
 }
 
 export interface StoryStartPresentationElements {
+  readonly shell: { readonly dataset: { storyPhase?: string } };
   readonly primaryButton: {
     textContent: string | null;
     disabled: boolean;
@@ -48,8 +49,10 @@ export function applyStoryStartPresentation(
   voiceAvailable: boolean,
   elements: StoryStartPresentationElements,
 ): void {
+  elements.shell.dataset.storyPhase = phase;
   if (phase !== "started") {
-    elements.primaryButton.textContent = "START STORY";
+    elements.primaryButton.textContent = "BEGIN";
+    elements.primaryButton.setAttribute("aria-label", "Start story");
     elements.primaryButton.removeAttribute("aria-pressed");
     elements.primaryButton.disabled = phase === "starting";
     elements.stopButton.disabled = phase !== "starting";
@@ -68,9 +71,11 @@ export function applyStoryStartPresentation(
     voiceState === "guide-speaking" ||
     voiceState === "narrator-speaking" ||
     voiceState === "paused";
-  elements.primaryButton.textContent = listening
-    ? "Finish speaking"
-    : "Start speaking";
+  elements.primaryButton.textContent = listening ? "DONE" : "SPEAK";
+  elements.primaryButton.setAttribute(
+    "aria-label",
+    listening ? "Finish speaking" : "Start speaking",
+  );
   elements.primaryButton.setAttribute("aria-pressed", String(listening));
   elements.primaryButton.disabled = !voiceAvailable || captureBusy;
   elements.stopButton.disabled = false;
@@ -80,5 +85,5 @@ export function applyStoryStartPresentation(
     voiceState === "ready" || voiceState === "recoverable-error";
   elements.textInput.disabled = !textReady;
   elements.textSubmitButton.disabled = !textReady;
-  elements.primaryCue.textContent = "Press V or use the speaking control.";
+  elements.primaryCue.textContent = "or press V";
 }
