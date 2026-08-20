@@ -57,6 +57,13 @@ recede. No important state is communicated by color or animation alone.
 Reduced-motion mode replaces pulsing and waveform effects with discrete state
 changes.
 
+Transcript, voice preferences, and developer debug are utilities rather than
+gameplay controls. Their triggers live in a subdued page footer outside the
+centered play surface, and each opens a labeled modal without reflowing or
+displacing the active game. Opening a modal moves focus inside it; closing by
+its button, Escape, or backdrop restores focus to its trigger. Transcript keeps
+the complete accessible text-input fallback inside the modal.
+
 The command history is governed by
 [ADR-0013](adr/0013-persistent-command-history-and-active-only-indicator.md). It
 displays only exact canonical commands. The active request comes from
@@ -66,27 +73,35 @@ not appear as completed actions. Provider proposals never render in this
 surface.
 
 The decorative activity indicator is absent while the player is simply ready,
-paused, blocked, or finished. It appears only during startup, microphone
-permission, listening, processing/reconnecting, or audible playback. Stable
-status text communicates every state independently of motion.
+paused, blocked, or finished. It appears during startup, microphone permission,
+listening, and processing/reconnecting. It is hidden whenever visible spoken
+text is carrying that same activity context, including the preparation gap
+between sequential voices; the spoken-text surface replaces redundant motion
+under ADR-0018. Stable status text communicates every state independently of
+motion.
 
-On a fresh session, the first gameplay control is the `START STORY` action,
-visually labeled `BEGIN`. It is enabled without microphone permission and does
-not begin capture. Activating it once publishes the full authenticated opening
-engine output at revision zero and requests narrator speech from it; it is not a
-parser command and therefore never enters the canonical-command history. The
-spoken request may use only the deterministic, story-pinned whole-line excerpt
-in [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md), with the
-complete output as the fallback for any identity or text mismatch. While the
-opening is being prepared or played, ordinary capture and text submission remain
-gated and Stop remains available. After playback completes, is interrupted, or
-fails, the primary control becomes the ordinary speaking control, visually
-labeled `SPEAK`, and the accessibility text path becomes available. Completion
-and interruption show Ready; failure preserves a recoverable blocked state while
-those ordinary controls remain usable. Known safe failures replace generic
-`Action needed` with an actionable status: browser playback authorization asks
-the player to tap Repeat, and the bounded developer profile reports when its
-request limit has been reached.
+On a fresh session, the first control is an authored role welcome, visually
+labeled `ENTER`, as defined by
+[ADR-0017](adr/0017-authored-role-introduction-before-story-start.md). It
+introduces the Guide and Narrator through two fixed, distinctly attributed lines
+without consulting or changing the engine. Completion, interruption, or failure
+exposes the distinct `THE STORY BEGINS` action. It is enabled without microphone
+permission and does not begin capture. Activating it once publishes the full
+authenticated opening engine output at revision zero and requests narrator
+speech from it; it is not a parser command and therefore never enters the
+canonical-command history. The spoken request may use only the deterministic,
+story-pinned whole-line excerpt in
+[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md), with the complete
+output as the fallback for any identity or text mismatch. While the opening is
+being prepared or played, ordinary capture and text submission remain gated and
+Stop remains available. After playback completes, is interrupted, or fails, the
+primary control becomes the ordinary speaking control, visually labeled `SPEAK`,
+and the accessibility text path becomes available. Completion and interruption
+show Ready; failure preserves a recoverable blocked state while those ordinary
+controls remain usable. Known safe failures replace generic `Action needed` with
+an actionable status: browser playback authorization asks the player to tap
+Repeat, and the bounded developer profile reports when its request limit has
+been reached.
 
 ## Display-state projection
 
@@ -115,7 +130,8 @@ manipulate the interface.
 Expected high-level display transitions:
 
 ```text
-booting -> ready (START STORY) -> processing -> narrator-speaking -> ready
+booting -> ready (ENTER) -> guide-speaking -> narrator-speaking -> ready (THE STORY BEGINS)
+ready (THE STORY BEGINS) -> processing -> narrator-speaking -> ready
 processing | narrator-speaking -> ready: opening completes or is interrupted
 processing | narrator-speaking -> blocked: opening fails; normal controls remain usable
 ready -> listening -> processing
@@ -158,20 +174,24 @@ The first run should be brief and playable without a visual tutorial:
 
 1. Complete any required story authentication and provider connection before
    presenting the playable surface.
-2. Present `START STORY` as the first gameplay control. It remains available
-   without microphone permission and does not request that permission.
-3. On one activation, publish the authenticated boot output as exact
+2. Present `ENTER` without requesting microphone permission. On activation, play
+   the fixed ADR-0017 Guide and Narrator introductions in order, keeping their
+   source events and visible/accessibility roles distinct.
+3. After the welcome completes, is interrupted, or fails, present
+   `THE STORY BEGINS`. This second action also remains independent of microphone
+   access.
+4. On one activation, publish the authenticated boot output as exact
    `engine.output` at revision zero. Request the deterministic ADR-0014 spoken
    selection once in the narrator role, falling back to the complete output on
    any story/build/opening mismatch.
-4. After opening playback completes, is interrupted with Stop, or fails, expose
+5. After opening playback completes, is interrupted with Stop, or fails, expose
    the ordinary speaking and accessible-text controls. Preserve the exact
    opening in the transcript/accessibility projection in every case. Keep a
    failed opening visibly recoverable with an actionable safe status where one
    is known; do not put it back behind `START STORY`.
-5. Ask for microphone access immediately before the first capture, with a
+6. Ask for microphone access immediately before the first capture, with a
    concise explanation and an equivalent text-input path.
-6. Teach “stop” and “help” by voice, establish the narrator/guide distinction,
+7. Teach “stop” and “help” by voice, reinforce the narrator/guide distinction,
    and ask whether captions and proactive hint offers should remain enabled.
 
 Returning players skip the tutorial unless audio output, microphone access, or
@@ -265,6 +285,9 @@ Audio behavior:
 - Cancel queued, no-longer-relevant commentary after a barge-in.
 - Preserve interrupted content so “repeat that” can replay it from the
   beginning.
+- Retain at most the latest completed synthesized clip in session memory so an
+  exact Repeat can replay locally. Key it by role, exact text, voice, and rate;
+  never persist it, and never treat an interrupted or failed clip as complete.
 - Duck nonessential ambience during speech; ambience is optional and off by
   default.
 - Apply speech rate independently to narrator and guide while maintaining a

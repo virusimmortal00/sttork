@@ -19,10 +19,17 @@ uses the bundled, authenticated Zork I Release 119 story and the same Dork
 Worker and semantic coordinator. Build with `pnpm openai:live:build`, then serve
 with `pnpm openai:live:serve`. Raw capture and synthesized audio remain
 in-memory; capture is consumed once, and synthesized-audio object URLs are
-revoked after completion, stop, or failure. Only typed semantic events are
-available to the optional transcript/debug projections. The real microphone
-browser checkpoint is still pending and this shell is not production provider
-support.
+revoked after completion, stop, or failure. Supported MP3 MediaSource browsers
+begin bounded playback as response chunks arrive; other browsers use a bounded
+in-memory compatibility path. Only typed semantic events are available to the
+optional transcript/debug projections. The real microphone browser checkpoint is
+still pending and this shell is not production provider support.
+
+The hidden Voices panel provides separate, locally persisted Guide/Narrator
+voice and rate preferences across the reviewed OpenAI TTS catalog. Its sample
+buttons are explicitly marked as billable AI-generated speech. Transcription
+uploads include only current observed-object labels; the server, not the
+browser, derives the reviewed command-vocabulary hints.
 
 The live playback adapter synchronously primes one persistent browser audio
 element from `START STORY`, speaking, text-submit, and Repeat gestures before

@@ -39,7 +39,7 @@ function presentationElements(): LivePreflightPresentationElements & {
     setAttribute: vi.fn(),
   };
   const captureButton = { disabled: false };
-  const transcriptPanel = { hidden: true };
+  const transcriptPanel = { showModal: vi.fn() };
   const transcriptButton = { setAttribute: vi.fn() };
   const textForm = { hidden: true };
   const textInput = { disabled: true, tabIndex: -1 };
@@ -143,7 +143,7 @@ describe("OpenAI live preflight presentation", () => {
       "Microphone unavailable. Use accessible text input.",
     );
     expect(elements.captureButton.disabled).toBe(true);
-    expect(elements.transcriptPanel.hidden).toBe(false);
+    expect(elements.transcriptPanel.showModal).toHaveBeenCalledOnce();
     expect(elements.transcriptButton.setAttribute).toHaveBeenCalledWith(
       "aria-expanded",
       "true",

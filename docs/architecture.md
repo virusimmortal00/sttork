@@ -71,21 +71,23 @@ UI projections consume events; they do not call the engine or providers
 directly. This ensures that hiding all prose changes presentation only.
 
 A fresh playable session authenticates and boots the story before enabling its
-first gameplay action, but it does not discard or narrate the boot result. The
-one-shot `START STORY` action revalidates the boot result against public engine
-state, appends its exact text as accessible `engine.output` at revision zero,
-and requests narrator synthesis from that event. Under
-[ADR-0014](./adr/0014-story-pinned-spoken-opening-excerpt.md), the synthesis
-text may be a deterministic reviewed whole-line excerpt only when the story ID,
-artifact SHA-256, and complete known opening all match; otherwise it is the full
-boot output. It submits no canonical command, takes no checkpoint, and requires
-no microphone permission. Ordinary capture and text submission remain gated
-until the opening playback completes, is interrupted, or fails; any of those
-terminal outcomes exposes the normal gameplay controls so a provider failure
-cannot trap the player. Completion or interruption returns the experience to
-ready. Failure keeps the recoverable blocked status while leaving those controls
-usable; safe failure codes may make the status actionable without exposing
-provider response prose.
+first experience action, but it does not discard or narrate the boot result. The
+authored ADR-0017 role introduction emits separately attributed experience and
+narration events and performs no engine operation. Its terminal outcome exposes
+the one-shot `THE STORY BEGINS` action, which revalidates the boot result
+against public engine state, appends its exact text as accessible
+`engine.output` at revision zero, and requests narrator synthesis from that
+event. Under [ADR-0014](./adr/0014-story-pinned-spoken-opening-excerpt.md), the
+synthesis text may be a deterministic reviewed whole-line excerpt only when the
+story ID, artifact SHA-256, and complete known opening all match; otherwise it
+is the full boot output. It submits no canonical command, takes no checkpoint,
+and requires no microphone permission. Ordinary capture and text submission
+remain gated until the opening playback completes, is interrupted, or fails; any
+of those terminal outcomes exposes the normal gameplay controls so a provider
+failure cannot trap the player. Completion or interruption returns the
+experience to ready. Failure keeps the recoverable blocked status while leaving
+those controls usable; safe failure codes may make the status actionable without
+exposing provider response prose.
 
 ### 3.2 Session backend
 

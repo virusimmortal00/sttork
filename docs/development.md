@@ -143,9 +143,10 @@ forward that port directly onto the LAN or public internet. The proxy must:
 - honor `Cache-Control: no-store`, disable intermediary/CDN caching, and avoid
   request/response-body, transcript, audio, credential, cookie, and live-session
   header logging;
-- retain bounded uploads. The harness rejects transcription bodies over 2 MiB
-  and guide/speech JSON bodies over 16 KiB; a proxy may enforce equal or tighter
-  per-route limits but must not buffer accepted bodies to persistent storage.
+- retain bounded uploads. The harness rejects transcription audio over 2 MiB
+  (with a separate 16 KiB multipart-envelope allowance) and guide/speech JSON
+  bodies over 16 KiB; a proxy may enforce equal or tighter per-route limits but
+  must not buffer accepted bodies to persistent storage.
 
 The injected process-lifetime session value is a same-origin request control,
 not user authentication: anyone allowed to load the page receives it. External
@@ -161,42 +162,71 @@ a trusted home network.
 The current 2026-08-19 smoke profile uses `gpt-transcribe`, `gpt-5.6-luna`, and
 `gpt-4o-mini-tts`, with one global maximum of 30 provider requests for the
 server process. The earlier Slice 5 evidence used `tts-1`; that historical
-record remains in `initial-voice-slices.md`. The initial `START STORY` narration
-uses one speech request without requesting microphone permission. For the exact
-Zork I Release 119 story/build/opening tuple,
+record remains in `initial-voice-slices.md`. The fixed ADR-0017 role welcome
+uses up to two speech requests, and the subsequent `THE STORY BEGINS` narration
+uses one, all without requesting microphone permission. For the exact Zork I
+Release 119 story/build/opening tuple,
 [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) selects the reviewed
 32-word title-and-scene excerpt instead of speaking the full 67-word boot
 output; the full output remains the revision-zero event and accessible text. Any
 identity or exact-opening mismatch speaks the full output. A normal spoken turn
-uses three requests; Repeat uses another speech request, including when it
-retries the retained opening source and same selected text. All of them count
-against the same global ceiling. This is a request ceiling, not a
+uses three requests. An exact Repeat of the latest successfully completed clip
+replays its bounded in-memory audio and uses no provider request. Repeat uses a
+new speech request when the prior clip was interrupted or failed, when its audio
+was not retained, or when role, exact text, voice, or rate changed. New requests
+count against the same global ceiling. This is a request ceiling, not a
 dollar-denominated spend cap. Browser actions can incur API charges, so stop the
 server when the smoke is complete. This harness is not provider promotion,
 production authentication, or a substitute for the hermetic source gate.
 
-For the pending manual checkpoint, first activate `START STORY` without granting
-microphone permission. Confirm one byte-exact authenticated opening event at
-revision zero, the full opening in the accessible transcript, and the reviewed
-32-word excerpt as the actual spoken request for the exact Release 119 tuple.
-Confirm that Stop is available during playback and that the normal speaking
-control appears after a completed, interrupted, or failed opening. An
-unclassified failed case should remain `Action needed`, with speaking, text, and
-Repeat still usable. On Safari and other browsers that require explicit media
-authorization, the status should instead say `Tap Repeat to enable audio`;
-`Request limit reached` identifies the process-global smoke cap. Repeat must
-show Processing while it is synthesizing, reuse the same excerpt, and avoid
-retaining a stale blocked heading. The initial path should consume one TTS
-request; Repeat should consume another while reusing the same opening event.
-Then say an unambiguous single action such as “look” and confirm one revision
-plus audible exact engine narration. Say an ambiguous request such as “open it”
-and confirm that the guide asks for clarification without advancing the engine.
-Exercise Stop during capture or playback, and inspect the optional
-transcript/debug surfaces only to confirm attribution, Worker isolation, and
-absence of sensitive audio or credentials. Record the browser version and
-console/CSP result. The harness implementation and its hermetic tests are
-present, but Slice 5 is not complete until this real microphone evidence is
-recorded; this documentation does not establish that live result.
+The hidden-by-default Voices modal exposes the provider's reviewed voice
+catalog, independent Guide and Narrator rates, and locally persisted
+preferences. It states that voices are AI-generated and that each Sample button
+uses one billable speech request. Confirm both roles retain their exact text,
+the selected voices and rates survive a reload, and Stop cancels a sample. On a
+browser with MP3 MediaSource support, confirm playback begins while the response
+is still arriving; other supported browsers use the same 2 MiB bounded-buffer
+fallback. In ordinary operation each transcription upload carries only labels
+from the current observed-object projection; the server rejects labels outside
+the reviewed opening vocabulary and derives bounded parser-vocabulary hints.
+
+For the pending manual checkpoint, first activate `ENTER` without granting
+microphone permission. Confirm the fixed Guide line is followed by the fixed
+Narrator line with matching status and transcript attribution, then confirm
+`THE STORY BEGINS` is enabled. Activate it and confirm one byte-exact
+authenticated opening event at revision zero, the full opening in the accessible
+transcript, and the reviewed 32-word excerpt as the actual spoken request for
+the exact Release 119 tuple. Confirm that Stop is available during playback and
+that the normal speaking control appears after a completed, interrupted, or
+failed opening. An unclassified failed case should remain `Action needed`, with
+speaking, text, and Repeat still usable. On Safari and other browsers that
+require explicit media authorization, the status should instead say
+`Tap Repeat to enable audio`; `Request limit reached` identifies the
+process-global smoke cap. Repeat must show Processing while it is synthesizing,
+reuse the same excerpt, and avoid retaining a stale blocked heading. The
+uninterrupted initial path should consume three TTS requests. Repeat after the
+completed opening should replay the bounded in-memory clip without another
+request while reusing the same opening event. Then say an unambiguous single
+action such as “look” and confirm one revision plus audible exact engine
+narration. Say an ambiguous request such as “open it” and confirm that the guide
+asks for clarification without advancing the engine. Exercise Stop during
+capture or playback, and inspect the optional transcript/debug surfaces only to
+confirm attribution, Worker isolation, and absence of sensitive audio or
+credentials. Record the browser version and console/CSP result. The harness
+implementation and its hermetic tests are present, but Slice 5 is not complete
+until this real microphone evidence is recorded; this documentation does not
+establish that live result.
+
+The developer smoke also carries an explicitly experimental visual narration
+layer. At audible narrator playback start, it reveals the exact requested text
+line by line with a rate-aware estimated word cadence. A completed line moves
+below the active line into a six-line muted, newest-first visual stack. The
+layer is hidden from assistive technology to avoid duplicating the complete
+attributed Transcript surface, and reduced-motion mode shows each line without
+word animation. This prototype does not settle a change to ADR-0013's quiet
+default-screen contract: evaluate timing accuracy, distraction, mobile reflow,
+and caption accessibility before accepting or removing it through a follow-up
+ADR.
 
 For a remote-device run, additionally record the device operating system and
 browser, that `window.isSecureContext` is true, the exact configured origin and
