@@ -904,6 +904,28 @@ dialog.utility-modal.is-closing::backdrop {
   background: rgb(8 13 10 / 48%);
 }
 
+.event-page-controls {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.event-page-controls span {
+  color: #aeb8b0;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.event-page-controls button {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgb(83 97 88 / 48%);
+  border-radius: 0.4rem;
+  background: var(--surface-raised);
+  color: inherit;
+}
+
 #debug-content {
   font-size: 0.75rem;
   line-height: 1.45;

@@ -98,6 +98,11 @@
         </button>
       </header>
       <ol id="transcript-list"></ol>
+      <nav class="event-page-controls" aria-label="Transcript pages">
+        <button id="transcript-older" type="button">Older</button>
+        <span id="transcript-page-status" aria-live="polite"></span>
+        <button id="transcript-newer" type="button">Newer</button>
+      </nav>
       <form id="text-form">
         <label for="text-input">Accessible text input</label>
         <input id="text-input" autocomplete="off" disabled />
@@ -122,6 +127,11 @@
         </button>
       </header>
       <pre id="debug-content" aria-label="Developer event evidence"></pre>
+      <nav class="event-page-controls" aria-label="Debug event pages">
+        <button id="debug-older" type="button">Older</button>
+        <span id="debug-page-status" aria-live="polite"></span>
+        <button id="debug-newer" type="button">Newer</button>
+      </nav>
     </dialog>
     <script type="module" src="/app/apps/web/src/voice-shell-smoke.js"></script>
   </body>

@@ -83,6 +83,12 @@ describe("voice shell accessibility markup", () => {
       expect(html).toMatch(
         /id="debug-panel"[\s\S]*?aria-modal="true"[\s\S]*?id="close-debug"[\s\S]*?id="debug-content"/u,
       );
+      expect(html).toMatch(
+        /id="transcript-older"[\s\S]*?id="transcript-page-status"[\s\S]*?id="transcript-newer"/u,
+      );
+      expect(html).toMatch(
+        /id="debug-older"[\s\S]*?id="debug-page-status"[\s\S]*?id="debug-newer"/u,
+      );
     }
     const css = await readFile(
       new URL("apps/web/voice-shell.css", repositoryRoot),

@@ -25,6 +25,24 @@ in-memory compatibility path. Only typed semantic events are available to the
 optional transcript/debug projections. The real microphone browser checkpoint is
 still pending and this shell is not production provider support.
 
+The semantic event record remains complete, while the hot experience projection
+keeps only its recent working set (128 transcript items and 256 debug/source
+entries). Closed transcript and debug dialogs create no rows or serialized JSON.
+When opened, they render bounded pages and can page backward through the
+canonical event record; closing them releases that optional presentation state.
+
+For an accelerated long-session browser check, build and serve the deterministic
+shell, then open `http://127.0.0.1:4174/?projection-soak=50000`. This opt-in
+mode feeds 50,000 synthetic final-transcript events through the real browser
+projection in 1,000-event animation-frame batches. It also exercises eight
+Older/Newer page cycles and twenty transcript/debug open-close cycles. Results
+are recorded in `window.__VOICE_SHELL_SMOKE__.projectionSoak` and the existing
+`data-smoke-evidence` body attribute. The check fails its evidence if hidden
+views render content, a projection or DOM bound is exceeded, or closing leaves
+the temporary presentation attached. Timing and browser-provided heap deltas are
+evidence rather than fixed pass/fail budgets; production-build budgets belong in
+the dedicated performance gate.
+
 The hidden Voices panel provides separate, locally persisted Guide/Narrator
 voice and rate preferences across the reviewed OpenAI TTS catalog. Its sample
 buttons are explicitly marked as billable AI-generated speech. Transcription
