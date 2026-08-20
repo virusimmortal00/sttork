@@ -59,8 +59,9 @@ class FakeProvider implements OpenAiLiveProviderPort {
     ): Promise<ProviderSpeech> => {
       void args;
       return {
-        bytes: new Uint8Array([7, 8, 9]),
+        body: new Blob([new Uint8Array([7, 8, 9])]).stream(),
         mediaType: "audio/mpeg",
+        contentLength: 3,
         usage: {
           provider: "openai",
           capability: "narration",
@@ -75,19 +76,34 @@ class FakeProvider implements OpenAiLiveProviderPort {
 function request(
   path: string,
   body: BodyInit,
-  contentType: string,
+  contentType?: string,
   extraHeaders: HeadersInit = {},
 ): Request {
+  const headers = new Headers(extraHeaders);
+  headers.set("origin", origin);
+  headers.set("x-zork-voice-live-session", token);
+  if (contentType !== undefined) headers.set("content-type", contentType);
   return new Request(`${origin}${path}`, {
     method: "POST",
-    headers: {
-      origin,
-      "content-type": contentType,
-      "x-zork-voice-live-session": token,
-      ...extraHeaders,
-    },
+    headers,
     body,
   });
+}
+
+function transcriptionRequest(
+  bytes = new Uint8Array([1, 2, 3]),
+  observedObjects: readonly string[] = [],
+): Request {
+  const form = new FormData();
+  form.set(
+    "audio",
+    new Blob([bytes.slice()], { type: "audio/webm;codecs=opus" }),
+    "turn-audio",
+  );
+  for (const object of observedObjects) {
+    form.append("observedObjects[]", object);
+  }
+  return request("/api/live/openai/transcribe", form);
 }
 
 describe("OpenAI local live service", () => {
@@ -184,11 +200,7 @@ describe("OpenAI local live service", () => {
     });
 
     const response = await handle(
-      request(
-        "/api/live/openai/transcribe",
-        new Uint8Array([1, 2, 3]),
-        "audio/webm;codecs=opus",
-      ),
+      transcriptionRequest(new Uint8Array([1, 2, 3]), ["house", "mailbox"]),
     );
 
     expect(response.status).toBe(200);
@@ -205,6 +217,10 @@ describe("OpenAI local live service", () => {
       new Uint8Array([1, 2, 3]),
       "audio/webm",
       expect.any(AbortSignal),
+      expect.objectContaining({
+        languages: ["en"],
+        keywords: expect.arrayContaining(["north", "house", "mailbox"]),
+      }),
     );
   });
 
@@ -219,18 +235,28 @@ describe("OpenAI local live service", () => {
       sessionToken: token,
     });
 
-    const response = await handle(
-      request(
-        "/api/live/openai/transcribe",
-        new Uint8Array([1, 2, 3]),
-        "audio/webm",
-      ),
-    );
+    const response = await handle(transcriptionRequest());
 
     expect(response.status).toBe(429);
     expect(await response.text()).toBe(
       JSON.stringify({ error: { code: "budget-exhausted" } }),
     );
+  });
+
+  it("rejects transcription hints outside the reviewed object vocabulary", async () => {
+    const provider = new FakeProvider();
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+
+    const response = await handle(
+      transcriptionRequest(new Uint8Array([1]), ["hidden treasure"]),
+    );
+
+    expect(response.status).toBe(400);
+    expect(provider.transcribe).not.toHaveBeenCalled();
   });
 
   it("regenerates reviewed command knowledge and validates the guide response", async () => {
@@ -419,7 +445,12 @@ describe("OpenAI local live service", () => {
     const response = await handle(
       request(
         "/api/live/openai/speech",
-        JSON.stringify({ text: "Exact prose.", role: "narrator" }),
+        JSON.stringify({
+          text: "Exact prose.",
+          role: "narrator",
+          voice: "cedar",
+          speed: 0.9,
+        }),
         "application/json",
       ),
     );
@@ -434,6 +465,7 @@ describe("OpenAI local live service", () => {
       "Exact prose.",
       "narrator",
       expect.any(AbortSignal),
+      { voice: "cedar", speed: 0.9 },
     );
   });
 
@@ -449,7 +481,12 @@ describe("OpenAI local live service", () => {
     const response = await handle(
       request(
         "/api/live/openai/speech",
-        JSON.stringify({ text: exact, role: "narrator" }),
+        JSON.stringify({
+          text: exact,
+          role: "narrator",
+          voice: "onyx",
+          speed: 1,
+        }),
         "application/json",
       ),
     );
@@ -459,6 +496,7 @@ describe("OpenAI local live service", () => {
       exact,
       "narrator",
       expect.any(AbortSignal),
+      { voice: "onyx", speed: 1 },
     );
   });
 
@@ -473,7 +511,12 @@ describe("OpenAI local live service", () => {
     const response = await handle(
       request(
         "/api/live/openai/speech",
-        JSON.stringify({ text: "unsafe\u0085prose", role: "narrator" }),
+        JSON.stringify({
+          text: "unsafe\u0085prose",
+          role: "narrator",
+          voice: "onyx",
+          speed: 1,
+        }),
         "application/json",
       ),
     );
@@ -493,8 +536,8 @@ describe("OpenAI local live service", () => {
       request(
         "/api/live/openai/transcribe",
         new Uint8Array([1]),
-        "audio/webm",
-        { "content-length": String(2 * 1024 * 1024 + 1) },
+        "multipart/form-data; boundary=oversized",
+        { "content-length": String(2 * 1024 * 1024 + 16 * 1024 + 1) },
       ),
     );
 

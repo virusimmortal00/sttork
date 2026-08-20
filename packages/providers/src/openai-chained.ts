@@ -7,17 +7,41 @@ import {
   ProviderAdapterError,
   type GuideDecisionWithUsage,
   type ProviderSpeech,
+  type ProviderSpeechOptions,
   type ProviderTranscription,
+  type ProviderTranscriptionContext,
   type ProviderUsage,
 } from "./contracts.js";
+
+export const OPENAI_TTS_VOICES = Object.freeze([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer",
+  "verse",
+  "marin",
+  "cedar",
+] as const);
 
 export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
   provider: "openai" as const,
   transcriptionModel: "gpt-4o-mini-transcribe",
   guideModel: "gpt-5.6-luna",
   narrationModel: "tts-1",
+  narrationInstructions: false,
+  narrationVoices: OPENAI_TTS_VOICES,
   guideVoice: "nova",
   narratorVoice: "onyx",
+  guideSpeechInstructions:
+    "Speak warmly and conversationally with clear diction and concise, grounded delivery. Do not add or omit words.",
+  narratorSpeechInstructions:
+    "Use measured classic adventure narration with clear diction and restrained drama. Do not add, omit, or paraphrase words.",
   guideReasoningEffort: "none" as const,
   guideReasoningContext: "current_turn" as const,
   guideVerbosity: "low" as const,
@@ -32,6 +56,7 @@ export const OPENAI_CHAINED_PROFILE_2026_08_19 = Object.freeze({
   ...OPENAI_CHAINED_PROFILE_2026_08_18,
   transcriptionModel: "gpt-transcribe",
   narrationModel: "gpt-4o-mini-tts",
+  narrationInstructions: true,
 });
 
 export interface OpenAiChainedProfile {
@@ -39,8 +64,12 @@ export interface OpenAiChainedProfile {
   readonly transcriptionModel: string;
   readonly guideModel: string;
   readonly narrationModel: string;
+  readonly narrationInstructions: boolean;
+  readonly narrationVoices: readonly string[];
   readonly guideVoice: string;
   readonly narratorVoice: string;
+  readonly guideSpeechInstructions: string;
+  readonly narratorSpeechInstructions: string;
   readonly guideReasoningEffort: "none" | "low";
   readonly guideReasoningContext: "current_turn";
   readonly guideVerbosity: "low" | "medium" | "high";
@@ -69,6 +98,24 @@ const pendingGuideObjectActions: readonly PendingGuideObjectAction[] = [
   "read",
   "take",
 ];
+
+const ZORK_ONE_SPOKEN_TITLE = "ZORK One: The Great Underground Empire";
+
+export function normalizeOpenAiNarrationDelivery(
+  text: string,
+  role: "guide" | "narrator",
+): string {
+  if (role !== "narrator") return text;
+  return text
+    .replace(
+      /(^|\n)ZORK I: The Great Underground Empire(?=\n|$)/u,
+      `$1${ZORK_ONE_SPOKEN_TITLE}`,
+    )
+    .replace(
+      /(^|\n)West of House\n(?=You are standing in an open field west of a white house, with a boarded front door\.)/u,
+      "$1West of House.\n\n",
+    );
+}
 
 function hasExactOwnKeys(
   value: object,
@@ -565,6 +612,83 @@ function boundedString(value: unknown, name: string, maximum: number): string {
   return value;
 }
 
+function boundedTranscriptionHints(
+  values: readonly string[] | undefined,
+  name: string,
+  maximumItems: number,
+): readonly string[] {
+  if (values === undefined) return [];
+  if (!Array.isArray(values) || values.length > maximumItems) {
+    throw new ProviderAdapterError(
+      "invalid-input",
+      `${name} list exceeded its configured limit.`,
+    );
+  }
+  const normalized = values.map((value) => boundedString(value, name, 80));
+  if (normalized.some((value) => /[<>\r\n]/u.test(value))) {
+    throw new ProviderAdapterError(
+      "invalid-input",
+      `${name} contained an unsupported character.`,
+    );
+  }
+  if (
+    name === "transcription language" &&
+    normalized.some((value) => !/^[a-z]{2,3}(?:-[a-z]{2})?$/u.test(value))
+  ) {
+    throw new ProviderAdapterError(
+      "invalid-input",
+      "Transcription language hint was invalid.",
+    );
+  }
+  return [...new Set(normalized)];
+}
+
+function boundedProviderAudioStream(
+  stream: ReadableStream<Uint8Array>,
+  maximumBytes: number,
+): ReadableStream<Uint8Array> {
+  const reader = stream.getReader();
+  let received = 0;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          if (received === 0) {
+            controller.error(
+              new ProviderAdapterError(
+                "malformed-response",
+                "Speech response was empty.",
+              ),
+            );
+          } else {
+            controller.close();
+          }
+          reader.releaseLock();
+          return;
+        }
+        received += result.value.byteLength;
+        if (received > maximumBytes) {
+          await reader.cancel().catch(() => undefined);
+          controller.error(
+            new ProviderAdapterError(
+              "malformed-response",
+              "Speech response exceeded the configured limit.",
+            ),
+          );
+          return;
+        }
+        if (result.value.byteLength > 0) controller.enqueue(result.value);
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => undefined);
+    },
+  });
+}
+
 function detectedLanguages(value: unknown): readonly string[] {
   if (typeof value !== "object" || value === null) return [];
   const languages = Reflect.get(value, "languages");
@@ -782,6 +906,7 @@ export class OpenAiChainedProvider implements GuideModel {
     bytes: Uint8Array,
     mediaType: string,
     signal: AbortSignal,
+    context: ProviderTranscriptionContext = {},
   ): Promise<ProviderTranscription> {
     if (
       bytes.byteLength === 0 ||
@@ -801,6 +926,26 @@ export class OpenAiChainedProvider implements GuideModel {
       new Blob([bytes.slice()], { type: boundedType }),
       "turn-audio",
     );
+    if (context.prompt !== undefined) {
+      body.set(
+        "prompt",
+        boundedString(context.prompt, "transcription prompt", 1_000),
+      );
+    }
+    const keywords = boundedTranscriptionHints(
+      context.keywords,
+      "transcription keyword",
+      64,
+    );
+    for (const keyword of keywords) body.append("keywords[]", keyword);
+    const requestedLanguages = boundedTranscriptionHints(
+      context.languages,
+      "transcription language",
+      8,
+    );
+    for (const language of requestedLanguages) {
+      body.append("languages[]", language);
+    }
     const response = await this.#request("/audio/transcriptions", {
       method: "POST",
       body,
@@ -908,16 +1053,41 @@ export class OpenAiChainedProvider implements GuideModel {
     text: string,
     role: "guide" | "narrator",
     signal: AbortSignal,
+    options: ProviderSpeechOptions = {},
   ): Promise<ProviderSpeech> {
     const boundedText = boundedNarrationText(
       text,
       "narration text",
       this.#profile.maxNarrationCharacters,
     );
+    const providerInput = normalizeOpenAiNarrationDelivery(boundedText, role);
     const voice = boundedString(
-      role === "guide" ? this.#profile.guideVoice : this.#profile.narratorVoice,
+      options.voice ??
+        (role === "guide"
+          ? this.#profile.guideVoice
+          : this.#profile.narratorVoice),
       `${role} voice`,
       100,
+    );
+    if (!this.#profile.narrationVoices.includes(voice)) {
+      throw new ProviderAdapterError(
+        "invalid-input",
+        "Narration voice is not allowlisted for this profile.",
+      );
+    }
+    const speed = options.speed ?? 1;
+    if (!Number.isFinite(speed) || speed < 0.75 || speed > 1.25) {
+      throw new ProviderAdapterError(
+        "invalid-input",
+        "Narration speed is outside the supported preference range.",
+      );
+    }
+    const instructions = boundedString(
+      role === "guide"
+        ? this.#profile.guideSpeechInstructions
+        : this.#profile.narratorSpeechInstructions,
+      `${role} speech instructions`,
+      500,
     );
     this.#reserveRequest();
     const response = await this.#request("/audio/speech", {
@@ -927,35 +1097,45 @@ export class OpenAiChainedProvider implements GuideModel {
       body: JSON.stringify({
         model: this.#profile.narrationModel,
         voice,
-        input: boundedText,
+        input: providerInput,
+        ...(this.#profile.narrationInstructions ? { instructions } : {}),
         response_format: "mp3",
-        speed: 1,
+        speed,
       }),
     });
-    const contentLength = Number(response.headers.get("content-length"));
-    if (Number.isFinite(contentLength) && contentLength > 2 * 1024 * 1024) {
+    const declaredContentLength = response.headers.get("content-length");
+    const contentLength =
+      declaredContentLength === null
+        ? undefined
+        : Number(declaredContentLength);
+    if (
+      contentLength !== undefined &&
+      (!Number.isSafeInteger(contentLength) ||
+        contentLength <= 0 ||
+        contentLength > 2 * 1024 * 1024)
+    ) {
       throw new ProviderAdapterError(
         "malformed-response",
         "Speech response exceeds the live-smoke limit.",
       );
     }
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength === 0 || buffer.byteLength > 2 * 1024 * 1024) {
+    if (response.body === null) {
       throw new ProviderAdapterError(
         "malformed-response",
-        "Speech response is empty or oversized.",
+        "Speech response did not contain a stream.",
       );
     }
     const usage: ProviderUsage = {
       provider: "openai",
       capability: "narration",
       model: this.#profile.narrationModel,
-      inputCharacters: boundedText.length,
+      inputCharacters: providerInput.length,
     };
     this.#onUsage?.(usage);
     return {
-      bytes: new Uint8Array(buffer.slice(0)),
+      body: boundedProviderAudioStream(response.body, 2 * 1024 * 1024),
       mediaType: "audio/mpeg",
+      ...(contentLength === undefined ? {} : { contentLength }),
       usage,
     };
   }

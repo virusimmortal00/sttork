@@ -45,8 +45,12 @@ unchanged. `X-Forwarded-Host` is ignored. A missing or mismatched raw host is
 rejected before static content, the session value, or an API route is served.
 The proxy must honor `Cache-Control: no-store`, disable intermediary caching and
 sensitive header/body logging, and avoid persisting buffered audio or JSON
-bodies. The server independently enforces a 2 MiB transcription limit and 16 KiB
-guide/speech JSON limit.
+bodies. The server independently enforces a 2 MiB transcription-audio limit with
+16 KiB of multipart-envelope allowance and a 16 KiB guide/speech JSON limit. It
+validates browser-supplied observed-object labels against the reviewed opening
+vocabulary before deriving transcription prompt, keyword, and language hints.
+Speech voice/rate preferences are allowlisted and bounded, and provider audio is
+proxied as a cancellable stream rather than materialized into a vendor object.
 
 The generated live-session value is not user authentication: an authorized page
 load receives it in HTML. Plain LAN HTTP is unsupported because a non-loopback
