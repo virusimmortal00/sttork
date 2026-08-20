@@ -69,7 +69,8 @@ settled OpenRouter-first or optional-Realtime delivery milestones:
 - schema-constrained initial guide: `gpt-5.6-luna` with `reasoning.effort` set
   to `none`, `reasoning.context` set to `current_turn`, and low output verbosity
   for the bounded, latency-sensitive intent-classification decision;
-- narration: `tts-1`, avoiding the now-deprecated GPT-4o mini TTS model.
+- narration: `gpt-4o-mini-tts` through the request-based Speech API, preserving
+  the existing role-specific `nova` guide and `onyx` narrator voices.
 
 The profile is dated configuration for a budget-limited smoke, not a promoted
 default. It has no automatic fallback, makes no provider request in hermetic
@@ -85,6 +86,17 @@ Language hints, when added, must use the model's plural `languages` request
 field rather than the legacy singular `language` field. Duration-billed usage is
 normalized as input-audio seconds while the provider boundary retains
 compatibility with token-billed transcription usage.
+
+The 2026-08-19 narration revision replaces the profile's earlier `tts-1`
+selection with `gpt-4o-mini-tts`. Current official documentation describes it as
+OpenAI's newest and most reliable text-to-speech model and lists it as the
+speech-generation model in the primary catalog. `tts-1` remains available in the
+full catalog and remains recorded in the earlier Slice 5 smoke evidence; it was
+not removed from that historical record or relabeled as deprecated. This
+revision keeps the same Speech endpoint, MP3 response, normal speed, request and
+response bounds, cancellation signal, and role-specific voices. It does not add
+model style instructions, so the provider receives the exact selected guide or
+narrator text without an additional prose-generation prompt.
 
 Each guide request is deliberately stateless (`store: false`) and independently
 grounded in the current reviewed command knowledge. It does not carry a
@@ -120,6 +132,8 @@ contextual and confirmation policies in
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT Transcribe model](https://developers.openai.com/api/docs/models/gpt-transcribe)
 - [File transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
+- [GPT-4o mini TTS model](https://developers.openai.com/api/docs/models/gpt-4o-mini-tts)
+- [Text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech)
 - [GPT-5.6 Luna model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)
 - [GPT-5.6 model guidance](https://developers.openai.com/api/docs/guides/latest-model)
 - [Structured model outputs](https://developers.openai.com/api/docs/guides/structured-outputs)

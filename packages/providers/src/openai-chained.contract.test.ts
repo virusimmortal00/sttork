@@ -28,14 +28,18 @@ function guideInput() {
 }
 
 describe("OpenAiChainedProvider", () => {
-  it("pins the live developer smoke request ceiling", () => {
+  it("pins the current live developer smoke models and request ceiling", () => {
     expect(OPENAI_CHAINED_PROFILE_2026_08_19.maxRequests).toBe(30);
     expect(OPENAI_CHAINED_PROFILE_2026_08_19.transcriptionModel).toBe(
       "gpt-transcribe",
     );
+    expect(OPENAI_CHAINED_PROFILE_2026_08_19.narrationModel).toBe(
+      "gpt-4o-mini-tts",
+    );
     expect(OPENAI_CHAINED_PROFILE_2026_08_18.transcriptionModel).toBe(
       "gpt-4o-mini-transcribe",
     );
+    expect(OPENAI_CHAINED_PROFILE_2026_08_18.narrationModel).toBe("tts-1");
   });
 
   it("normalizes transcription and reports bounded usage", async () => {
@@ -537,16 +541,26 @@ describe("OpenAiChainedProvider", () => {
     );
 
     expect(bodies).toEqual([
-      expect.objectContaining({ voice: "nova", input: "Which door?" }),
-      expect.objectContaining({
+      {
+        model: "gpt-4o-mini-tts",
+        voice: "nova",
+        input: "Which door?",
+        response_format: "mp3",
+        speed: 1,
+      },
+      {
+        model: "gpt-4o-mini-tts",
         voice: "onyx",
         input: "Exact game prose.\n\n> ",
-      }),
+        response_format: "mp3",
+        speed: 1,
+      },
     ]);
     expect([...guide.bytes]).toEqual([9, 8, 7]);
     expect([...narrator.bytes]).toEqual([9, 8, 7]);
     expect(guide.usage).toMatchObject({
       capability: "narration",
+      model: "gpt-4o-mini-tts",
       inputCharacters: 11,
     });
   });

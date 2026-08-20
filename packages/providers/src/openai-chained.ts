@@ -31,6 +31,7 @@ export const OPENAI_CHAINED_PROFILE_2026_08_18 = Object.freeze({
 export const OPENAI_CHAINED_PROFILE_2026_08_19 = Object.freeze({
   ...OPENAI_CHAINED_PROFILE_2026_08_18,
   transcriptionModel: "gpt-transcribe",
+  narrationModel: "gpt-4o-mini-tts",
 });
 
 export interface OpenAiChainedProfile {

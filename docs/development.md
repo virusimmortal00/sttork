@@ -158,17 +158,19 @@ unavailable or rejected; the harness also rejects it as a configured public
 origin. HTTPS is required even when the test device and developer machine share
 a trusted home network.
 
-The 2026-08-19 smoke profile uses `gpt-transcribe`, `gpt-5.6-luna`, and `tts-1`,
-with one global maximum of 30 provider requests for the server process. The
-initial `START STORY` narration uses one speech request without requesting
-microphone permission. For the exact Zork I Release 119 story/build/opening
-tuple, [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) selects the
-reviewed 32-word title-and-scene excerpt instead of speaking the full 67-word
-boot output; the full output remains the revision-zero event and accessible
-text. Any identity or exact-opening mismatch speaks the full output. A normal
-spoken turn uses three requests; Repeat uses another speech request, including
-when it retries the retained opening source and same selected text. All of them
-count against the same global ceiling. This is a request ceiling, not a
+The current 2026-08-19 smoke profile uses `gpt-transcribe`, `gpt-5.6-luna`, and
+`gpt-4o-mini-tts`, with one global maximum of 30 provider requests for the
+server process. The earlier Slice 5 evidence used `tts-1`; that historical
+record remains in `initial-voice-slices.md`. The initial `START STORY` narration
+uses one speech request without requesting microphone permission. For the exact
+Zork I Release 119 story/build/opening tuple,
+[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md) selects the reviewed
+32-word title-and-scene excerpt instead of speaking the full 67-word boot
+output; the full output remains the revision-zero event and accessible text. Any
+identity or exact-opening mismatch speaks the full output. A normal spoken turn
+uses three requests; Repeat uses another speech request, including when it
+retries the retained opening source and same selected text. All of them count
+against the same global ceiling. This is a request ceiling, not a
 dollar-denominated spend cap. Browser actions can incur API charges, so stop the
 server when the smoke is complete. This harness is not provider promotion,
 production authentication, or a substitute for the hermetic source gate.
