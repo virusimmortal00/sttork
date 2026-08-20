@@ -47,7 +47,7 @@
     "@zork-voice/providers": "workspace:*",
     "@zork-voice/server": "workspace:*",
     "@zork-voice/test-support": "workspace:*",
-    "ajv": "8.18.0",
+    "ajv": "8.20.0",
     "eslint": "10.8.1",
     "globals": "17.11.0",
     "prettier": "3.9.6",
