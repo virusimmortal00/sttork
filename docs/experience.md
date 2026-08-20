@@ -70,23 +70,23 @@ paused, blocked, or finished. It appears only during startup, microphone
 permission, listening, processing/reconnecting, or audible playback. Stable
 status text communicates every state independently of motion.
 
-On a fresh session, the first gameplay control is `START STORY`. It is enabled
-without microphone permission and does not begin capture. Activating it once
-publishes the full authenticated opening engine output at revision zero and
-requests narrator speech from it; it is not a parser command and therefore never
-enters the canonical-command history. The spoken request may use only the
-deterministic, story-pinned whole-line excerpt in
-[ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md), with the complete
-output as the fallback for any identity or text mismatch. While the opening is
-being prepared or played, ordinary capture and text submission remain gated and
-Stop remains available. After playback completes, is interrupted, or fails, the
-primary control becomes the ordinary `Start speaking` control and the
-accessibility text path becomes available. Completion and interruption show
-Ready; failure preserves a recoverable blocked state while those ordinary
-controls remain usable. Known safe failures replace generic `Action needed` with
-an actionable status: browser playback authorization asks the player to tap
-Repeat, and the bounded developer profile reports when its request limit has
-been reached.
+On a fresh session, the first gameplay control is the `START STORY` action,
+visually labeled `BEGIN`. It is enabled without microphone permission and does
+not begin capture. Activating it once publishes the full authenticated opening
+engine output at revision zero and requests narrator speech from it; it is not a
+parser command and therefore never enters the canonical-command history. The
+spoken request may use only the deterministic, story-pinned whole-line excerpt
+in [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md), with the
+complete output as the fallback for any identity or text mismatch. While the
+opening is being prepared or played, ordinary capture and text submission remain
+gated and Stop remains available. After playback completes, is interrupted, or
+fails, the primary control becomes the ordinary speaking control, visually
+labeled `SPEAK`, and the accessibility text path becomes available. Completion
+and interruption show Ready; failure preserves a recoverable blocked state while
+those ordinary controls remain usable. Known safe failures replace generic
+`Action needed` with an actionable status: browser playback authorization asks
+the player to tap Repeat, and the bounded developer profile reports when its
+request limit has been reached.
 
 ## Display-state projection
 

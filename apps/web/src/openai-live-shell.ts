@@ -338,6 +338,7 @@ async function run(): Promise<void> {
     activityIndicator,
   };
   const storyStartPresentation: StoryStartPresentationElements = {
+    shell: required<HTMLElement>("voice-shell"),
     primaryButton: captureButton,
     stopButton,
     pauseButton,
@@ -774,6 +775,7 @@ async function run(): Promise<void> {
     displayState: "ready",
     statusText: "Ready to start",
   };
+  storyStartPresentation.shell.dataset.storyPhase = storyStartPhase;
   renderProjection();
   applyLivePreflightPresentation(preflight, presentation);
   presentControllerState();
