@@ -11,13 +11,20 @@ import {
   inferPendingOpeningObjectIntent,
   isOpeningSceneProjection,
   isPendingOpeningObjectIntent,
+  openingActionOptionsRequested,
   openingCommandHelp,
+  openingGlobalActionHelpScopeRequested,
   openingObjectObservationDirectlyRequested,
+  openingObjectSelectionUniquelyMentioned,
+  openingReadExamineActionMentioned,
   openingSceneCurrentObjectLabels,
+  openingScopedActionOptionsRequested,
+  openingUtteranceMatchesObjectFocus,
   resolveOpeningSceneGuidance,
   resolvePendingOpeningContentObjectReply,
   resolveOpeningCommandComparisonQuestion,
   resolveOpeningCommandIntent,
+  resolvePendingOpeningReadExamineChoiceObject,
   type OpeningCommandKnowledge,
   type OpeningObservedObjectOption,
   type OpeningSceneProjection,
@@ -122,6 +129,26 @@ function readExamineClarification(
   );
 }
 
+function readExamineOptionsClarification(
+  selectedObject: OpeningObservedObjectOption,
+): InitialGuideResult {
+  const objectLabel = selectedObject.label;
+  return clarification(
+    `For the ${objectLabel}, EXAMINE inspects it without taking it; READ asks the game to read it and may take it. Which should I try?`,
+    "The active object has two distinct parser actions with different effects.",
+    createPendingOpeningReadExamineChoiceIntent(selectedObject),
+    [`examine ${objectLabel}`, `read ${objectLabel}`],
+  );
+}
+
+function exactlyReadExamineSources(sourceIds: readonly string[]): boolean {
+  return (
+    sourceIds.length === 2 &&
+    sourceIds.includes("grammar.examine") &&
+    sourceIds.includes("grammar.read")
+  );
+}
+
 function genericProviderClarification(
   pendingIntent?: PendingOpeningObjectIntent,
 ): InitialGuideResult {
@@ -222,6 +249,27 @@ export async function decideInitialGuideTurn(
 
   signal.throwIfAborted();
 
+  const pendingReadExamineObject =
+    input.pendingIntent !== undefined &&
+    "kind" in input.pendingIntent &&
+    input.pendingIntent.kind === "read-examine-choice"
+      ? resolvePendingOpeningReadExamineChoiceObject(
+          input.pendingIntent,
+          knowledge,
+        )
+      : undefined;
+  if (
+    input.pendingIntent !== undefined &&
+    "kind" in input.pendingIntent &&
+    input.pendingIntent.kind === "read-examine-choice" &&
+    pendingReadExamineObject === undefined
+  ) {
+    return clarification(
+      "That object is no longer in the observed scene. What would you like to do instead?",
+      "The pending READ-or-EXAMINE choice no longer has a currently observed object.",
+    );
+  }
+
   if (transcriptConfidenceRequiresClarification(input.transcriptConfidence)) {
     return clarification(
       "Could you say which single action you want me to try?",
@@ -235,6 +283,26 @@ export async function decideInitialGuideTurn(
     knowledge,
   );
   if (commandComparison.kind === "resolved") {
+    if (
+      input.pendingIntent !== undefined &&
+      "kind" in input.pendingIntent &&
+      input.pendingIntent.kind === "read-examine-choice" &&
+      exactlyReadExamineSources(commandComparison.sourceIds) &&
+      pendingReadExamineObject !== undefined &&
+      (!openingGlobalActionHelpScopeRequested(input.playerUtterance) ||
+        openingObjectSelectionUniquelyMentioned(
+          pendingReadExamineObject,
+          input.playerUtterance,
+          knowledge,
+        )) &&
+      openingUtteranceMatchesObjectFocus(
+        pendingReadExamineObject,
+        input.playerUtterance,
+        knowledge,
+      )
+    ) {
+      return readExamineOptionsClarification(pendingReadExamineObject);
+    }
     return {
       kind: "explain",
       decision: {
@@ -252,7 +320,15 @@ export async function decideInitialGuideTurn(
     );
   }
 
-  if (appearsMultiStep(input.playerUtterance)) {
+  const localContentAmbiguity = identifyNonlexicalOpeningContentRequest(
+    input.playerUtterance,
+    knowledge,
+  );
+
+  if (
+    appearsMultiStep(input.playerUtterance) &&
+    localContentAmbiguity === undefined
+  ) {
     return clarification(
       "Which one action should I try first?",
       "The request contains more than one possible game turn.",
@@ -264,6 +340,21 @@ export async function decideInitialGuideTurn(
       "What single action would you like me to perform instead?",
       "The utterance contains a negation, so executing the proposed command would be unsafe.",
     );
+  }
+
+  if (localContentAmbiguity !== undefined) {
+    return readExamineClarification(localContentAmbiguity);
+  }
+
+  if (
+    input.pendingIntent !== undefined &&
+    "kind" in input.pendingIntent &&
+    input.pendingIntent.kind === "read-examine-choice" &&
+    openingScopedActionOptionsRequested(input.playerUtterance)
+  ) {
+    if (pendingReadExamineObject !== undefined) {
+      return readExamineOptionsClarification(pendingReadExamineObject);
+    }
   }
 
   if (input.scene !== undefined) {
@@ -343,20 +434,14 @@ export async function decideInitialGuideTurn(
         );
       }
       if (choiceReply.code === "not-direct-action-request") {
-        return clarification(
-          "Please choose READ or EXAMINE as a direct action.",
-          "A question, condition, or quoted command does not authorize the pending action.",
-        );
+        if (openingReadExamineActionMentioned(input.playerUtterance)) {
+          return clarification(
+            "Please choose READ or EXAMINE as a direct action.",
+            "A question, condition, or quoted command does not authorize the pending action.",
+          );
+        }
       }
     }
-  }
-
-  const localContentAmbiguity = identifyNonlexicalOpeningContentRequest(
-    input.playerUtterance,
-    knowledge,
-  );
-  if (localContentAmbiguity !== undefined) {
-    return readExamineClarification(localContentAmbiguity);
   }
 
   const missingContentObject = inferPendingOpeningObjectIntent(
@@ -448,6 +533,28 @@ export async function decideInitialGuideTurn(
           reason: "not-observed",
         },
       };
+    }
+    if (
+      input.pendingIntent !== undefined &&
+      "kind" in input.pendingIntent &&
+      input.pendingIntent.kind === "read-examine-choice" &&
+      exactlyReadExamineSources(decision.sourceIds) &&
+      pendingReadExamineObject !== undefined &&
+      (!openingActionOptionsRequested(input.playerUtterance) ||
+        openingScopedActionOptionsRequested(input.playerUtterance)) &&
+      (!openingGlobalActionHelpScopeRequested(input.playerUtterance) ||
+        openingObjectSelectionUniquelyMentioned(
+          pendingReadExamineObject,
+          input.playerUtterance,
+          knowledge,
+        )) &&
+      openingUtteranceMatchesObjectFocus(
+        pendingReadExamineObject,
+        input.playerUtterance,
+        knowledge,
+      )
+    ) {
+      return readExamineOptionsClarification(pendingReadExamineObject);
     }
     return {
       kind: "explain",

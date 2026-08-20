@@ -383,6 +383,8 @@ describe("initial bounded Dungeon Guide", () => {
 
   it.each([
     "What's in the leaflet?",
+    "What's on or in the leaflet?",
+    "Could you tell me what's on or in the leaflet?",
     "What's written on the leaflet?",
     "Tell me what the leaflet says.",
     "What words are on the leaflet?",
@@ -511,6 +513,241 @@ describe("initial bounded Dungeon Guide", () => {
       expect(model.calls).toBe(0);
     },
   );
+
+  it("answers action-options help for the pending leaflet without losing focus", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("scoped pending help reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What are the action options?",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toEqual({
+      kind: "clarify",
+      decision: {
+        kind: "clarify",
+        question:
+          "For the leaflet, EXAMINE inspects it without taking it; READ asks the game to read it and may take it. Which should I try?",
+        ambiguity:
+          "The active object has two distinct parser actions with different effects.",
+        choices: ["examine leaflet", "read leaflet"],
+      },
+      pendingIntent: leafletReadExaminePending,
+    });
+    if (result.kind !== "clarify") {
+      throw new Error("Expected scoped leaflet clarification.");
+    }
+    expect(result.decision.question).not.toMatch(/LOOK:|INVENTORY:|NORTH:/u);
+    expect(model.calls).toBe(0);
+  });
+
+  it("does not offer scoped action options for a stale pending object", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("stale pending help reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What are the action options?",
+        observedObjects: ["mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "clarify",
+      decision: {
+        question: expect.stringContaining("no longer in the observed scene"),
+      },
+    });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(model.calls).toBe(0);
+  });
+
+  it("normalizes adaptive provider help back to the current scoped choices", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "explain",
+      response: "Untrusted provider prose",
+      basis: "command-help",
+      sourceIds: ["grammar.read", "grammar.examine"],
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "Could you remind me what those choices were?",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "clarify",
+      decision: {
+        question: expect.stringContaining("For the leaflet"),
+        choices: ["examine leaflet", "read leaflet"],
+      },
+      pendingIntent: leafletReadExaminePending,
+    });
+    expect(result.decision).not.toMatchObject({
+      question: "Untrusted provider prose",
+    });
+    expect(model.calls).toBe(1);
+  });
+
+  it("does not bind scoped comparison help to a different current object", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("deterministic command comparison reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "Should I read or examine the mailbox?",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({ kind: "explain" });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(JSON.stringify(result)).not.toContain("For the leaflet");
+    expect(model.calls).toBe(0);
+  });
+
+  it("does not bind adaptive provider help to a different current object", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "explain",
+      response: "Untrusted provider prose",
+      basis: "command-help",
+      sourceIds: ["grammar.examine", "grammar.read"],
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What action options do I have for the mailbox?",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({ kind: "explain" });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(JSON.stringify(result)).not.toContain("For the leaflet");
+    expect(model.calls).toBe(1);
+  });
+
+  it("does not preserve scoped focus when a provider misclassifies explicit scene-wide help", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "explain",
+      response: "Untrusted provider prose",
+      basis: "command-help",
+      sourceIds: ["grammar.examine", "grammar.read"],
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What can I do here?",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({ kind: "explain" });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(JSON.stringify(result)).not.toContain("For the leaflet");
+    expect(model.calls).toBe(1);
+  });
+
+  it("does not preserve scoped focus for an unseen global-help paraphrase", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "explain",
+      response: "Untrusted provider prose",
+      basis: "command-help",
+      sourceIds: ["grammar.examine", "grammar.read"],
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What options do I have here?",
+        observedObjects: ["leaflet", "mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({ kind: "explain" });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(JSON.stringify(result)).not.toContain("For the leaflet");
+    expect(model.calls).toBe(1);
+  });
+
+  it("clears stale focus before an adaptive help request reaches the provider", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("stale pending focus reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "Could you remind me what those choices were?",
+        observedObjects: ["mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "clarify",
+      decision: {
+        question: expect.stringContaining("no longer in the observed scene"),
+      },
+    });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(model.calls).toBe(0);
+  });
+
+  it("clears stale focus before low-confidence retry preservation", async () => {
+    const model = new FakeGuideModel(() => {
+      throw new Error("stale low-confidence focus reached the provider");
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "What were those options?",
+        transcriptConfidence: 0.4,
+        observedObjects: ["mailbox"],
+        pendingIntent: leafletReadExaminePending,
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "clarify",
+      decision: {
+        question: expect.stringContaining("no longer in the observed scene"),
+      },
+    });
+    expect(result).not.toHaveProperty("pendingIntent");
+    expect(model.calls).toBe(0);
+  });
 
   it.each([
     ["read leaflet", "Tell me what the leaflet says."],

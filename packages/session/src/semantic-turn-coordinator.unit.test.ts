@@ -841,10 +841,10 @@ describe("SemanticTurnCoordinator", () => {
     expect(guide.calls).toBe(1);
   });
 
-  it("clears a pending action choice when command help supersedes it", async () => {
+  it("preserves a pending object across scoped action help before one explicit choice", async () => {
     const engine = new FakeEngine();
     const guide = new FakeGuideModel(() => {
-      throw new Error("a cleared pending choice must not bypass the guide");
+      throw new Error("scoped pending help must not reach the guide");
     });
     const subject = coordinator(engine, new FakeNarrator(), guide);
 
@@ -879,15 +879,34 @@ describe("SemanticTurnCoordinator", () => {
       (
         await subject.submitTurn(
           {
-            interactionId: "read-examine-help",
-            transcript: "What is the difference between read and examine?",
+            interactionId: "read-examine-options",
+            transcript: "What are the action options?",
             transcriptConfidence: 0.99,
             observedObjects: ["leaflet"],
           },
           new AbortController().signal,
         )
       ).outcome,
-    ).toBe("explained");
+    ).toBe("clarified");
+
+    const scopedHelp = await subject.submitTurn(
+      {
+        interactionId: "read-examine-comparison",
+        transcript: "What is the difference between read and examine?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(scopedHelp).toMatchObject({ outcome: "clarified" });
+    expect(
+      scopedHelp.events.find((event) => event.type === "guide.clarification"),
+    ).toMatchObject({
+      payload: {
+        question: expect.stringContaining("For the leaflet"),
+        choices: ["examine leaflet", "read leaflet"],
+      },
+    });
 
     const afterHelp = await subject.submitTurn(
       {
@@ -898,9 +917,66 @@ describe("SemanticTurnCoordinator", () => {
       },
       new AbortController().signal,
     );
-    expect(afterHelp.outcome).toBe("failed");
+    expect(afterHelp).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "read leaflet", revision: 1 },
+    });
+    expect(engine.executeCalls).toHaveLength(1);
+    expect(guide.calls).toBe(0);
+  });
+
+  it("clears pending object focus when explicit scene-wide help supersedes it", async () => {
+    const engine = new FakeEngine();
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "What can I do here?") {
+        return {
+          kind: "explain",
+          response: "Untrusted global help",
+          basis: "command-help",
+          sourceIds: ["grammar.look"],
+        };
+      }
+      return {
+        kind: "clarify",
+        question: "Which object do you mean?",
+        ambiguity: "The object is not grounded.",
+        choices: ["name one object", "cancel"],
+      };
+    });
+    const subject = coordinator(engine, new FakeNarrator(), guide);
+
+    await subject.submitTurn(
+      {
+        interactionId: "global-help-content",
+        transcript: "What's in the leaflet?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    const globalHelp = await subject.submitTurn(
+      {
+        interactionId: "global-help",
+        transcript: "What can I do here?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(globalHelp).toMatchObject({ outcome: "explained" });
+
+    const afterGlobalHelp = await subject.submitTurn(
+      {
+        interactionId: "choice-after-global-help",
+        transcript: "read it",
+        transcriptConfidence: 0.99,
+        observedObjects: ["leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(afterGlobalHelp).toMatchObject({ outcome: "clarified" });
     expect(engine.executeCalls).toHaveLength(0);
-    expect(guide.calls).toBe(1);
+    expect(guide.calls).toBe(2);
   });
 
   it("preserves pending intent across a provider failure before engine submission", async () => {

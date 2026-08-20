@@ -47,8 +47,12 @@ EXAMINE-versus-READ clarification, not an action. Its session-memory choice
 stores only the current object value ID and allowed actions `examine` and
 `read`; neither state is written to an event or save. A following `READ`,
 `read it`, `EXAMINE`, or `examine it` is rebound and revalidated against current
-knowledge before it can execute. Stale objects fail closed; command help clears
-the pending choice, and an unrelated fresh command supersedes it.
+knowledge before it can execute. Stale objects fail closed. Scoped help about
+the active READ/EXAMINE alternatives preserves the same object-bound choice;
+global help clears it, and an unrelated fresh command supersedes it. A bounded
+provider fallback may classify unseen scoped-help wording, but local policy
+accepts only the exact current READ/EXAMINE source pair and renders reviewed
+prose.
 
 Questions that compare offered commands or ask about alternatives without
 choosing one are non-mutating command help and never execute. The bounded local

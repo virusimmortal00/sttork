@@ -462,6 +462,11 @@ describe("OpenAiLiveGuideModel", () => {
           playerUtterance: "please head north",
           transcriptConfidence: 0.94,
           observedObjects: ["token"],
+          pendingIntent: {
+            kind: "read-examine-choice",
+            objectValueId: "observed-object:token",
+            allowedActions: ["examine", "read"],
+          },
         });
         expect(body).not.toHaveProperty("knowledge");
         expect(body).not.toHaveProperty("engine");
@@ -483,6 +488,11 @@ describe("OpenAiLiveGuideModel", () => {
           playerUtterance: "please head north",
           transcriptConfidence: 0.94,
           observedObjects: ["token"],
+          pendingIntent: {
+            kind: "read-examine-choice",
+            objectValueId: "observed-object:token",
+            allowedActions: ["examine", "read"],
+          },
           knowledge: createOpeningCommandKnowledge({
             observedObjects: ["token"],
           }),

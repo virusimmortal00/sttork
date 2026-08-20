@@ -15,9 +15,14 @@ import {
   identifyOpeningReadExamineClarificationChoice,
   inferPendingOpeningObjectIntent,
   isPendingOpeningObjectIntent,
+  openingActionOptionsRequested,
+  openingGlobalActionHelpScopeRequested,
   openingObjectObservationDirectlyRequested,
   openingObjectSelectionMentioned,
+  openingReadExamineActionMentioned,
+  openingScopedActionOptionsRequested,
   resolvePendingOpeningContentObjectReply,
+  resolvePendingOpeningReadExamineChoiceObject,
   resolveOpeningCommandComparisonQuestion,
   openingCommandHelp,
   resolveOpeningCommandIntent,
@@ -427,6 +432,10 @@ describe("opening-area command knowledge", () => {
     "Tell me the text on the leaflet.",
     "What is the content of the leaflet?",
     "What's in the leaflet?",
+    "What's on or in the leaflet?",
+    "What is in or on the leaflet?",
+    "Could you tell me what's on or in the leaflet?",
+    "Please tell me what is on or inside the leaflet.",
     "What information is available on the leaflet?",
     "What does the leaflet contain?",
     "What are the contents of the leaflet?",
@@ -452,6 +461,7 @@ describe("opening-area command knowledge", () => {
     "Examine the writing on the leaflet.",
     "Take the leaflet with the printed text.",
     "What's written on the leaflet or mailbox?",
+    "What's on or in the leaflet and open the mailbox.",
     "What's written on the sword?",
   ])(
     "does not replace the explicit, ambiguous, or unobserved request %s with a local content ambiguity",
@@ -466,6 +476,61 @@ describe("opening-area command knowledge", () => {
       ).toBeUndefined();
     },
   );
+
+  it("revalidates a pending READ/EXAMINE focus and recognizes action-options help", () => {
+    const leafletKnowledge = createOpeningCommandKnowledge({
+      observedObjects: ["leaflet", "mailbox"],
+    });
+    const pending = createPendingOpeningReadExamineChoiceIntent({
+      id: "observed-object:leaflet",
+      label: "leaflet",
+    });
+
+    expect(
+      resolvePendingOpeningReadExamineChoiceObject(pending, leafletKnowledge),
+    ).toEqual({ id: "observed-object:leaflet", label: "leaflet" });
+    expect(
+      resolvePendingOpeningReadExamineChoiceObject(
+        pending,
+        createOpeningCommandKnowledge({ observedObjects: ["mailbox"] }),
+      ),
+    ).toBeUndefined();
+    expect(openingActionOptionsRequested("What are the action options?")).toBe(
+      true,
+    );
+    expect(openingActionOptionsRequested("What is inside the leaflet?")).toBe(
+      false,
+    );
+    expect(
+      openingScopedActionOptionsRequested("What are the action options?"),
+    ).toBe(true);
+    expect(openingScopedActionOptionsRequested("What can I do here?")).toBe(
+      false,
+    );
+    expect(
+      openingGlobalActionHelpScopeRequested("What options do I have here?"),
+    ).toBe(true);
+    expect(
+      openingGlobalActionHelpScopeRequested("What else can I do around here?"),
+    ).toBe(true);
+    expect(
+      openingGlobalActionHelpScopeRequested("Generally, what are my options?"),
+    ).toBe(true);
+    expect(
+      openingGlobalActionHelpScopeRequested("What can I do with the leaflet?"),
+    ).toBe(false);
+    expect(
+      openingReadExamineActionMentioned(
+        "Could you remind me what those choices were?",
+      ),
+    ).toBe(false);
+    expect(openingReadExamineActionMentioned('Did you mean "READ"?')).toBe(
+      true,
+    );
+    expect(openingReadExamineActionMentioned("Should I inspect it?")).toBe(
+      true,
+    );
+  });
 
   it.each(["grammar.examine", "grammar.read"])(
     "does not bind an overlapping shorter object from %s",

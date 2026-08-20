@@ -4,6 +4,10 @@
 - Date: 2026-08-19
 - Owners: maintainers
 
+The blanket pending-help clearing rule below is superseded by
+[ADR-0015](0015-preserve-object-focus-through-scoped-help.md) for help scoped to
+the active READ-versus-EXAMINE object.
+
 ## Context
 
 The bounded opening guide originally validated a model-proposed parser command

@@ -480,6 +480,22 @@ export function createPendingOpeningReadExamineChoiceIntent(
   });
 }
 
+export function resolvePendingOpeningReadExamineChoiceObject(
+  intent: PendingOpeningObjectIntent,
+  knowledge: OpeningCommandKnowledge,
+): OpeningObservedObjectOption | undefined {
+  if (
+    !isPendingOpeningObjectIntent(intent) ||
+    !("kind" in intent) ||
+    intent.kind !== "read-examine-choice"
+  ) {
+    return undefined;
+  }
+  return knowledge.observedObjectOptions.find(
+    (option) => option.id === intent.objectValueId,
+  );
+}
+
 export function inferPendingOpeningObjectIntent(
   playerUtterance: string,
 ): PendingOpeningObjectIntent | undefined {
@@ -599,8 +615,9 @@ export function groundPendingOpeningReadExamineChoiceReply(
     return { ok: false, code: "not-grounded-in-utterance" };
   }
 
-  const selectedObject = knowledge.observedObjectOptions.find(
-    (option) => option.id === intent.objectValueId,
+  const selectedObject = resolvePendingOpeningReadExamineChoiceObject(
+    intent,
+    knowledge,
   );
   if (selectedObject === undefined) {
     return { ok: false, code: "unobserved-object" };
@@ -890,7 +907,99 @@ function hasVisibleContentCue(playerUtterance: string): boolean {
     /\b(?:say|says|written|writing|words|text|contents?|contain(?:s|ed|ing)?|information|inscription|printed)\b/u.test(
       normalized,
     ) ||
-    /\bwhat(?:'s| s| is) (?:in|inside|on) (?:a |an |the )?.+$/u.test(normalized)
+    /\bwhat(?:'s| s| is) (?:in|inside|on) (?:a |an |the )?.+$/u.test(
+      normalized,
+    ) ||
+    /\bwhat(?:'s| s| is) (?:on or (?:in|inside)|(?:in|inside) or on) (?:a |an |the )?.+$/u.test(
+      normalized,
+    )
+  );
+}
+
+function isSingleObjectContentLocationAlternative(
+  playerUtterance: string,
+  selectedObject: OpeningObservedObjectOption,
+): boolean {
+  const normalized = normalizeWords(playerUtterance);
+  const wrappedQuestion =
+    /^(?:(?:can|could|would|will) you )?(?:(?:please|kindly) )?tell me (.+)$/u.exec(
+      normalized,
+    );
+  const question = wrappedQuestion?.[1] ?? normalized;
+  const objectForms = [
+    selectedObject.label,
+    `the ${selectedObject.label}`,
+    `a ${selectedObject.label}`,
+    `an ${selectedObject.label}`,
+  ].map(normalizeWords);
+  return objectForms.some((object) =>
+    [
+      `what's on or in ${object}`,
+      `what is on or in ${object}`,
+      `what's on or inside ${object}`,
+      `what is on or inside ${object}`,
+      `what's in or on ${object}`,
+      `what is in or on ${object}`,
+      `what's inside or on ${object}`,
+      `what is inside or on ${object}`,
+    ].includes(question),
+  );
+}
+
+export function openingActionOptionsRequested(
+  playerUtterance: string,
+): boolean {
+  const normalized = normalizeWords(playerUtterance);
+  return [
+    "what actions are available",
+    "what action options are available",
+    "what are the action options",
+    "what can i do",
+    "what can i do here",
+    "what can i try",
+    "what are my options",
+  ].includes(normalized);
+}
+
+export function openingScopedActionOptionsRequested(
+  playerUtterance: string,
+): boolean {
+  const normalized = normalizeWords(playerUtterance);
+  return [
+    "what actions are available",
+    "what action options are available",
+    "what are the action options",
+    "what can i do",
+    "what can i try",
+    "what are my options",
+  ].includes(normalized);
+}
+
+export function openingGlobalActionHelpScopeRequested(
+  playerUtterance: string,
+): boolean {
+  const normalized = normalizeWords(playerUtterance);
+  return (
+    /\b(?:here|around here|overall|generally|in general)\b/u.test(normalized) ||
+    /\b(?:all|every|everything)\b.*\b(?:actions?|commands?|options?)\b/u.test(
+      normalized,
+    ) ||
+    /\b(?:actions?|commands?|options?)\b.*\b(?:all|every|everything)\b/u.test(
+      normalized,
+    )
+  );
+}
+
+export function openingReadExamineActionMentioned(
+  playerUtterance: string,
+): boolean {
+  const normalized = normalizeWords(playerUtterance);
+  return RULES.filter(
+    (rule) => rule.id === "grammar.examine" || rule.id === "grammar.read",
+  ).some((rule) =>
+    [rule.verb, ...rule.aliases].some((action) =>
+      includesPhrase(normalized, normalizeWords(action)),
+    ),
   );
 }
 
@@ -942,6 +1051,19 @@ export function openingObjectSelectionUniquelyMentioned(
   return (
     mentionedObjects.length === 1 &&
     mentionedObjects[0]?.id === selectedObject.id
+  );
+}
+
+export function openingUtteranceMatchesObjectFocus(
+  selectedObject: OpeningObservedObjectOption,
+  playerUtterance: string,
+  knowledge: OpeningCommandKnowledge,
+): boolean {
+  const mentionedObjects = mentionedOpeningObjects(playerUtterance, knowledge);
+  return (
+    mentionedObjects.length === 0 ||
+    (mentionedObjects.length === 1 &&
+      mentionedObjects[0]?.id === selectedObject.id)
   );
 }
 
@@ -1074,7 +1196,6 @@ export function identifyNonlexicalOpeningContentRequest(
 ): OpeningObservedObjectOption | undefined {
   if (
     typeof playerUtterance !== "string" ||
-    appearsMultiStep(playerUtterance) ||
     !hasVisibleContentCue(playerUtterance)
   ) {
     return undefined;
@@ -1082,6 +1203,12 @@ export function identifyNonlexicalOpeningContentRequest(
   const mentionedObjects = mentionedOpeningObjects(playerUtterance, knowledge);
   if (mentionedObjects.length !== 1) return undefined;
   const selectedObject = mentionedObjects[0]!;
+  if (
+    appearsMultiStep(playerUtterance) &&
+    !isSingleObjectContentLocationAlternative(playerUtterance, selectedObject)
+  ) {
+    return undefined;
+  }
   if (hasExplicitOpeningCommand(playerUtterance, selectedObject, knowledge)) {
     return undefined;
   }

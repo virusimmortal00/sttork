@@ -1,6 +1,9 @@
 import type { SemanticEvent } from "../../contracts/src/index.js";
 
-import { createOpeningCommandKnowledge } from "./opening-area.js";
+import {
+  createOpeningCommandKnowledge,
+  openingActionOptionsRequested,
+} from "./opening-area.js";
 import {
   MAX_OPENING_ENGINE_OUTPUT_LENGTH,
   OPENING_OBSERVED_OBJECTS,
@@ -1068,16 +1071,6 @@ function directionQuestionTarget(
   });
 }
 
-function actionHelpRequested(utterance: string): boolean {
-  return [
-    "what actions are available",
-    "what can i do",
-    "what can i do here",
-    "what can i try",
-    "what are my options",
-  ].includes(normalizedUtterance(utterance));
-}
-
 export function resolveOpeningSceneGuidance(
   utterance: string,
   projection: OpeningSceneProjection,
@@ -1113,7 +1106,7 @@ export function resolveOpeningSceneGuidance(
     }
   }
 
-  if (actionHelpRequested(utterance)) {
+  if (openingActionOptionsRequested(utterance)) {
     const attempts = projection.contextualAffordances.slice(0, 3);
     return Object.freeze({
       response: `You can try ${formatChoices(attempts.map((attempt) => attempt.spokenExample))}. The game will decide what works.`,

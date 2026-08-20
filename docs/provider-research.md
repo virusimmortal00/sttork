@@ -164,7 +164,14 @@ choice stores only the current object value ID and allowed actions `examine` and
 `read`; neither state is written to an event or save. A next-turn `READ`,
 `read it`, `EXAMINE`, or `examine it` is rebound and revalidated against current
 knowledge before execution. Stale objects fail closed. Command help clears the
-pending choice, while an unrelated fresh command supersedes it.
+pending choice unless that help is scoped to the active READ-versus-EXAMINE
+options. Scoped help preserves the same revalidated object frame; an unrelated
+fresh command or explicit global help supersedes it. The OpenAI request may
+serialize this validated frame as bounded dialogue focus. It is not game state
+or command authority. An unseen scoped-help paraphrase qualifies only when the
+provider returns `command-help` with exactly `grammar.examine` and
+`grammar.read`; guide core replaces provider prose with the deterministic local
+clarification and choices.
 
 Command-comparison questions and alternative-oriented meta questions that do not
 choose an action are non-mutating `explain` decisions with basis `command-help`,
@@ -186,7 +193,9 @@ must cover effect, advice, hypothetical, comparison, and alternative questions;
 conditionals, exclusions, reports, and quotations; every supported direct-action
 form; invented or stale source IDs; zero-mutation behavior; generic
 clarification replacement; exact typed clarification choices; pending-state
-clearing and supersession; stale objects; and the subsequent direct choice.
+preservation, clearing, and supersession; stale objects; and the subsequent
+direct choice. This prompt/context change invalidates earlier guide-evaluation
+evidence until the scoped-help and global-help contrast families are rerun.
 
 - [Chained voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [GPT Transcribe model](https://developers.openai.com/api/docs/models/gpt-transcribe)

@@ -232,6 +232,14 @@ normal non-mutating `explain` decision with source IDs and the existing guide
 event sequence; it does not create a new decision, event, or save shape. A local
 answer cannot execute a command or claim that an attempted action will work.
 
+Dialogue focus remains separate from that world projection. A bounded
+`read-examine-choice` may retain one current observed-object ID across help
+about those two active options. The provider receives only that validated frame,
+not an unbounded transcript; local policy revalidates the object and rule IDs
+and renders the response. Scoped help preserves the frame as a clarification,
+while global help or an unrelated accepted turn supersedes it. See
+[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md).
+
 An execute decision contains one command. A multi-step player request is stored
 as a pending goal and advanced through successive decisions, one command per
 engine revision. Each intermediate response is observed and revalidated before

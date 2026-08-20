@@ -440,6 +440,13 @@ Transcriptions API boundary. The earlier `gpt-4o-mini-transcribe` bullet remains
 the exact configuration of the recorded slice evidence; this update requires
 fresh live evidence before it changes that result.
 
+Dialogue-focus evolution on 2026-08-20 accepted
+[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md). The bounded
+READ-versus-EXAMINE frame now preserves one current object through help about
+those two options, including a validated provider fallback for unseen help
+paraphrases. This is hermetic implementation evidence only; it does not claim a
+general conversation-memory system or fresh live-device qualification.
+
 ### Evidence still required
 
 - Record a real browser microphone turn for one unambiguous intent, one engine

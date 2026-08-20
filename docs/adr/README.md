@@ -44,6 +44,8 @@ decision with a new ADR and link both records.
   — accepted; supersedes ADR-0011.
 - [ADR-0014: Allow a story-pinned spoken opening excerpt](0014-story-pinned-spoken-opening-excerpt.md)
   — accepted; canonical boot output remains byte-exact.
+- [ADR-0015: Preserve object focus through scoped command help](0015-preserve-object-focus-through-scoped-help.md)
+  — accepted; supersedes ADR-0012's blanket pending-help clearing rule.
 
 ## Template
 

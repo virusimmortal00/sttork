@@ -388,6 +388,14 @@ describe("opening scene projection", () => {
       sourceIds: ["grammar.examine", "opening-output", "grammar.open"],
     });
     expect(
+      resolveOpeningSceneGuidance("What are the action options?", scene),
+    ).toEqual({
+      response:
+        "You can try examining the mailbox, opening the mailbox, or examining the boarded door. The game will decide what works.",
+      basis: "command-help",
+      sourceIds: ["grammar.examine", "opening-output", "grammar.open"],
+    });
+    expect(
       resolveOpeningSceneGuidance(
         "In which direction was the house again?",
         scene,

@@ -712,6 +712,9 @@ export class OpenAiLiveGuideModel implements GuideModel {
         observedObjects: input.observedObjects.map((object) =>
           boundedText(object, "observed object", 160, false),
         ),
+        ...(input.pendingIntent === undefined
+          ? {}
+          : { pendingIntent: input.pendingIntent }),
       },
       this.#maxRequestBytes,
     );

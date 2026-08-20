@@ -1,4 +1,8 @@
-import { createOpeningCommandKnowledge } from "@zork-voice/command-knowledge";
+import {
+  createOpeningCommandKnowledge,
+  isPendingOpeningObjectIntent,
+  type PendingOpeningObjectIntent,
+} from "@zork-voice/command-knowledge";
 import { validateInitialGuideModelDecision } from "@zork-voice/guide-core";
 import type {
   GuideDecisionWithUsage,
@@ -20,6 +24,7 @@ export interface OpenAiLiveProviderPort {
       readonly playerUtterance: string;
       readonly transcriptConfidence?: number;
       readonly observedObjects: readonly string[];
+      readonly pendingIntent?: PendingOpeningObjectIntent;
       readonly knowledge: ReturnType<typeof createOpeningCommandKnowledge>;
     },
     signal: AbortSignal,
@@ -134,6 +139,22 @@ function observedObjects(value: unknown): readonly string[] {
   return value.map((item) => boundedString(item, 160));
 }
 
+function pendingOpeningIntent(
+  value: unknown,
+): PendingOpeningObjectIntent | undefined {
+  if (value === undefined) return undefined;
+  if (!isPendingOpeningObjectIntent(value)) {
+    throw new TypeError("invalid-pending-intent");
+  }
+  if ("action" in value) return { action: value.action };
+  if (value.kind === "content-object") return { kind: "content-object" };
+  return {
+    kind: "read-examine-choice",
+    objectValueId: value.objectValueId,
+    allowedActions: [value.allowedActions[0], value.allowedActions[1]],
+  };
+}
+
 function safeUsage(usage: ProviderTranscription["usage"]): object {
   return { ...usage };
 }
@@ -181,6 +202,20 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
         const interactionId = boundedString(input.interactionId, 160);
         const playerUtterance = boundedString(input.playerUtterance, 2_000);
         const objects = observedObjects(input.observedObjects);
+        const pendingIntent = pendingOpeningIntent(input.pendingIntent);
+        const knowledge = createOpeningCommandKnowledge({
+          observedObjects: objects,
+        });
+        if (
+          pendingIntent !== undefined &&
+          "kind" in pendingIntent &&
+          pendingIntent.kind === "read-examine-choice" &&
+          !knowledge.observedObjectOptions.some(
+            (option) => option.id === pendingIntent.objectValueId,
+          )
+        ) {
+          throw new TypeError("stale-pending-intent");
+        }
         const confidence = input.transcriptConfidence;
         if (
           confidence !== undefined &&
@@ -199,9 +234,8 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
               ? {}
               : { transcriptConfidence: confidence as number }),
             observedObjects: objects,
-            knowledge: createOpeningCommandKnowledge({
-              observedObjects: objects,
-            }),
+            ...(pendingIntent === undefined ? {} : { pendingIntent }),
+            knowledge,
           },
           request.signal,
         );

@@ -23,6 +23,11 @@ function guideInput() {
     playerUtterance: "please head north",
     transcriptConfidence: 0.98,
     observedObjects: ["token"],
+    pendingIntent: {
+      kind: "read-examine-choice" as const,
+      objectValueId: "observed-object:token",
+      allowedActions: ["examine", "read"] as const,
+    },
     knowledge: createOpeningCommandKnowledge({ observedObjects: ["token"] }),
   };
 }
@@ -337,6 +342,15 @@ describe("OpenAiChainedProvider", () => {
         },
       },
     });
+    expect(
+      JSON.parse((requestBody as { input: string }).input) as unknown,
+    ).toMatchObject({
+      pendingIntent: {
+        kind: "read-examine-choice",
+        objectValueId: "observed-object:token",
+        allowedActions: ["examine", "read"],
+      },
+    });
     expect(JSON.stringify(requestBody)).not.toContain('"const"');
     const schema = (
       requestBody as {
@@ -386,6 +400,16 @@ describe("OpenAiChainedProvider", () => {
     expect(requestBody).toMatchObject({
       instructions: expect.stringContaining(
         "return explain with basis command-help and exactly the relevant current commandKnowledge rule IDs as sourceIds",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "optional pendingIntent is bounded current dialogue focus",
+      ),
+    });
+    expect(requestBody).toMatchObject({
+      instructions: expect.stringContaining(
+        "return explain with exactly grammar.examine and grammar.read as sourceIds",
       ),
     });
     expect(requestBody).toMatchObject({
@@ -526,6 +550,29 @@ describe("OpenAiChainedProvider", () => {
     await expect(
       provider.decide(guideInput(), new AbortController().signal),
     ).resolves.toEqual(decision);
+  });
+
+  it("rejects stale pending focus before spending a guide request", async () => {
+    const fetchMock = vi.fn();
+    const provider = new OpenAiChainedProvider({
+      apiKey: testKey,
+      fetch: fetchMock,
+    });
+
+    await expect(
+      provider.decide(
+        {
+          ...guideInput(),
+          pendingIntent: {
+            kind: "read-examine-choice",
+            objectValueId: "observed-object:hidden object",
+            allowedActions: ["examine", "read"],
+          },
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "invalid-input" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each([

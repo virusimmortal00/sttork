@@ -46,6 +46,11 @@ aliases are examples and deterministic fast paths, not an exhaustive list of
 ways a player may express an intent. Semantic rollout is risk-tiered; unknown or
 consequential intents remain non-executing until their stricter policy lands.
 
+[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md) keeps one
+validated observed-object focus across help about an active READ-versus-EXAMINE
+choice. It does not add unbounded transcript memory or let provider prose become
+command authority.
+
 It does not silently solve puzzles, invent game facts, or expose unseen world
 state.
 

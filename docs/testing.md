@@ -261,6 +261,8 @@ Maintain labeled cases for:
 - ambiguous objects, directions, and multi-step plans;
 - impossible actions and parser syntax education;
 - requests for available actions without revealing unobserved content;
+- object-scoped follow-up help that preserves one revalidated dialogue focus
+  without expanding into the global command catalog;
 - inventory, recap, and spatial recall;
 - exact-story-bound scene replay, including current versus historical facts and
   explicit versus inferred spatial relations;
@@ -402,6 +404,17 @@ text must not add or resurrect facts. Current entities and relations are cleared
 after movement output while their source-backed history remains, and only a
 later exact reviewed disclosure repopulates the current scene. Directly stated
 relations remain distinct from deterministic inverse inferences.
+
+The bounded dialogue-focus replay must distinguish coordinated content wording
+from multiple actions. `What's on or in the leaflet?` establishes the existing
+READ-versus-EXAMINE choice for one current leaflet; scoped action-options help
+repeats only those two choices and preserves the focus; a following `examine it`
+or `read it` commits exactly once after revalidation. Both clarification turns
+must make no engine request or provider call on the deterministic path. Unseen
+scoped-help paraphrases may use the provider only after the validated pending
+frame is serialized, and local policy must normalize exactly the
+`grammar.examine`/`grammar.read` help pair. Multiple objects, independent action
+clauses, stale focus, and unrelated or global help remain fail-closed contrasts.
 
 The target local turns—walking to an object already observed as here, asking
 what actions are available, and recalling the house's direction—must produce a

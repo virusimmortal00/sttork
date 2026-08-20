@@ -249,6 +249,11 @@ describe("OpenAI local live service", () => {
           playerUtterance: "please head north",
           transcriptConfidence: 0.97,
           observedObjects: ["token"],
+          pendingIntent: {
+            kind: "read-examine-choice",
+            objectValueId: "observed-object:token",
+            allowedActions: ["examine", "read"],
+          },
           ignoredKnowledge: { hiddenMap: true },
         }),
         "application/json",
@@ -270,6 +275,11 @@ describe("OpenAI local live service", () => {
       expect.objectContaining({
         interactionId: "live-1",
         observedObjects: ["token"],
+        pendingIntent: {
+          kind: "read-examine-choice",
+          objectValueId: "observed-object:token",
+          allowedActions: ["examine", "read"],
+        },
         knowledge: expect.objectContaining({
           observedObjects: ["token"],
           observedObjectOptions: [
@@ -293,6 +303,43 @@ describe("OpenAI local live service", () => {
     expect(
       JSON.stringify(provider.decideWithUsage.mock.calls[0]?.[0]),
     ).not.toContain("hiddenMap");
+  });
+
+  it("rejects malformed or stale pending guide focus before the provider", async () => {
+    const provider = new FakeProvider();
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+
+    for (const pendingIntent of [
+      {
+        kind: "read-examine-choice",
+        objectValueId: "observed-object:token",
+        allowedActions: ["read", "examine"],
+      },
+      {
+        kind: "read-examine-choice",
+        objectValueId: "observed-object:hidden object",
+        allowedActions: ["examine", "read"],
+      },
+    ]) {
+      const response = await handle(
+        request(
+          "/api/live/openai/guide",
+          JSON.stringify({
+            interactionId: "invalid-focus",
+            playerUtterance: "What are my choices?",
+            observedObjects: ["token"],
+            pendingIntent,
+          }),
+          "application/json",
+        ),
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(provider.decideWithUsage).not.toHaveBeenCalled();
   });
 
   it("returns role-specific speech bytes without exposing provider objects", async () => {

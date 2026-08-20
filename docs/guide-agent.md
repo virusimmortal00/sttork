@@ -418,9 +418,14 @@ session-memory choice retains only that current object value ID and the allowed
 actions `examine` and `read`; it is not written to an event or save. On the next
 new turn, an explicit `READ`, `read it`, `EXAMINE`, or `examine it` selects one
 action only after current-object, grounding, risk, and commit checks run again.
-An object no longer offered fails closed. Intervening command help clears the
-pending choice; an unrelated fresh command supersedes it instead of inheriting
-its object.
+An object no longer offered fails closed. Help specifically about the active
+READ-versus-EXAMINE options repeats the deterministic object-specific
+clarification and preserves the choice; explicit global help clears it. An
+unrelated fresh command supersedes it instead of inheriting its object. The
+validated pending frame may be supplied to the provider only as bounded dialogue
+focus. Provider classification of unseen scoped-help wording is accepted only
+when it selects exactly `grammar.examine` and `grammar.read` as current help
+sources; local policy still renders the prose and choices.
 
 A player question that compares currently offered commands or asks about
 alternatives without choosing one is T0 command help, not an implicit choice or
@@ -476,9 +481,11 @@ choice with kind `read-examine-choice`, one `objectValueId`, and
 `allowedActions: ["examine", "read"]`, not a default action. These are
 session-memory states, not event or save fields. An explicit bare or pronominal
 answer such as `READ`, `read it`, `EXAMINE`, or `examine it` can be rebound and
-revalidated on the next turn. Command help clears the choice, an unrelated fresh
-command supersedes it, and an object that is no longer current cannot be
-recovered from pending state.
+revalidated on the next turn. Scoped help about those two choices preserves the
+same current-object frame; global help clears it, an unrelated fresh command
+supersedes it, and an object that is no longer current cannot be recovered from
+pending state. See
+[ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md).
 
 ## Observed memory
 

@@ -576,7 +576,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     },
   );
 
-  it("clarifies ambiguous leaflet content wording before examining without taking it", async () => {
+  it("retains leaflet focus through scoped action help before examining without taking it", async () => {
     let messageId = 0;
     const engine = new DorkWorkerEngine({
       factory: new RuntimeFactory(),
@@ -609,34 +609,6 @@ describe("semantic turn through the isolated Dork engine", () => {
           kind: "execute",
           command: "open mailbox",
           intentSummary: "Open the observed mailbox",
-          confidence: 0.99,
-        };
-      }
-      if (input.playerUtterance === "What's written on the leaflet?") {
-        return {
-          kind: "execute",
-          affordanceId: "grammar.read",
-          slots: [
-            {
-              slotId: "object",
-              valueId: "observed-object:leaflet",
-            },
-          ],
-          intentSummary: "Learn the visible written content of the leaflet",
-          confidence: 0.99,
-        };
-      }
-      if (input.playerUtterance === "Examine the leaflet.") {
-        return {
-          kind: "execute",
-          affordanceId: "grammar.examine",
-          slots: [
-            {
-              slotId: "object",
-              valueId: "observed-object:leaflet",
-            },
-          ],
-          intentSummary: "Examine the observed leaflet",
           confidence: 0.99,
         };
       }
@@ -694,7 +666,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     const ambiguousContentRequest = await subject.submitTurn(
       {
         interactionId: "read-leaflet",
-        transcript: "What's written on the leaflet?",
+        transcript: "What's on or in the leaflet?",
         transcriptConfidence: 0.99,
         observedObjects: observedObjectProjection.observedObjects,
       },
@@ -723,30 +695,34 @@ describe("semantic turn through the isolated Dork engine", () => {
         .map((event) => event.payload.command),
     ).toEqual(["open mailbox"]);
 
-    const commandDifference = await subject.submitTurn(
+    const actionOptions = await subject.submitTurn(
       {
-        interactionId: "read-examine-help",
-        transcript: "What is the difference between READ and EXAMINE?",
+        interactionId: "read-examine-options",
+        transcript: "What are the action options?",
         transcriptConfidence: 0.99,
         observedObjects: observedObjectProjection.observedObjects,
       },
       new AbortController().signal,
     );
-    expect(commandDifference).toMatchObject({ outcome: "explained" });
-    expect(commandDifference).not.toHaveProperty("engineResult");
-    const explanation = published.find(
+    expect(actionOptions).toMatchObject({ outcome: "clarified" });
+    expect(actionOptions).not.toHaveProperty("engineResult");
+    const scopedClarification = published.find(
       (event) =>
-        event.type === "guide.explanation" &&
-        event.correlationId === "read-examine-help",
+        event.type === "guide.clarification" &&
+        event.correlationId === "read-examine-options",
     );
-    if (explanation?.type !== "guide.explanation") {
-      throw new Error("Expected one READ-versus-EXAMINE explanation event.");
+    if (scopedClarification?.type !== "guide.clarification") {
+      throw new Error(
+        "Expected one scoped leaflet-options clarification event.",
+      );
     }
-    expect(explanation.payload).toMatchObject({
-      response:
-        "EXAMINE inspects an observed object without taking it. READ asks the parser to read the object and may implicitly take it.",
-      sourceIds: ["grammar.examine", "grammar.read"],
+    expect(scopedClarification.payload).toMatchObject({
+      question: expect.stringContaining("For the leaflet"),
+      choices: ["examine leaflet", "read leaflet"],
     });
+    expect(scopedClarification.payload.question).not.toMatch(
+      /LOOK:|INVENTORY:|NORTH:/u,
+    );
     expect(
       published
         .filter((event) => event.type === "engine.command.requested")
@@ -756,7 +732,7 @@ describe("semantic turn through the isolated Dork engine", () => {
     const examined = await subject.submitTurn(
       {
         interactionId: "examine-leaflet",
-        transcript: "Examine the leaflet.",
+        transcript: "Examine it.",
         transcriptConfidence: 0.99,
         observedObjects: observedObjectProjection.observedObjects,
       },
@@ -771,7 +747,7 @@ describe("semantic turn through the isolated Dork engine", () => {
         output: leafletText,
       },
     });
-    expect(guide.calls).toBe(2);
+    expect(guide.calls).toBe(1);
 
     const requestedCommands = published
       .filter((event) => event.type === "engine.command.requested")
@@ -793,7 +769,7 @@ describe("semantic turn through the isolated Dork engine", () => {
       }),
       expect.objectContaining({
         role: "guide",
-        text: explanation.payload.response,
+        text: scopedClarification.payload.question,
       }),
       expect.objectContaining({ role: "narrator", text: leafletText }),
     ]);
