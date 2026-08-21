@@ -1,6 +1,6 @@
-import { canonicalizeCommand, isEventEnvelopeV1 } from "@zork-voice/contracts";
-import { EventSequence } from "@zork-voice/events";
-import { FakeClock } from "@zork-voice/test-support";
+import { canonicalizeCommand, isEventEnvelopeV1 } from "@sttork/contracts";
+import { EventSequence } from "@sttork/events";
+import { FakeClock } from "@sttork/test-support";
 import { describe, expect, it } from "vitest";
 
 describe("foundation contract integration", () => {

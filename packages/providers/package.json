@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/providers",
+  "name": "@sttork/providers",
   "version": "0.0.0",
   "private": true,
   "description": "Normalized provider adapters and capability profiles.",
@@ -7,10 +7,10 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/contracts": "workspace:*",
-    "@zork-voice/guide-core": "workspace:*"
+    "@sttork/contracts": "workspace:*",
+    "@sttork/guide-core": "workspace:*"
   },
   "devDependencies": {
-    "@zork-voice/command-knowledge": "workspace:*"
+    "@sttork/command-knowledge": "workspace:*"
   }
 }

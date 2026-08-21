@@ -57,9 +57,7 @@ function compilerFromArguments(arguments_) {
 }
 
 async function compileOnce(compilerPath) {
-  const buildDirectory = await mkdtemp(
-    join(tmpdir(), "zork-voice-minimal-story-"),
-  );
+  const buildDirectory = await mkdtemp(join(tmpdir(), "sttork-minimal-story-"));
 
   try {
     const sourceName = basename(minimalStoryPaths.source);

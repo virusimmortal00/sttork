@@ -74,6 +74,9 @@ decision with a new ADR and link both records.
 - [ADR-0027: Project source-backed observed-world referents](0027-project-source-backed-observed-world-referents.md)
   — accepted; exact engine prose may create attributable current referents for
   ordinary grounding without exposing hidden interpreter state.
+- [ADR-0028: Adopt STTork as the independent public project name](0028-adopt-sttork-public-name.md)
+  — accepted; Zork is now a compatibility/provenance reference rather than the
+  project brand, and legacy wire identifiers remain stable.
 
 ## Template
 

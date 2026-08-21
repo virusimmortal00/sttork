@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/server",
+  "name": "@sttork/server",
   "version": "0.0.0",
   "private": true,
   "description": "Session BFF for provider authorization and ephemeral credentials.",
@@ -7,8 +7,8 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/command-knowledge": "workspace:*",
-    "@zork-voice/guide-core": "workspace:*",
-    "@zork-voice/providers": "workspace:*"
+    "@sttork/command-knowledge": "workspace:*",
+    "@sttork/guide-core": "workspace:*",
+    "@sttork/providers": "workspace:*"
   }
 }

@@ -39,6 +39,8 @@ export interface VoicePreferenceStorage {
   setItem(key: string, value: string): void;
 }
 
+// Preserved by ADR-0028 so the public-name change does not discard existing
+// local developer preferences.
 export const OPENAI_LIVE_VOICE_PREFERENCES_KEY =
   "zork-voice.openai-live.voice-preferences.v1";
 

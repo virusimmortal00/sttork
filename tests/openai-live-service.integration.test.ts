@@ -1,13 +1,13 @@
 import {
   createOpenAiLiveService,
   type OpenAiLiveProviderPort,
-} from "@zork-voice/server";
+} from "@sttork/server";
 import type {
   GuideDecisionWithUsage,
   ProviderSpeech,
   ProviderTranscription,
-} from "@zork-voice/providers";
-import { ProviderAdapterError } from "@zork-voice/providers";
+} from "@sttork/providers";
+import { ProviderAdapterError } from "@sttork/providers";
 import { describe, expect, it, vi } from "vitest";
 
 const origin = "http://127.0.0.1:4319";
@@ -81,7 +81,7 @@ function request(
 ): Request {
   const headers = new Headers(extraHeaders);
   headers.set("origin", origin);
-  headers.set("x-zork-voice-live-session", token);
+  headers.set("x-sttork-live-session", token);
   if (contentType !== undefined) headers.set("content-type", contentType);
   return new Request(`${origin}${path}`, {
     method: "POST",
@@ -150,7 +150,7 @@ describe("OpenAI local live service", () => {
         headers: {
           origin: publicOrigin,
           "content-type": "application/json",
-          "x-zork-voice-live-session": token,
+          "x-sttork-live-session": token,
         },
         body,
       }),
@@ -164,7 +164,7 @@ describe("OpenAI local live service", () => {
         headers: {
           origin: "https://other.home.example:8443",
           "content-type": "application/json",
-          "x-zork-voice-live-session": token,
+          "x-sttork-live-session": token,
         },
         body,
       }),
@@ -480,7 +480,7 @@ describe("OpenAI local live service", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("audio/mpeg");
-    expect(response.headers.get("x-zork-voice-model")).toBe("speech-test");
+    expect(response.headers.get("x-sttork-model")).toBe("speech-test");
     expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([
       7, 8, 9,
     ]);

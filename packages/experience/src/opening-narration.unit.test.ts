@@ -1,4 +1,4 @@
-import type { BootResult } from "@zork-voice/contracts";
+import type { BootResult } from "@sttork/contracts";
 import { describe, expect, it } from "vitest";
 
 import { selectOpeningNarrationText } from "./opening-narration.js";

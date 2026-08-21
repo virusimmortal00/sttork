@@ -4,7 +4,8 @@ This directory contains only provenance-approved, hash-locked third-party
 inputs:
 
 - `dork/` contains the selected TypeScript Z-machine core for the ADR-0009
-  candidate integration;
+  candidate integration. It is a locally modified, unendorsed subset pinned to
+  one upstream commit, not the npm package and not an upstream distribution;
 - `zork1/zork1.z3` is the separately licensed Release 119 story artifact.
 
 Neither import grants trademark rights or marks Dork as an accepted production

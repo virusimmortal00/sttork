@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://zork-voice.example/schemas/provenance-record-v1.json",
-  "title": "Zork Voice provenance record",
+  "$id": "https://sttork.example/schemas/provenance-record-v1.json",
+  "title": "STTork provenance record",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/session",
+  "name": "@sttork/session",
   "version": "0.0.0",
   "private": true,
   "description": "Provider-neutral semantic turn coordination and commit-boundary recovery.",
@@ -7,9 +7,9 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/command-knowledge": "workspace:*",
-    "@zork-voice/contracts": "workspace:*",
-    "@zork-voice/events": "workspace:*",
-    "@zork-voice/guide-core": "workspace:*"
+    "@sttork/command-knowledge": "workspace:*",
+    "@sttork/contracts": "workspace:*",
+    "@sttork/events": "workspace:*",
+    "@sttork/guide-core": "workspace:*"
   }
 }

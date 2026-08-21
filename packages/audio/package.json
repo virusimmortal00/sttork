@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/audio",
+  "name": "@sttork/audio",
   "version": "0.0.0",
   "private": true,
   "description": "Capture, playback, turn-taking, cancellation, and semantic audio roles.",
@@ -7,7 +7,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/contracts": "workspace:*",
-    "@zork-voice/session": "workspace:*"
+    "@sttork/contracts": "workspace:*",
+    "@sttork/session": "workspace:*"
   }
 }

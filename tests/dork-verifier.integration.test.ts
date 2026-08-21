@@ -24,7 +24,7 @@ const verifierInputs = [
 
 describe("Dork source-fork verifier", () => {
   it("rejects coordinated source-lock metadata drift before trusting its hashes", async () => {
-    const fixtureRoot = await mkdtemp(join(tmpdir(), "zork-voice-dork-lock-"));
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "sttork-dork-lock-"));
     try {
       for (const path of verifierInputs) {
         const destination = resolve(fixtureRoot, path);

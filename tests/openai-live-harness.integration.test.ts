@@ -3,7 +3,7 @@ import {
   createOpenAiLocalLiveRequestListener,
   injectEphemeralLiveSessionToken,
   loadOpenAiApiKey,
-} from "@zork-voice/server";
+} from "@sttork/server";
 import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type {
   IncomingHttpHeaders,
@@ -20,11 +20,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const syntheticApiKey = ["sk", "synthetic", "openai-live-harness-key"].join(
   "-",
 );
-const placeholder = "__ZORK_VOICE_SESSION_TOKEN__";
+const placeholder = "__STTORK_SESSION_TOKEN__";
 const temporaryRoots: string[] = [];
 
 async function temporaryRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "zork-voice-live-harness-"));
+  const root = await mkdtemp(join(tmpdir(), "sttork-live-harness-"));
   temporaryRoots.push(root);
   return root;
 }
@@ -167,7 +167,7 @@ describe("OpenAI local live harness", () => {
     expect(second).not.toBe(first);
     expect(
       injectEphemeralLiveSessionToken(
-        `<meta name="zork-voice-live-session" content="${placeholder}">`,
+        `<meta name="sttork-live-session" content="${placeholder}">`,
         first,
       ),
     ).toContain(`content="${first}"`);
@@ -197,7 +197,7 @@ describe("OpenAI local live harness", () => {
     await Promise.all([
       writeFile(
         paths.htmlPath,
-        `<meta name="zork-voice-live-session" content="${placeholder}">`,
+        `<meta name="sttork-live-session" content="${placeholder}">`,
       ),
       writeFile(paths.cssPath, "main { display: block; }"),
       writeFile(paths.storyPath, new Uint8Array([3, 1, 4])),
@@ -241,7 +241,7 @@ describe("OpenAI local live harness", () => {
     );
     expect(page.headers.get("permissions-policy")).toBe("microphone=(self)");
     expect(new TextDecoder().decode(page.body)).toBe(
-      `<meta name="zork-voice-live-session" content="${token}">`,
+      `<meta name="sttork-live-session" content="${token}">`,
     );
 
     const wrongHostPage = await invoke(
@@ -273,7 +273,7 @@ describe("OpenAI local live harness", () => {
           host: "127.0.0.1:4319",
           origin,
           "content-type": "application/json",
-          "x-zork-voice-live-session": token,
+          "x-sttork-live-session": token,
         },
         body: "{}",
       }),
@@ -294,7 +294,7 @@ describe("OpenAI local live harness", () => {
           host: "127.0.0.1:4319",
           origin,
           "content-type": "application/json",
-          "x-zork-voice-live-session": token,
+          "x-sttork-live-session": token,
         },
         body: "x".repeat(16 * 1024 + 1),
       }),
@@ -344,7 +344,7 @@ describe("OpenAI local live harness", () => {
           host: "voice.home.example:8443",
           origin: publicOrigin,
           "content-type": "application/json",
-          "x-zork-voice-live-session": token,
+          "x-sttork-live-session": token,
         },
         body: "{}",
       }),
@@ -361,7 +361,7 @@ describe("OpenAI local live harness", () => {
           host: "127.0.0.1:4175",
           origin: publicOrigin,
           "content-type": "application/json",
-          "x-zork-voice-live-session": token,
+          "x-sttork-live-session": token,
         },
         body: "{}",
       }),

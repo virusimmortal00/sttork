@@ -1,20 +1,47 @@
-# Zork Voice
+# STTork
 
-Zork Voice is a free, open-source, voice-native way to experience the
-open-source Zork trilogy. A conversational Dungeon Guide sits between the player
-and the original game: it understands natural intent, teaches the parser, asks
-clarifying questions, and offers spoiler-controlled guidance. The original
-Z-machine remains the sole authority over the world.
+**STTork** (pronounced “stork”) is a free, open-source, voice-native interface
+for classic text adventures. It layers speech-to-text (STT), a constrained
+agentic Dungeon Guide, and text-to-speech (TTS) over an original Z-machine game:
+the player speaks naturally, the Guide proposes or explains parser actions, the
+game executes the only authoritative command, and the Narrator speaks the exact
+result.
+
+The current compatibility target is **Zork I Release 119 only**. Zork II and
+Zork III are possible later targets, but they are not currently supported or
+bundled. STTork is an independent project and is not sponsored, endorsed, or
+published by Microsoft, Xbox, Activision, Infocom, or the Dork project.
 
 The primary experience is audio-first and nearly screenless. Visible
 transcripts, text input, captions, and detailed diagnostics remain available as
 explicit accessibility and debug capabilities.
 
-This repository is in M0 foundation work. Its provider-neutral contracts,
-ordered-event primitives, provenance policy, hermetic TypeScript checks, and
-project-owned reproducible Z-machine fixture are implemented. ADR-0009 selects
-the source-pinned Dork TypeScript core as the production candidate, but it is
-not yet accepted.
+This repository is in M0 foundation work. It is not yet a supported player
+release. Its provider-neutral contracts, ordered-event primitives, provenance
+policy, hermetic TypeScript checks, and project-owned reproducible Z-machine
+fixture are implemented. ADR-0009 selects the source-pinned Dork TypeScript core
+as the production candidate, but it is not yet accepted.
+
+## How Dork is used
+
+STTork does not install or redistribute an npm package named `dork`. It vendors
+only a reviewed subset of the TypeScript Z-machine core from upstream Dork
+commit `e5fce5ca678660611b5d2daa94bbffdb3a84e622`, then applies documented local
+changes for bounded execution, parser correctness, deterministic RNG, automatic
+command-boundary checkpoints, and cold Worker restore.
+
+That code is a **modified, unendorsed downstream fork**. STTork owns and must
+support its local changes; upstream Dork's authors are not responsible for them.
+The exact upstream files, local hashes, cumulative patch identity, MIT license,
+and ancestry notice are recorded in
+[`provenance/records/dork-interpreter-e5fce5c.json`](provenance/records/dork-interpreter-e5fce5c.json),
+[`spikes/dork-worker/source-lock.json`](spikes/dork-worker/source-lock.json),
+and [`LICENSES/THIRD-PARTY-NOTICES.md`](LICENSES/THIRD-PARTY-NOTICES.md).
+
+Dork remains a candidate rather than an accepted production interpreter. All six
+acceptance gates in the
+[`M0 interpreter evidence ledger`](docs/m0-interpreter-evidence.md) are still
+non-pass.
 
 ## Product invariants
 
@@ -66,8 +93,9 @@ adds real browser Worker/factory restore, outer snapshot integrity, bounded
 receipts, exact-retry quarantine, and one Chrome 151 restrictive-CSP smoke, but
 all six M0 interpreter gates remain non-pass. Safari, watchdog behavior, 50-turn
 and full behavioral/conformance coverage, and final bundle/SBOM evidence remain.
-The working-title review, GitHub protection settings, and remaining security
-evidence must also pass. See [milestones](docs/milestones.md) and the
+The former `Zork Voice` working title has been retired in favor of the distinct
+STTork identity. Final name clearance, GitHub protection settings, and remaining
+security evidence must still pass. See [milestones](docs/milestones.md) and the
 [M0 interpreter evidence ledger](docs/m0-interpreter-evidence.md). The
 [dated Dork spike](docs/m0-dork-spike-2026-08-18.md) records the bounded Worker,
 checkpoint, receipt, and RNG evidence. The earlier

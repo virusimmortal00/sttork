@@ -3,9 +3,9 @@
 ## Status
 
 This document defines the product and interaction contract for the first
-playable Zork Voice experience. The default interface is voice-first and
-eyes-free. Visible text remains available as an accessibility, troubleshooting,
-and development surface; it is not a separate gameplay engine or the default
+playable STTork experience. The default interface is voice-first and eyes-free.
+Visible text remains available as an accessibility, troubleshooting, and
+development surface; it is not a separate gameplay engine or the default
 presentation.
 
 ## Product principle

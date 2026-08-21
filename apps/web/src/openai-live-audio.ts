@@ -12,7 +12,7 @@ import type {
 } from "../../../packages/guide-core/src/index.js";
 import type { NarrationRequest } from "../../../packages/session/src/index.js";
 
-const SESSION_HEADER = "x-zork-voice-live-session";
+const SESSION_HEADER = "x-sttork-live-session";
 const TRANSCRIBE_PATH = "/api/live/openai/transcribe";
 const GUIDE_PATH = "/api/live/openai/guide";
 const SPEECH_PATH = "/api/live/openai/speech";

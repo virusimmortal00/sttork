@@ -317,7 +317,7 @@ describe("OpenAiLiveTranscriber", () => {
           }),
         );
         const headers = new Headers(init?.headers);
-        expect(headers.get("x-zork-voice-live-session")).toBe(sessionToken);
+        expect(headers.get("x-sttork-live-session")).toBe(sessionToken);
         expect(headers.get("content-type")).toBeNull();
         const body = init?.body as FormData;
         expect(body.get("audio")).toBeInstanceOf(Blob);

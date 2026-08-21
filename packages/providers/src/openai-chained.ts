@@ -1,7 +1,4 @@
-import type {
-  GuideModel,
-  InitialGuideModelInput,
-} from "@zork-voice/guide-core";
+import type { GuideModel, InitialGuideModelInput } from "@sttork/guide-core";
 
 import {
   ProviderAdapterError,

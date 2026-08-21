@@ -2,8 +2,8 @@
 
 Status: proposed execution roadmap
 
-Scope: a free, open-source, voice-first Zork experience with a bounded Dungeon
-Guide
+Scope: a free, open-source, voice-first interface for classic text adventures,
+currently limited to Zork I, with a bounded Dungeon Guide
 
 ## 1. Product direction
 
@@ -93,7 +93,9 @@ The verify job runs the hermetic source gate plus build and a separately labeled
 networked dependency audit; compiler reproducibility remains its own required
 job.
 
-M0 is not complete. ADR-0009 now proposes the pinned Dork TypeScript core as the
+M0 is not complete. ADR-0028 retires the `Zork Voice` working title and adopts
+the independent STTork name; qualified final name clearance remains a
+pre-release gate. ADR-0009 now proposes the pinned Dork TypeScript core as the
 primary interpreter candidate, with Bocfel retained as an oracle/fallback. The
 approved Zork I Release 119 artifact and the audited Dork core are available for
 the isolated compatibility work, but no production interpreter has been
@@ -113,11 +115,10 @@ swap, outer `EngineSnapshot` SHA-256 validation, bounded receipt/idempotency,
 exact-retry quarantine, and one Chrome 151 restrictive-CSP smoke. It still lacks
 watchdog termination, complete status/style/operand-zero READ/general-restart
 fixtures, a 50-turn cold-worker restore, Safari and the full browser matrix,
-fork conformance rerun, and final bundle/SBOM evidence. The working-name record
-remains blocked pending a qualified trademark review or rename. GitHub
-branch/protection settings must be applied and evidenced, and the remaining
-security/provenance exit review must complete. A committed workflow file alone
-is not evidence that remote repository protections are active.
+fork conformance rerun, and final bundle/SBOM evidence. GitHub branch/protection
+settings must be applied and evidenced, and the remaining security/provenance
+exit review must complete. A committed workflow file alone is not evidence that
+remote repository protections are active.
 
 ### Deliverables
 

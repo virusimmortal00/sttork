@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/command-knowledge",
+  "name": "@sttork/command-knowledge",
   "version": "0.0.0",
   "private": true,
   "description": "Versioned parser grammar and player-observed affordances.",
@@ -7,6 +7,6 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/contracts": "workspace:*"
+    "@sttork/contracts": "workspace:*"
   }
 }

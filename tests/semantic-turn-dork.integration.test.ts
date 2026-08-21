@@ -6,8 +6,8 @@ import {
   projectOpeningObjectsFromEngineOutput,
   projectOpeningObjectsFromEvent,
 } from "../packages/command-knowledge/src/index.js";
-import { canonicalizeCommand, type SemanticEvent } from "@zork-voice/contracts";
-import { EventSequence } from "@zork-voice/events";
+import { canonicalizeCommand, type SemanticEvent } from "@sttork/contracts";
+import { EventSequence } from "@sttork/events";
 import { selectOpeningNarrationText } from "../packages/experience/src/index.js";
 import { FakeGuideModel } from "../packages/guide-core/src/index.js";
 import {

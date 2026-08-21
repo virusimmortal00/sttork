@@ -1,4 +1,4 @@
-import { isEventEnvelopeV1 } from "@zork-voice/contracts";
+import { isEventEnvelopeV1 } from "@sttork/contracts";
 import { describe, expect, it } from "vitest";
 
 import { EventSequence } from "./event-sequence.js";

@@ -16,6 +16,11 @@ license and ancestry notice are in [`dork/LICENSE`](dork/LICENSE) and
 The checkpoint envelope codec and candidate-session orchestration outside
 `vendor/dork/` are project-owned integration code, not upstream Dork source.
 
+STTork does not consume the unrelated npm package named `dork`, and it does not
+claim that upstream Dork supports the local fork. The pinned subset remains a
+candidate until every ADR-0009 acceptance gate passes for the same source,
+patch, adapter, browser matrix, and emitted bundle.
+
 The selected core began as a TypeScript port of Aaron Black's public-domain
 JSZM. Dork's notice preserves the upstream attribution and source links.
 
@@ -32,7 +37,8 @@ MIT License preserved in [`zork1/LICENSE`](zork1/LICENSE).
 Development dependencies installed from the package lockfile are reported by the
 repository's license check; they are not copied into source control.
 
-The names **Zork** and **Infocom** identify third-party works and their history.
-Neither MIT license grants rights to trademarks, logos, commercial packaging, or
-marketing assets. This project is unaffiliated with and is not presented as
-sponsored or endorsed by Microsoft, Xbox, Activision, or Infocom.
+The names **Zork**, **Infocom**, and **Dork** identify third-party works and
+their history. Neither MIT license grants rights to trademarks, logos,
+commercial packaging, or marketing assets. This project is unaffiliated with and
+is not presented as sponsored or endorsed by Microsoft, Xbox, Activision,
+Infocom, or Dork's authors.

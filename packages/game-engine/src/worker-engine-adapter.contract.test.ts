@@ -6,7 +6,7 @@ import {
   type EngineSnapshot,
   type EngineTurnBoundary,
   type ExecuteResult,
-} from "@zork-voice/contracts";
+} from "@sttork/contracts";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 

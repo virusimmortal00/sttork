@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { canonicalizeCommand } from "@zork-voice/contracts";
+import { canonicalizeCommand } from "@sttork/contracts";
 import {
   ENGINE_WORKER_PROTOCOL_VERSION,
   type EngineWorkerResponse,

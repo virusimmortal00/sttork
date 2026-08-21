@@ -159,6 +159,18 @@ and relevant state identifiers are captured as typed events. Provider audio may
 be non-deterministic; the semantic turn must be replayable without calling an
 external model.
 
+### STTork is the independent project name
+
+[ADR-0028](adr/0028-adopt-sttork-public-name.md) retires `Zork Voice` as the
+development working title and adopts **STTork**, pronounced “stork.” Zork is
+used only to identify current Zork I Release 119 compatibility, provenance, and
+history. The project currently supports only Zork I; trilogy support is an
+aspiration rather than a present claim.
+
+The legacy `zork-voice-dork-checkpoint-v2` value remains the exact hash-locked
+candidate wire identity. It is not public branding and changes only with a real
+checkpoint compatibility revision.
+
 ## Provisional decisions under evidence gates
 
 ### Dork is the interpreter candidate, not yet the selected runtime
@@ -246,12 +258,6 @@ an undocumented workaround.
   word cadence, bounded muted line stack, mobile layout, reduced-motion mode,
   and relationship to user-enabled captions require device and accessibility
   evidence before it can become a default surface.
-- Which project name can be used without implying trademark sponsorship?
 
 Resolve these questions with prototypes, measurements, license review, or user
 testing. Do not settle them by assumption alone.
-
-`Zork Voice` is a development working title only. The
-[`zork-working-name-review`](../provenance/records/zork-working-name-review.json)
-record blocks treating it as an approved public brand until qualified review or
-a rename resolves the trademark question.

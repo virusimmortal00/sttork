@@ -1,16 +1,16 @@
 {
-  "name": "@zork-voice/web",
+  "name": "@sttork/web",
   "version": "0.0.0",
   "private": true,
   "description": "Voice-first browser experience; implementation begins in M3.",
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@zork-voice/audio": "workspace:*",
-    "@zork-voice/contracts": "workspace:*",
-    "@zork-voice/events": "workspace:*",
-    "@zork-voice/experience": "workspace:*",
-    "@zork-voice/guide-core": "workspace:*",
-    "@zork-voice/session": "workspace:*"
+    "@sttork/audio": "workspace:*",
+    "@sttork/contracts": "workspace:*",
+    "@sttork/events": "workspace:*",
+    "@sttork/experience": "workspace:*",
+    "@sttork/guide-core": "workspace:*",
+    "@sttork/session": "workspace:*"
   }
 }

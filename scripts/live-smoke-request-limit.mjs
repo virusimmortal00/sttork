@@ -12,7 +12,7 @@ export function parseLiveSmokeMaxRequests(value) {
     parsed > MAX_LIVE_SMOKE_MAX_REQUESTS
   ) {
     throw new RangeError(
-      `ZORK_VOICE_LIVE_MAX_REQUESTS must be an integer from 1 through ${MAX_LIVE_SMOKE_MAX_REQUESTS}.`,
+      `STTORK_LIVE_MAX_REQUESTS must be an integer from 1 through ${MAX_LIVE_SMOKE_MAX_REQUESTS}.`,
     );
   }
   return parsed;

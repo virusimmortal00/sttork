@@ -11,9 +11,9 @@ describe("voice shell accessibility markup", () => {
       "apps/web/voice-shell-smoke.html",
     ]) {
       const html = await readFile(new URL(path, repositoryRoot), "utf8");
-      expect(html).toContain("<title>Zork Voice</title>");
+      expect(html).toContain("<title>STTork</title>");
       expect(html).toMatch(
-        /<body>\s*<header class="app-header">\s*<p class="eyebrow">Zork Voice<\/p>\s*<\/header>\s*<main id="voice-shell"/u,
+        /<body>\s*<header class="app-header">\s*<p class="eyebrow">STTork<\/p>\s*<\/header>\s*<main id="voice-shell"/u,
       );
       expect(html).not.toContain("live developer smoke</p>");
       expect(html).toContain(
