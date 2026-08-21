@@ -5,7 +5,7 @@ export const ROLE_INTRODUCTION_INTERACTION_ID = "role-introduction";
 export const ROLE_INTRODUCTION = [
   {
     role: "guide",
-    text: "Hello, traveler. I'm your Dungeon Guide. I can help you find the right words, explain your options, and offer hints when invited, without taking the adventure from you. Our Narrator will give voice to the world itself.",
+    text: "Hello traveler. I'm your Dungeon Guide. I can help you find the right words, explain your options, and offer hints when invited, without taking the adventure from you. Our Narrator will give voice to the world itself.",
   },
   {
     role: "narrator",

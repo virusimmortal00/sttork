@@ -986,6 +986,12 @@ interface CachedPlayback {
   readonly blob: Blob;
 }
 
+interface ValidatedSpeechRequest {
+  readonly voice: string;
+  readonly speed: number;
+  readonly body: string;
+}
+
 type PlaybackActivationState =
   | { readonly phase: "idle" }
   | {
@@ -1027,7 +1033,7 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
   #activation: PlaybackActivationState = { phase: "idle" };
   #activationObjectUrl: string | undefined;
   #active: ActivePlayback | undefined;
-  #cached: CachedPlayback | undefined;
+  #cached: CachedPlayback[] = [];
   #synthesisRequests = 0;
 
   public constructor(options: OpenAiLivePlaybackPortOptions) {
@@ -1167,42 +1173,7 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
         "Another narration request is active.",
       );
     }
-    if (request.role !== "guide" && request.role !== "narrator") {
-      throw new OpenAiLiveAudioError(
-        "invalid-input",
-        "Narration role was invalid.",
-      );
-    }
-    boundedId(request.narrationId, "narration");
-    boundedId(request.correlationId, "correlation");
-    boundedId(request.sourceEventId, "source event");
-    const preference = this.#speechPreference(request.role);
-    const voice = boundedText(preference.voice, "speech voice", 100, false);
-    if (
-      !Number.isFinite(preference.speed) ||
-      preference.speed < 0.75 ||
-      preference.speed > 1.25
-    ) {
-      throw new OpenAiLiveAudioError(
-        "invalid-input",
-        "Speech rate was outside the supported preference range.",
-      );
-    }
-    const body = encodeJson(
-      {
-        text: boundedText(
-          request.text,
-          "narration text",
-          MAX_NARRATION_CHARACTERS,
-          true,
-        ),
-        role: request.role,
-        voice,
-        speed: Math.round(preference.speed * 100) / 100,
-      },
-      this.#maxRequestBytes,
-    );
-    const speed = Math.round(preference.speed * 100) / 100;
+    const { voice, speed, body } = this.#validatedSpeechRequest(request);
     const active: ActivePlayback = {
       abort: new AbortController(),
       objectUrl: undefined,
@@ -1284,13 +1255,13 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
           source.completion,
         ]);
         if (cached === undefined && source.cacheBlob !== undefined) {
-          this.#cached = {
+          this.#rememberCache({
             role: request.role,
             text: request.text,
             voice,
             speed,
             blob: source.cacheBlob(),
-          };
+          });
         }
       } catch (error) {
         if (
@@ -1308,6 +1279,40 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
     }
   }
 
+  public async prepare(
+    request: NarrationRequest,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const { voice, speed, body } = this.#validatedSpeechRequest(request);
+    if (this.#matchingCache(request, voice, speed) !== undefined) return;
+    this.#synthesisRequests += 1;
+    const response = await safeFetch(
+      this.#fetch,
+      SPEECH_PATH,
+      {
+        method: "POST",
+        headers: liveHeaders(this.#sessionToken, "application/json"),
+        body,
+      },
+      signal,
+    );
+    const mediaType = response.headers.get("content-type")?.split(";", 1)[0];
+    if (mediaType === undefined || !mediaType.startsWith("audio/")) {
+      throw new OpenAiLiveAudioError(
+        "malformed-response",
+        "The prefetched speech response did not contain audio.",
+      );
+    }
+    const bytes = await readBoundedBody(response, this.#maxResponseBytes);
+    this.#rememberCache({
+      role: request.role,
+      text: request.text,
+      voice,
+      speed,
+      blob: new Blob([bytes.buffer], { type: mediaType }),
+    });
+  }
+
   public async stop(): Promise<void> {
     const activation = this.#activation;
     if (activation.phase === "pending") {
@@ -1323,19 +1328,84 @@ export class OpenAiLivePlaybackPort implements PlaybackPort {
     this.#disposePlayback(active);
   }
 
+  public async pause(): Promise<void> {
+    if (this.#active === undefined) return;
+    this.#audio.pause();
+  }
+
+  public async resume(): Promise<void> {
+    if (this.#active === undefined) return;
+    await this.#audio.play();
+  }
+
   #matchingCache(
     request: NarrationRequest,
     voice: string,
     speed: number,
   ): CachedPlayback | undefined {
-    const cached = this.#cached;
-    return cached !== undefined &&
-      cached.role === request.role &&
-      cached.text === request.text &&
-      cached.voice === voice &&
-      cached.speed === speed
-      ? cached
-      : undefined;
+    return this.#cached.find(
+      (cached) =>
+        cached.role === request.role &&
+        cached.text === request.text &&
+        cached.voice === voice &&
+        cached.speed === speed,
+    );
+  }
+
+  #rememberCache(cached: CachedPlayback): void {
+    this.#cached = [
+      ...this.#cached.filter(
+        (entry) =>
+          entry.role !== cached.role ||
+          entry.text !== cached.text ||
+          entry.voice !== cached.voice ||
+          entry.speed !== cached.speed,
+      ),
+      cached,
+    ].slice(-8);
+  }
+
+  #validatedSpeechRequest(request: NarrationRequest): ValidatedSpeechRequest {
+    if (request.role !== "guide" && request.role !== "narrator") {
+      throw new OpenAiLiveAudioError(
+        "invalid-input",
+        "Narration role was invalid.",
+      );
+    }
+    boundedId(request.narrationId, "narration");
+    boundedId(request.correlationId, "correlation");
+    boundedId(request.sourceEventId, "source event");
+    const preference = this.#speechPreference(request.role);
+    const voice = boundedText(preference.voice, "speech voice", 100, false);
+    if (
+      !Number.isFinite(preference.speed) ||
+      preference.speed < 0.75 ||
+      preference.speed > 1.25
+    ) {
+      throw new OpenAiLiveAudioError(
+        "invalid-input",
+        "Speech rate was outside the supported preference range.",
+      );
+    }
+    const speed = Math.round(preference.speed * 100) / 100;
+    return {
+      voice,
+      speed,
+      body: encodeJson(
+        {
+          text: boundedText(
+            request.text,
+            "narration text",
+            MAX_NARRATION_CHARACTERS,
+            true,
+          ),
+          role: request.role,
+          voice,
+          speed,
+        },
+        this.#maxRequestBytes,
+      ),
+    };
   }
 
   #disposePlayback(active: ActivePlayback): void {

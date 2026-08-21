@@ -14,16 +14,47 @@ surface contains only essential status and controls. It is not a terminal with
 voice bolted on.
 
 [ADR-0013](adr/0013-persistent-command-history-and-active-only-indicator.md)
-supersedes ADR-0011's transient cue. The default screen may retain a bounded,
-newest-first history of canonical commands as essential trust status. An active
-request comes only from the engine-request boundary; only matching committed
-commands enter muted history. Decorative activity appears only while work is
-active. Stable status text remains authoritative and reduced motion disables
-animation.
+supersedes ADR-0011's transient cue. ADR-0020 supersedes its separate visual
+command-list shape: only committed canonical commands enter the bounded visual
+conversation, first as the focal line and then as muted history. The earlier
+engine-request boundary remains available through the accessible live cue.
+Decorative activity appears only while work is active. Stable status text
+remains authoritative and reduced motion disables animation.
+
+[ADR-0022](adr/0022-place-operational-status-below-active-text.md) removes the
+redundant visible Guide/Narrator speaking badge near the title. With visual
+conversation present, only processing or reconnecting appears beneath the active
+line with a small decorative cue; the complete status remains in the polite live
+region.
+
+[ADR-0023](adr/0023-make-visible-playback-stop-resumable.md) makes the compact
+square playback control pause an audible utterance in place and become an
+accessible resume triangle. Repeat remains a distinct restart-from-beginning
+action, and non-playback work retains hard-stop cancellation.
+
+[ADR-0025](adr/0025-segment-and-prefetch-authored-narration.md) segments the
+fixed introduction and opening into serial audio/visual boundaries while
+preparing N+1 and N+2 in the background. Lookahead is bounded, cancellable, and
+never authorizes overlapping speech or visual sentence replacement.
 
 Visible transcript and text input remain supported accessibility capabilities.
 Detailed raw state, tool calls, provider timing, and cost data belong in an
 explicit debug mode.
+
+[ADR-0021](adr/0021-switch-primary-input-between-voice-and-text.md) places a
+mutually exclusive Voice/Text switch on the primary play surface after the story
+gate. Text uses the same semantic guide pipeline as speech; it is no longer
+nested inside the transcript utility. Voice remains the default when available.
+
+[ADR-0024](adr/0024-use-one-conversation-measure.md) supersedes ADR-0019's
+distinct horizontal widths: active speech and muted history now share one 50 rem
+responsive measure. ADR-0019 still governs their vertical separation and settled
+focal height; visible speech still replaces redundant activity motion.
+
+[ADR-0020](adr/0020-focus-committed-commands-in-visual-conversation.md) gives a
+committed command that same focal line before archiving it into the shared
+history with a light-gold `COMMAND` tag. Rejected commands and provider
+proposals remain absent.
 
 ### The original engine is authoritative
 
@@ -57,6 +88,19 @@ The closed mailbox recommends EXAMINE and OPEN, while the revealed leaflet
 recommends EXAMINE and READ. Suggestions are not a parser allowlist: a direct
 affirmative action outside the pair may still use the revalidated object focus
 and must pass the ordinary grounding and risk gates.
+
+[ADR-0026](adr/0026-resolve-deictic-observation-from-recent-object-focus.md)
+retains the latest successfully acted-on object as bounded, event-derived
+conversation focus. A reviewed question such as “Is there anything on the back?”
+may issue one T2 EXAMINE against that object; only engine output answers the
+question.
+
+[ADR-0027](adr/0027-project-source-backed-observed-world-referents.md)
+generalizes current referents beyond the opening. A bounded projection extracts
+physical entities only from exact canonical engine output, preserves source
+evidence and historical observations, and replaces current scene membership on
+movement. Explicit actions and pronouns still pass ordinary grammar, risk, and
+speech-act validation; seeing an entity never guarantees that an action works.
 
 It does not silently solve puzzles, invent game facts, or expose unseen world
 state.

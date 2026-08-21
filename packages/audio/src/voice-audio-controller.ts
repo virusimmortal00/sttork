@@ -111,6 +111,7 @@ export class VoiceAudioController {
   #turnAbort: AbortController | undefined;
   #playbackAbort: AbortController | undefined;
   #lastPlayed: NarrationRequest | undefined;
+  #pausedPlaybackState: "guide-speaking" | "narrator-speaking" | undefined;
 
   public constructor(options: VoiceAudioControllerOptions) {
     this.#turns = options.turns;
@@ -265,6 +266,7 @@ export class VoiceAudioController {
 
   public async stop(): Promise<void> {
     this.#lifecycleEpoch += 1;
+    this.#pausedPlaybackState = undefined;
     this.#turnAbort?.abort(new Error("Player stopped the active turn."));
     this.#playbackAbort?.abort(new Error("Player stopped playback."));
     const active = this.#active;
@@ -299,6 +301,16 @@ export class VoiceAudioController {
 
   public async pause(): Promise<void> {
     if (this.#state === "paused") return;
+    if (
+      this.#state === "guide-speaking" ||
+      this.#state === "narrator-speaking"
+    ) {
+      this.#pausedPlaybackState = this.#state;
+      await this.#playback.pause();
+      this.#turns.recordPaused("session-control");
+      this.#setState("paused");
+      return;
+    }
     const active = this.#active;
     await this.stop();
     this.#turns.recordPaused(active?.interactionId ?? "session-control");
@@ -307,6 +319,14 @@ export class VoiceAudioController {
 
   public async resume(): Promise<void> {
     if (this.#state !== "paused") return;
+    const playbackState = this.#pausedPlaybackState;
+    if (playbackState !== undefined) {
+      await this.#playback.resume();
+      this.#pausedPlaybackState = undefined;
+      this.#turns.recordResumed("session-control");
+      this.#setState(playbackState);
+      return;
+    }
     this.#turns.recordResumed("session-control");
     this.#setState("ready");
   }
@@ -382,7 +402,7 @@ export class VoiceAudioController {
     }
 
     const playbackEpoch = this.#lifecycleEpoch;
-    for (const request of prepared) {
+    for (const [index, request] of prepared.entries()) {
       if (
         this.#lifecycleEpoch !== playbackEpoch ||
         this.#isPaused() ||
@@ -390,7 +410,10 @@ export class VoiceAudioController {
       ) {
         return "interrupted";
       }
-      const outcome = await this.#play(request);
+      const outcome = await this.#play(
+        request,
+        prepared.slice(index + 1, index + 3),
+      );
       if (outcome !== "complete") return outcome;
     }
     if (!this.#isPaused() && !this.#isRecoverableError()) {
@@ -399,7 +422,10 @@ export class VoiceAudioController {
     return "complete";
   }
 
-  async #play(request: NarrationRequest): Promise<PreparedPlaybackOutcome> {
+  async #play(
+    request: NarrationRequest,
+    nextRequests: readonly NarrationRequest[] = [],
+  ): Promise<PreparedPlaybackOutcome> {
     const controller = new AbortController();
     this.#playbackAbort = controller;
     if (this.#state !== "processing") this.#setState("processing");
@@ -418,6 +444,17 @@ export class VoiceAudioController {
       });
     };
     this.#lastPlayed = { ...request };
+    const prepareNext = this.#playback.prepare?.bind(this.#playback);
+    const nextPreparation =
+      prepareNext === undefined
+        ? undefined
+        : Promise.all(
+            nextRequests.map((nextRequest) =>
+              prepareNext(nextRequest, controller.signal)
+                .then(() => true)
+                .catch(() => false),
+            ),
+          );
     try {
       await this.#playback.play(request, controller.signal, { onStarted });
       if (!started) {
@@ -432,6 +469,7 @@ export class VoiceAudioController {
         sourceEventId: request.sourceEventId,
         outcome: "complete",
       });
+      await nextPreparation;
       return "complete";
     } catch (error) {
       const outcome = controller.signal.aborted ? "interrupted" : "failed";

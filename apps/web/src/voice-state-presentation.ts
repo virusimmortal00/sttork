@@ -17,14 +17,16 @@ export type VoiceActivityState =
 export interface VoiceStatePresentationElements {
   readonly status: {
     textContent: string | null;
-    readonly dataset: { speakerRole?: string };
-    setAttribute(name: string, value: string): void;
-    removeAttribute(name: string): void;
   };
   readonly activityIndicator: {
     readonly dataset: { state?: string };
     hidden: boolean | string;
   };
+  readonly visualStatus: {
+    readonly dataset: { state?: string };
+    hidden: boolean | string;
+  };
+  readonly visualStatusText: { textContent: string | null };
 }
 
 export interface CanonicalStatusProjection {
@@ -116,8 +118,8 @@ export function activityIndicatorIsVisible(
     case "requesting":
     case "listening":
     case "processing":
-    case "speaking":
       return true;
+    case "speaking":
     case "idle":
     case "paused":
     case "blocked":
@@ -125,29 +127,27 @@ export function activityIndicatorIsVisible(
   }
 }
 
+export interface VisualOperationalStatus {
+  readonly visible: boolean;
+  readonly text: string;
+}
+
+export function visualOperationalStatus(
+  state: VoiceAudioState | ExperienceDisplayState,
+  statusText: string,
+): VisualOperationalStatus {
+  return activityStateForVoiceState(state) === "processing"
+    ? { visible: true, text: statusText }
+    : { visible: false, text: "" };
+}
+
 export function applyVoiceStatePresentation(
   state: VoiceAudioState | ExperienceDisplayState,
   statusText: string,
   elements: VoiceStatePresentationElements,
 ): void {
-  const speakerRole =
-    state === "guide-speaking"
-      ? "Guide"
-      : state === "narrator-speaking"
-        ? "Narrator"
-        : undefined;
-  const visibleStatusText = speakerRole === undefined ? statusText : "speaking";
-  if (elements.status.textContent !== visibleStatusText) {
-    elements.status.textContent = visibleStatusText;
-  }
-  if (speakerRole === undefined) {
-    if (elements.status.dataset.speakerRole !== undefined) {
-      delete elements.status.dataset.speakerRole;
-      elements.status.removeAttribute("aria-label");
-    }
-  } else {
-    elements.status.dataset.speakerRole = speakerRole;
-    elements.status.setAttribute("aria-label", statusText);
+  if (elements.status.textContent !== statusText) {
+    elements.status.textContent = statusText;
   }
   const activityState = activityStateForVoiceState(state);
   if (elements.activityIndicator.dataset.state !== activityState) {
@@ -156,6 +156,17 @@ export function applyVoiceStatePresentation(
   const hidden = !activityIndicatorIsVisible(state);
   if (elements.activityIndicator.hidden !== hidden) {
     elements.activityIndicator.hidden = hidden;
+  }
+  const visualStatus = visualOperationalStatus(state, statusText);
+  if (elements.visualStatusText.textContent !== visualStatus.text) {
+    elements.visualStatusText.textContent = visualStatus.text;
+  }
+  if (elements.visualStatus.dataset.state !== activityState) {
+    elements.visualStatus.dataset.state = activityState;
+  }
+  const visualStatusHidden = !visualStatus.visible;
+  if (elements.visualStatus.hidden !== visualStatusHidden) {
+    elements.visualStatus.hidden = visualStatusHidden;
   }
 }
 

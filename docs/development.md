@@ -115,6 +115,7 @@ example:
 ```sh
 pnpm openai:live:build
 ZORK_VOICE_PUBLIC_ORIGIN=https://voice-dev.example.test \
+ZORK_VOICE_LIVE_MAX_REQUESTS=10000 \
   pnpm openai:live:serve
 ```
 
@@ -202,31 +203,46 @@ failed opening. An unclassified failed case should remain `Action needed`, with
 speaking, text, and Repeat still usable. On Safari and other browsers that
 require explicit media authorization, the status should instead say
 `Tap Repeat to enable audio`; `Request limit reached` identifies the
-process-global smoke cap. Repeat must show Processing while it is synthesizing,
-reuse the same excerpt, and avoid retaining a stale blocked heading. The
-uninterrupted initial path should consume three TTS requests. Repeat after the
-completed opening should replay the bounded in-memory clip without another
-request while reusing the same opening event. Then say an unambiguous single
-action such as “look” and confirm one revision plus audible exact engine
-narration. Say an ambiguous request such as “open it” and confirm that the guide
-asks for clarification without advancing the engine. Exercise Stop during
-capture or playback, and inspect the optional transcript/debug surfaces only to
-confirm attribution, Worker isolation, and absence of sensitive audio or
-credentials. Record the browser version and console/CSP result. The harness
-implementation and its hermetic tests are present, but Slice 5 is not complete
-until this real microphone evidence is recorded; this documentation does not
-establish that live result.
+process-global smoke cap. The opt-in local smoke server raises that bounded cap
+from the provider profile's conservative 30-request default to 120 requests so
+sentence-level introduction synthesis and its two-segment lookahead remain
+usable during a manual session. A sustained developer instance may set
+`ZORK_VOICE_LIVE_MAX_REQUESTS` to an explicit integer from 1 through 1,000,000;
+10,000 is the recommended high-development allowance. The guard cannot be
+disabled, and restarting the server resets its process-local count. Repeat must
+show Processing while it is synthesizing, reuse the same excerpt, and avoid
+retaining a stale blocked heading. The deterministic introduction may consume
+several TTS requests because each sentence is synthesized separately and the
+next two segments are prepared ahead of playback. Repeat after the completed
+opening should replay the bounded in-memory clip without another request while
+reusing the same opening event. Then say an unambiguous single action such as
+“look” and confirm one revision plus audible exact engine narration. Say an
+ambiguous request such as “open it” and confirm that the guide asks for
+clarification without advancing the engine. Exercise Stop during capture or
+playback, and inspect the optional transcript/debug surfaces only to confirm
+attribution, Worker isolation, and absence of sensitive audio or credentials.
+Record the browser version and console/CSP result. The harness implementation
+and its hermetic tests are present, but Slice 5 is not complete until this real
+microphone evidence is recorded; this documentation does not establish that live
+result.
 
 The developer smoke also carries an explicitly experimental visual narration
 layer. At audible narrator playback start, it reveals the exact requested text
-line by line with a rate-aware estimated word cadence. A completed line moves
-below the active line into a six-line muted, newest-first visual stack. The
-layer is hidden from assistive technology to avoid duplicating the complete
-attributed Transcript surface, and reduced-motion mode shows each line without
-word animation. This prototype does not settle a change to ADR-0013's quiet
-default-screen contract: evaluate timing accuracy, distraction, mobile reflow,
-and caption accessibility before accepting or removing it through a follow-up
-ADR.
+line by line with a rate-aware estimated word cadence calibrated to the current
+generated voices. The estimate intentionally leads slightly rather than letting
+visible words trail audible speech. A completed line moves below the active line
+into a six-line muted, newest-first visual stack. The layer is hidden from
+assistive technology to avoid duplicating the complete attributed Transcript
+surface, and reduced-motion mode shows each line without word animation. Its
+command composition is settled by ADR-0020, while timing accuracy, distraction,
+mobile reflow, and caption accessibility remain explicit evaluation targets.
+
+Committed canonical commands use the same visual stack under ADR-0020. A command
+first appears as the central line with a light-gold `COMMAND` tag and a brief
+reduced-motion-aware entrance, then moves into history when the next Guide or
+Narrator line begins. No command sound is implemented yet; a future earcon must
+remain optional, non-authoritative, and supplemented by the visible and
+accessible role cues.
 
 For a remote-device run, additionally record the device operating system and
 browser, that `window.isSecureContext` is true, the exact configured origin and

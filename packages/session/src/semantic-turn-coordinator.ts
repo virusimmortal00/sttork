@@ -10,10 +10,13 @@ import type {
   SemanticEventType,
 } from "../../contracts/src/index.js";
 import {
+  createObservedWorldProjection,
   createOpeningSceneProjection,
   OPENING_SCENE_PROFILE_ID,
   openingSceneCurrentObjectLabels,
+  projectObservedWorldFromEvent,
   projectOpeningSceneFromEvent,
+  type ObservedWorldProjection,
   type OpeningSceneProjection,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
@@ -281,6 +284,19 @@ function validatedRoleIntroduction(
   });
 }
 
+export function narrationSegments(text: string): readonly string[] {
+  return text
+    .split(/\r?\n/u)
+    .flatMap(
+      (line) =>
+        line
+          .trim()
+          .match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/gu)
+          ?.map((segment) => segment.trim().replace(/\s+/gu, " ")) ?? [],
+    )
+    .filter((segment) => segment.length > 0);
+}
+
 function fingerprint(input: SemanticTurnInput): string {
   return JSON.stringify({
     interactionId: input.interactionId,
@@ -525,6 +541,7 @@ export class SemanticTurnCoordinator {
   #roleIntroduction: StoredRoleIntroduction | undefined;
   #opening: StoredOpening | undefined;
   #openingScene: OpeningSceneProjection | undefined;
+  #observedWorld: ObservedWorldProjection = createObservedWorldProjection();
   #activeInteractionId: string | undefined;
   #pendingOpeningObjectIntent: StoredPendingOpeningObjectIntent | undefined;
 
@@ -797,6 +814,7 @@ export class SemanticTurnCoordinator {
       const local: SemanticEvent[] = [];
       let sourceEventId = progress.sourceEventId;
       if (sourceEventId === undefined) {
+        this.#observedWorld = createObservedWorldProjection();
         this.#openingScene = createOpeningSceneProjection(
           input.boot.compatibility.story,
         );
@@ -822,6 +840,8 @@ export class SemanticTurnCoordinator {
         input.narrationText,
         sourceEventId,
         signal,
+        true,
+        true,
       );
       return {
         result: {
@@ -870,6 +890,7 @@ export class SemanticTurnCoordinator {
           source.id,
           signal,
           false,
+          true,
         );
         if (outcome !== "ready") {
           return { interactionId, outcome, events: local };
@@ -1090,6 +1111,19 @@ export class SemanticTurnCoordinator {
           this.#openingScene?.profileId === OPENING_SCENE_PROFILE_ID
             ? this.#openingScene
             : undefined;
+        const worldObjects = this.#observedWorld.currentObjects;
+        const observedObjects =
+          worldObjects.length === 0 ? input.observedObjects : worldObjects;
+        const openingSceneObjects =
+          scene === undefined ? [] : openingSceneCurrentObjectLabels(scene);
+        const sceneForGuide =
+          scene !== undefined &&
+          (openingSceneObjects.length > 0 || observedObjects.length === 0) &&
+          openingSceneObjects.every((object) =>
+            observedObjects.includes(object),
+          )
+            ? scene
+            : undefined;
         guideResult = await awaitWithAbort(
           decideInitialGuideTurn(
             this.#guide,
@@ -1099,11 +1133,11 @@ export class SemanticTurnCoordinator {
               ...(input.transcriptConfidence === undefined
                 ? {}
                 : { transcriptConfidence: input.transcriptConfidence }),
-              observedObjects:
-                scene === undefined
-                  ? input.observedObjects
-                  : openingSceneCurrentObjectLabels(scene),
-              ...(scene === undefined ? {} : { scene }),
+              observedObjects,
+              ...(worldObjects.length === 0
+                ? {}
+                : { observedWorld: this.#observedWorld }),
+              ...(sceneForGuide === undefined ? {} : { scene: sceneForGuide }),
               ...(pendingOpeningObjectIntent === undefined
                 ? {}
                 : {
@@ -1586,6 +1620,35 @@ export class SemanticTurnCoordinator {
     sourceEventId: string,
     signal: AbortSignal,
     engineCommitConfirmed = role === "narrator",
+    segmentSentences = false,
+  ): Promise<NarrationPreparationOutcome> {
+    const segments = segmentSentences
+      ? narrationSegments(text)
+      : [text].filter((segment) => segment.trim().length > 0);
+    if (segments.length === 0) return "failed";
+    for (const segment of segments) {
+      const outcome = await this.#prepareNarrationSegment(
+        local,
+        interactionId,
+        role,
+        segment,
+        sourceEventId,
+        signal,
+        engineCommitConfirmed,
+      );
+      if (outcome !== "ready") return outcome;
+    }
+    return "ready";
+  }
+
+  async #prepareNarrationSegment(
+    local: SemanticEvent[],
+    interactionId: string,
+    role: NarrationRole,
+    text: string,
+    sourceEventId: string,
+    signal: AbortSignal,
+    engineCommitConfirmed: boolean,
   ): Promise<NarrationPreparationOutcome> {
     const narrationId = this.#requireId(this.#nextNarrationId(), "narration");
     const requested = this.#emit(
@@ -1685,6 +1748,16 @@ export class SemanticTurnCoordinator {
       visibility,
       payload,
     }) as SemanticEvent<TType>;
+    try {
+      this.#observedWorld = projectObservedWorldFromEvent(
+        this.#observedWorld,
+        event,
+      );
+    } catch {
+      // Observed referents are derived convenience state. Dropping them cannot
+      // change canonical engine state or authorize a command.
+      this.#observedWorld = createObservedWorldProjection();
+    }
     if (this.#openingScene !== undefined) {
       try {
         this.#openingScene = projectOpeningSceneFromEvent(

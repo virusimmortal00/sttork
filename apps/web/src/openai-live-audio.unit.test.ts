@@ -640,6 +640,40 @@ describe("OpenAiLiveGuideModel", () => {
 });
 
 describe("OpenAiLivePlaybackPort", () => {
+  it("prefetches a clip without starting it and consumes that cached clip", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(new Uint8Array([4, 5, 6]), {
+          headers: { "content-type": "audio/mpeg" },
+        }),
+    );
+    const audio = new FakeAudioElement();
+    const playback = new OpenAiLivePlaybackPort({
+      sessionToken,
+      fetch: fetchMock,
+      createAudio: () => audio,
+      createObjectUrl: () => "blob:prefetched",
+      revokeObjectUrl: vi.fn(),
+    });
+    const request = narration("guide", "Prepared ahead of playback.");
+    playback.activateFromUserGesture();
+
+    await playback.prepare(request, new AbortController().signal);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(audio.play).toHaveBeenCalledOnce();
+    const playing = playback.play(request, new AbortController().signal, {
+      onStarted: vi.fn(),
+    });
+    await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
+    audio.start();
+    audio.end();
+    await playing;
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(playback.synthesisRequests).toBe(1);
+  });
+
   it("replays a completed matching clip from bounded session memory", async () => {
     const fetchMock = vi.fn(
       async () =>
@@ -1213,10 +1247,13 @@ describe("OpenAiLivePlaybackPort", () => {
     const rejected = expect(playing).rejects.toBeInstanceOf(Error);
     await vi.waitFor(() => expect(audio.play).toHaveBeenCalledTimes(2));
 
+    await playback.pause();
+    await playback.resume();
     await playback.stop();
     await rejected;
 
     expect(audio.pause).toHaveBeenCalled();
+    expect(audio.play).toHaveBeenCalledTimes(3);
     expect(onStarted).not.toHaveBeenCalled();
     expect(revoked).toHaveBeenCalledTimes(2);
     expect(revoked).toHaveBeenNthCalledWith(1, "blob:interrupt-1");

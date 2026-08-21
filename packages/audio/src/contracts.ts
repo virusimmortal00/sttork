@@ -98,11 +98,14 @@ export interface TranscriberPort {
 
 export interface PlaybackPort {
   activateFromUserGesture?(): void;
+  prepare?(request: NarrationRequest, signal: AbortSignal): Promise<void>;
   play(
     request: NarrationRequest,
     signal: AbortSignal,
     lifecycle: PlaybackLifecycle,
   ): Promise<void>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
   stop(): Promise<void>;
 }
 

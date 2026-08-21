@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   activityIndicatorIsVisible,
@@ -8,6 +8,7 @@ import {
   authoritativeVoiceStatePresentation,
   commandCueText,
   statusTextForVoiceAudioState,
+  visualOperationalStatus,
 } from "../apps/web/src/voice-state-presentation.js";
 
 describe("voice state presentation", () => {
@@ -63,8 +64,8 @@ describe("voice state presentation", () => {
     expect(activityIndicatorIsVisible("listening")).toBe(true);
     expect(activityIndicatorIsVisible("processing")).toBe(true);
     expect(activityIndicatorIsVisible("reconnecting")).toBe(true);
-    expect(activityIndicatorIsVisible("guide-speaking")).toBe(true);
-    expect(activityIndicatorIsVisible("narrator-speaking")).toBe(true);
+    expect(activityIndicatorIsVisible("guide-speaking")).toBe(false);
+    expect(activityIndicatorIsVisible("narrator-speaking")).toBe(false);
 
     expect(activityIndicatorIsVisible("ready")).toBe(false);
     expect(activityIndicatorIsVisible("paused")).toBe(false);
@@ -90,9 +91,6 @@ describe("voice state presentation", () => {
     let textWrites = 0;
     let currentText: string | null = "Processing";
     const status = {
-      dataset: {} as { speakerRole?: string },
-      setAttribute: vi.fn(),
-      removeAttribute: vi.fn(),
       get textContent(): string | null {
         return currentText;
       },
@@ -113,10 +111,17 @@ describe("voice state presentation", () => {
         currentHidden = value;
       },
     };
+    const visualStatus = {
+      dataset: { state: "processing" },
+      hidden: false,
+    };
+    const visualStatusText = { textContent: "Processing" as string | null };
 
     applyVoiceStatePresentation("processing", "Processing", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
 
     expect(textWrites).toBe(0);
@@ -126,16 +131,22 @@ describe("voice state presentation", () => {
     applyVoiceStatePresentation("ready", "Ready", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
     expect(currentText).toBe("Ready");
     expect(textWrites).toBe(1);
     expect(activityIndicator.dataset.state).toBe("idle");
     expect(currentHidden).toBe(true);
     expect(hiddenWrites).toBe(1);
+    expect(visualStatus.hidden).toBe(true);
+    expect(visualStatusText.textContent).toBe("");
 
     applyVoiceStatePresentation("ready", "Ready", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
     expect(textWrites).toBe(1);
     expect(hiddenWrites).toBe(1);
@@ -143,54 +154,72 @@ describe("voice state presentation", () => {
     applyVoiceStatePresentation("processing", "Processing", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
     expect(currentText).toBe("Processing");
     expect(textWrites).toBe(2);
     expect(activityIndicator.dataset.state).toBe("processing");
     expect(currentHidden).toBe(false);
     expect(hiddenWrites).toBe(2);
+    expect(visualStatus.hidden).toBe(false);
+    expect(visualStatusText.textContent).toBe("Processing");
   });
 
-  it("renders speaking states as a compact role plus verb with a complete accessible label", () => {
+  it("keeps speaking status accessible without a redundant visual status", () => {
     const status = {
       textContent: "Processing" as string | null,
-      dataset: {} as { speakerRole?: string },
-      setAttribute: vi.fn(),
-      removeAttribute: vi.fn(),
     };
     const activityIndicator = {
       dataset: {} as { state?: string },
       hidden: true,
     };
+    const visualStatus = {
+      dataset: {} as { state?: string },
+      hidden: false,
+    };
+    const visualStatusText = { textContent: "Processing" as string | null };
 
     applyVoiceStatePresentation("narrator-speaking", "Narrator speaking", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
-    expect(status.textContent).toBe("speaking");
-    expect(status.dataset.speakerRole).toBe("Narrator");
-    expect(status.setAttribute).toHaveBeenCalledWith(
-      "aria-label",
-      "Narrator speaking",
-    );
+    expect(status.textContent).toBe("Narrator speaking");
+    expect(activityIndicator.hidden).toBe(true);
+    expect(visualStatus.hidden).toBe(true);
+    expect(visualStatusText.textContent).toBe("");
 
     applyVoiceStatePresentation("guide-speaking", "Guide speaking", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
-    expect(status.dataset.speakerRole).toBe("Guide");
-    expect(status.setAttribute).toHaveBeenLastCalledWith(
-      "aria-label",
-      "Guide speaking",
-    );
+    expect(status.textContent).toBe("Guide speaking");
 
     applyVoiceStatePresentation("ready", "Ready", {
       status,
       activityIndicator,
+      visualStatus,
+      visualStatusText,
     });
     expect(status.textContent).toBe("Ready");
-    expect(status.dataset.speakerRole).toBeUndefined();
-    expect(status.removeAttribute).toHaveBeenCalledWith("aria-label");
+  });
+
+  it("projects only processing work into the subordinate visual status", () => {
+    expect(visualOperationalStatus("processing", "Processing")).toEqual({
+      visible: true,
+      text: "Processing",
+    });
+    expect(visualOperationalStatus("reconnecting", "Reconnecting")).toEqual({
+      visible: true,
+      text: "Reconnecting",
+    });
+    expect(
+      visualOperationalStatus("narrator-speaking", "Narrator speaking"),
+    ).toEqual({ visible: false, text: "" });
   });
 
   it("shows only the canonical command and avoids duplicate live-region writes", () => {

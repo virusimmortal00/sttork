@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   SpokenTranscriptPresentation,
+  spokenActionText,
+  spokenCommandText,
+  spokenNarrationLineRole,
   spokenNarrationLines,
+  spokenPlayerText,
   spokenWordIntervalMs,
 } from "./spoken-transcript-presentation.js";
 
@@ -11,6 +15,7 @@ interface FakeElement {
   readonly children: FakeElement[];
   readonly classList: {
     add(name: string): void;
+    remove(name: string): void;
     contains(name: string): boolean;
   };
   readonly ownerDocument: { createElement(tag: string): FakeElement };
@@ -20,6 +25,7 @@ interface FakeElement {
   scrollTop: number;
   textContent: string;
   attachTo(parent: FakeElement | undefined): void;
+  append(...children: FakeElement[]): void;
   prepend(child: FakeElement): void;
   remove(): void;
   replaceChildren(...children: FakeElement[]): void;
@@ -42,6 +48,7 @@ function fakeElement(document = fakeDocument()): FakeElement {
     children,
     classList: {
       add: (name) => classes.add(name),
+      remove: (name) => classes.delete(name),
       contains: (name) => classes.has(name),
     },
     ownerDocument: document,
@@ -63,6 +70,13 @@ function fakeElement(document = fakeDocument()): FakeElement {
     },
     attachTo(nextParent) {
       parent = nextParent;
+    },
+    append(...nextChildren) {
+      for (const child of nextChildren) {
+        child.remove();
+        children.push(child);
+        child.attachTo(element);
+      }
     },
     prepend(child) {
       child.remove();
@@ -91,10 +105,15 @@ class ManualScheduler {
   public maximumActive = 0;
   public scheduled = 0;
   public cancelled = 0;
+  public readonly delays: number[] = [];
 
-  public readonly schedule = (callback: () => void): number => {
+  public readonly schedule = (
+    callback: () => void,
+    delayMs: number,
+  ): number => {
     const handle = ++this.#nextHandle;
     this.#tasks.set(handle, callback);
+    this.delays.push(delayMs);
     this.scheduled += 1;
     this.maximumActive = Math.max(this.maximumActive, this.#tasks.size);
     return handle;
@@ -125,7 +144,12 @@ class ManualScheduler {
   }
 }
 
-function fixture(options: { readonly reducedMotion?: boolean } = {}) {
+function fixture(
+  options: {
+    readonly reducedMotion?: boolean;
+    readonly now?: () => number;
+  } = {},
+) {
   const document = fakeDocument();
   const region = fakeElement(document);
   const activeLine = fakeElement(document);
@@ -141,6 +165,7 @@ function fixture(options: { readonly reducedMotion?: boolean } = {}) {
       ...(options.reducedMotion === undefined
         ? {}
         : { reducedMotion: options.reducedMotion }),
+      ...(options.now === undefined ? {} : { now: options.now }),
       schedule: scheduler.schedule,
       cancelScheduled: scheduler.cancel,
     },
@@ -149,6 +174,186 @@ function fixture(options: { readonly reducedMotion?: boolean } = {}) {
 }
 
 describe("spoken transcript presentation", () => {
+  it("fades the completed active line before adding it to history", () => {
+    const view = fixture();
+    view.subject.start("A finished line.", 1, "narrator");
+    view.subject.finish("complete");
+
+    expect(view.region.dataset.playbackState).toBe("settling");
+    expect(view.activeLine.classList.contains("is-leaving")).toBe(true);
+    expect(view.history.children).toHaveLength(0);
+    expect(view.scheduler.active).toBe(1);
+    expect(view.scheduler.delays.at(-1)).toBe(560);
+
+    view.subject.finish("complete");
+    expect(view.scheduler.active).toBe(1);
+
+    view.scheduler.runNext();
+
+    expect(view.region.dataset.playbackState).toBe("settled");
+    expect(view.activeLine.children).toHaveLength(0);
+    expect(view.history.children).toHaveLength(1);
+    expect(view.history.children[0]?.classList.contains("is-arriving")).toBe(
+      true,
+    );
+    expect(view.history.children[0]?.textContent).toBe("A finished line.");
+  });
+
+  it("keeps the speaker tag stable between queued lines from the same role", () => {
+    const view = fixture();
+    view.subject.start("First guide sentence.", 1, "guide");
+    view.subject.start("Second guide sentence.", 1, "guide");
+    view.subject.finish("complete");
+
+    expect(view.activeLine.classList.contains("is-leaving")).toBe(true);
+    expect(view.activeLine.classList.contains("is-speaker-continuing")).toBe(
+      true,
+    );
+
+    view.scheduler.runNext();
+
+    expect(view.activeLine.dataset.role).toBe("guide");
+    expect(view.activeLine.textContent).toBe("Second guide sentence.");
+    expect(view.activeLine.classList.contains("is-speaker-continuing")).toBe(
+      false,
+    );
+  });
+
+  it("transitions the speaker tag when the queued role changes", () => {
+    const view = fixture();
+    view.subject.start("The guide finishes.", 1, "guide");
+    view.subject.finish("complete");
+    view.subject.start("The narrator begins.", 1, "narrator");
+
+    expect(view.activeLine.classList.contains("is-leaving")).toBe(true);
+    expect(view.activeLine.classList.contains("is-speaker-continuing")).toBe(
+      false,
+    );
+  });
+
+  it("replays an existing line without adding another history row", () => {
+    const view = fixture();
+    view.subject.start("There is a small mailbox here.", 1, "narrator");
+    view.subject.finish("complete");
+    view.scheduler.runAll();
+
+    expect(view.history.children).toHaveLength(1);
+
+    view.subject.replay("There is a small mailbox here.", 1, "narrator");
+    expect(view.activeLine.textContent).toBe("There is a small mailbox here.");
+    view.subject.finish("complete");
+    view.scheduler.runAll();
+
+    expect(view.activeLine.textContent).toBe("");
+    expect(view.history.children).toHaveLength(1);
+    expect(view.history.children[0]?.textContent).toBe(
+      "There is a small mailbox here.",
+    );
+
+    view.subject.replay("There is a small mailbox here.", 1, "narrator");
+    view.subject.finish("complete");
+    view.scheduler.runAll();
+
+    expect(view.history.children).toHaveLength(1);
+  });
+
+  it("keeps a canonical command exact while normalizing visual spacing", () => {
+    expect(spokenCommandText("  examine   mailbox  ")).toBe("examine mailbox");
+  });
+
+  it("focuses a final player transcript immediately before settling it", () => {
+    const view = fixture();
+    view.subject.showPlayer("  please   examine the mailbox  ");
+
+    expect(view.activeLine.dataset.role).toBe("player");
+    expect(view.activeLine.textContent).toBe("please examine the mailbox");
+    expect(
+      view.activeLine.children[0]?.children.every((word) =>
+        word.classList.contains("is-visible"),
+      ),
+    ).toBe(true);
+    expect(view.scheduler.delays).toEqual([850]);
+
+    view.scheduler.runNext();
+    expect(view.activeLine.classList.contains("is-leaving")).toBe(true);
+    expect(view.history.children).toHaveLength(0);
+
+    view.scheduler.runNext();
+    expect(view.activeLine.textContent).toBe("");
+    expect(view.history.children[0]?.dataset.role).toBe("player");
+    expect(view.history.children[0]?.textContent).toBe(
+      "please examine the mailbox",
+    );
+  });
+
+  it("queues a committed command behind the briefly focused player line", () => {
+    const view = fixture();
+    view.subject.showPlayer("Examine the mailbox");
+    view.subject.showCommand("examine mailbox");
+
+    expect(view.activeLine.dataset.role).toBe("player");
+
+    view.scheduler.runAll();
+
+    expect(view.activeLine.textContent).toBe("");
+    expect(
+      view.history.children.map((row) => [row.dataset.role, row.textContent]),
+    ).toEqual([
+      ["command", "examine mailbox"],
+      ["player", "Examine the mailbox"],
+    ]);
+  });
+
+  it("holds a committed command in focus before dissolving it into history", () => {
+    const view = fixture();
+    view.subject.showCommand("examine mailbox");
+
+    expect(view.region.dataset.playbackState).toBe("active");
+    expect(view.activeLine.dataset.role).toBe("command");
+    expect(view.activeLine.textContent).toBe("examine mailbox");
+    expect(view.history.children).toHaveLength(0);
+    expect(view.scheduler.delays).toEqual([850]);
+
+    view.scheduler.runNext();
+
+    expect(view.region.dataset.playbackState).toBe("settling");
+    expect(view.activeLine.classList.contains("is-leaving")).toBe(true);
+    expect(view.history.children).toHaveLength(0);
+
+    view.scheduler.runNext();
+
+    expect(view.region.dataset.playbackState).toBe("settled");
+    expect(view.activeLine.textContent).toBe("");
+    expect(view.history.children[0]?.dataset.role).toBe("command");
+    expect(view.history.children[0]?.textContent).toBe("examine mailbox");
+  });
+
+  it("retains a fast narration outcome behind player and command focus", () => {
+    const view = fixture();
+    view.subject.showPlayer("Go north");
+    view.subject.showCommand("north");
+    view.subject.start("North Room", 1, "narrator");
+    view.subject.finish("complete");
+
+    view.scheduler.runAll();
+
+    expect(view.region.dataset.playbackState).toBe("settled");
+    expect(view.activeLine.textContent).toBe("");
+    expect(
+      view.history.children.map((row) => [row.dataset.role, row.textContent]),
+    ).toEqual([
+      ["narrator", "North Room"],
+      ["command", "north"],
+      ["player", "Go north"],
+    ]);
+  });
+
+  it("normalizes player transcript spacing without changing its words", () => {
+    expect(spokenPlayerText("  Examine   the mailbox. ")).toBe(
+      "Examine the mailbox.",
+    );
+  });
+
   it("preserves narration line boundaries while normalizing visual spacing", () => {
     expect(
       spokenNarrationLines(
@@ -161,10 +366,97 @@ describe("spoken transcript presentation", () => {
     ]);
   });
 
+  it("does not promote the standalone Z-machine prompt into narration", () => {
+    expect(spokenNarrationLines("The mailbox is closed.\n\n> ")).toEqual([
+      "The mailbox is closed.",
+    ]);
+  });
+
+  it("classifies only standalone parenthetical game output as an action", () => {
+    expect(spokenNarrationLineRole("(Taken)", "narrator")).toBe("action");
+    expect(
+      spokenNarrationLineRole("The leaflet says (Taken).", "narrator"),
+    ).toBe("narrator");
+    expect(spokenNarrationLineRole("(A guide aside)", "guide")).toBe("guide");
+  });
+
+  it("names the implicitly taken command target in the visual action", () => {
+    expect(spokenActionText("(Taken)", "read leaflet")).toBe("Took leaflet.");
+    expect(spokenActionText("(Taken)", "read the leaflet with care")).toBe(
+      "Took the leaflet.",
+    );
+    expect(spokenActionText("(Taken)", undefined)).toBe("(Taken)");
+    expect(spokenActionText("(Already taken)", "read leaflet")).toBe(
+      "(Already taken)",
+    );
+  });
+
+  it("holds an implicit game action in focus before continuing narration", () => {
+    const view = fixture();
+    view.subject.showCommand("read leaflet");
+    view.subject.start('(Taken)\n"WELCOME TO ZORK!"', 1, "narrator");
+
+    view.scheduler.runNext();
+    view.scheduler.runNext();
+
+    view.scheduler.runNext();
+
+    expect(view.activeLine.dataset.role).toBe("action");
+    expect(view.activeLine.textContent).toBe("Took leaflet.");
+    view.scheduler.runNext();
+    expect(view.scheduler.delays.at(-1)).toBe(520);
+
+    view.scheduler.runNext();
+
+    expect(view.history.children[0]?.dataset.role).toBe("action");
+    expect(view.history.children[0]?.textContent).toBe("Took leaflet.");
+    expect(view.activeLine.dataset.role).toBe("narrator");
+    expect(view.activeLine.textContent).toBe('"WELCOME TO ZORK!"');
+  });
+
   it("reveals faster and slower voices at a bounded rate-aware cadence", () => {
+    expect(spokenWordIntervalMs(1)).toBe(286);
     expect(spokenWordIntervalMs(0.75)).toBeGreaterThan(spokenWordIntervalMs(1));
     expect(spokenWordIntervalMs(1)).toBeGreaterThan(spokenWordIntervalMs(1.25));
     expect(spokenWordIntervalMs(Number.NaN)).toBe(spokenWordIntervalMs(1));
+  });
+
+  it("pauses progressive text and resumes with the remaining reveal delay", () => {
+    let now = 1_000;
+    const view = fixture({ now: () => now });
+    view.subject.start("one two three", 1, "narrator");
+    view.scheduler.runNext();
+
+    expect(
+      view.activeLine.children[0]?.children[0]?.classList.contains(
+        "is-visible",
+      ),
+    ).toBe(true);
+    expect(
+      view.activeLine.children[0]?.children[1]?.classList.contains(
+        "is-visible",
+      ),
+    ).toBe(false);
+    expect(view.scheduler.delays.at(-1)).toBe(286);
+
+    now += 100;
+    view.subject.pause();
+    expect(view.scheduler.active).toBe(0);
+    view.scheduler.runAll();
+    expect(
+      view.activeLine.children[0]?.children[1]?.classList.contains(
+        "is-visible",
+      ),
+    ).toBe(false);
+
+    view.subject.resume();
+    expect(view.scheduler.delays.at(-1)).toBe(186);
+    view.scheduler.runNext();
+    expect(
+      view.activeLine.children[0]?.children[1]?.classList.contains(
+        "is-visible",
+      ),
+    ).toBe(true);
   });
 
   it("keeps one active callback for maximum-length narration", () => {
@@ -176,12 +468,13 @@ describe("spoken transcript presentation", () => {
 
     expect(view.scheduler.active).toBe(1);
     expect(view.scheduler.maximumActive).toBe(1);
-    expect(view.activeLine.children).toHaveLength(800);
+    expect(view.activeLine.children).toHaveLength(1);
+    expect(view.activeLine.children[0]?.children).toHaveLength(800);
     view.scheduler.runAll();
     expect(view.scheduler.maximumActive).toBe(1);
     expect(view.scheduler.scheduled).toBe(800);
     expect(
-      view.activeLine.children.every((word) =>
+      view.activeLine.children[0]?.children.every((word) =>
         word.classList.contains("is-visible"),
       ),
     ).toBe(true);
@@ -196,14 +489,20 @@ describe("spoken transcript presentation", () => {
 
     view.subject.finish("interrupted");
 
-    expect(view.scheduler.active).toBe(0);
+    expect(view.scheduler.active).toBe(1);
     expect(view.scheduler.cancelled).toBe(1);
     expect(view.activeLine.textContent).toBe("one two three");
+    expect(view.region.dataset.playbackState).toBe("settling");
+
+    view.scheduler.runNext();
+
+    expect(view.scheduler.active).toBe(0);
     expect(view.activeLine.children).toEqual([]);
+    expect(view.history.children[0]?.textContent).toBe("one two three");
     expect(view.region.dataset.playbackState).toBe("settled");
   });
 
-  it("cancels stale work and archives only the revealed prefix on rapid replacement", () => {
+  it("queues rapid replacement behind the active line with one callback", () => {
     const view = fixture();
     view.subject.start("old one two three", 1, "guide");
     view.scheduler.runNext();
@@ -213,12 +512,34 @@ describe("spoken transcript presentation", () => {
 
     expect(view.scheduler.active).toBe(1);
     expect(view.scheduler.maximumActive).toBe(1);
-    expect(view.scheduler.cancelled).toBe(1);
-    expect(view.history.children[0]?.textContent).toBe("old one");
+    expect(view.scheduler.cancelled).toBe(0);
+    expect(view.history.children).toHaveLength(0);
+
+    view.subject.finish("complete");
+    view.scheduler.runNext();
+
+    expect(view.history.children[0]?.textContent).toBe("old one two three");
     expect(view.history.children[0]?.dataset.role).toBe("guide");
     view.scheduler.runAll();
     expect(view.activeLine.textContent).toBe("new alpha beta");
     expect(view.activeLine.dataset.role).toBe("narrator");
+  });
+
+  it("retains completion for playback that ends while a prior line fades", () => {
+    const view = fixture();
+    view.subject.start("first", 1, "guide");
+    view.subject.finish("complete");
+    view.subject.start("second", 1, "narrator");
+    view.subject.finish("complete");
+
+    view.scheduler.runAll();
+
+    expect(view.region.dataset.playbackState).toBe("settled");
+    expect(view.activeLine.textContent).toBe("");
+    expect(view.history.children.map((row) => row.textContent)).toEqual([
+      "second",
+      "first",
+    ]);
   });
 
   it("cleans up the sole timer when playback fails before the first reveal", () => {
@@ -227,9 +548,14 @@ describe("spoken transcript presentation", () => {
 
     view.subject.finish("failed");
 
-    expect(view.scheduler.active).toBe(0);
+    expect(view.scheduler.active).toBe(1);
     expect(view.scheduler.cancelled).toBe(1);
+
+    view.scheduler.runNext();
+
+    expect(view.scheduler.active).toBe(0);
     expect(view.activeLine.textContent).toBe("");
+    expect(view.region.dataset.playbackState).toBe("settled");
   });
 
   it("reveals reduced-motion narration immediately with six history lines", () => {
@@ -241,7 +567,7 @@ describe("spoken transcript presentation", () => {
     expect(view.scheduler.scheduled).toBe(0);
     expect(view.activeLine.textContent).toBe("line 8");
     expect(
-      view.activeLine.children.every((word) =>
+      view.activeLine.children[0]?.children.every((word) =>
         word.classList.contains("is-visible"),
       ),
     ).toBe(true);

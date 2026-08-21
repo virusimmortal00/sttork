@@ -17,8 +17,9 @@ spoiler-controlled hints. It may not invent rooms, objects, outcomes, inventory,
 score, or state changes.
 
 The primary interface is audio. The default screen is deliberately quiet: a
-small active-work indicator, a bounded recent list of canonical commands, and
-essential controls, with no persistent game or guide prose. A visible
+small active-work indicator, essential controls, and a bounded visual
+conversation where committed canonical commands are distinctly attributed
+alongside visible Player, Guide, and Narrator lines. A visible
 transcript/caption view is a first-class accessibility and debugging surface
 over the same event stream. It is not a separate implementation of the game.
 
@@ -172,9 +173,13 @@ decision, canonical command, engine prose, and guide response. It supports text
 size, contrast, caption duration, reduced motion, and screen-reader live-region
 preferences.
 
-An accessible text-entry control may use the same intent-and-guide pipeline as
-speech when voice input is unavailable. It is an alternate input transport, not
-a second terminal implementation or a bypass around guide and engine policy.
+After the story-opening gate, a `Voice`/`Text` switch selects one primary input
+transport. Text presents a compact main-surface composer and uses the same
+intent-and-guide pipeline as speech. It is not a second terminal implementation
+or a bypass around guide and engine policy. Microphone-unavailable sessions
+select Text without requiring the player to find the transcript utility, as
+recorded in
+[ADR-0021](./adr/0021-switch-primary-input-between-voice-and-text.md).
 
 Debug mode is explicitly opt-in and additionally shows provider/model IDs,
 latency spans, token or usage estimates when providers expose them, raw versus

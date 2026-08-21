@@ -1,7 +1,6 @@
 import {
   createOpeningCommandKnowledge,
   isPendingOpeningObjectIntent,
-  OPENING_OBSERVED_OBJECTS,
   resolvePendingOpeningContextualObjectActionChoiceObject,
   resolvePendingOpeningReadExamineChoiceObject,
   type PendingOpeningObjectIntent,
@@ -166,19 +165,12 @@ function observedObjects(value: unknown): readonly string[] {
 
 function transcriptionObservedObjects(form: FormData): readonly string[] {
   const values = form.getAll("observedObjects[]");
-  if (
-    values.length > 32 ||
-    values.some(
-      (value) =>
-        typeof value !== "string" ||
-        !OPENING_OBSERVED_OBJECTS.includes(
-          value as (typeof OPENING_OBSERVED_OBJECTS)[number],
-        ),
-    )
-  ) {
+  if (values.length > 32 || values.some((value) => typeof value !== "string")) {
     throw new TypeError("invalid-transcription-observed-objects");
   }
-  return [...new Set(values as string[])];
+  return createOpeningCommandKnowledge({
+    observedObjects: values as string[],
+  }).observedObjects;
 }
 
 function transcriptionContext(

@@ -1,4 +1,8 @@
-import type { SemanticEvent } from "../../contracts/src/index.js";
+import {
+  canonicalizeCommand,
+  type CanonicalCommand,
+  type SemanticEvent,
+} from "../../contracts/src/index.js";
 
 import {
   createPendingOpeningContextualObjectActionChoiceIntent,
@@ -19,7 +23,7 @@ import {
   type OpeningObservedObject,
 } from "./opening-observed-objects.js";
 
-export const OPENING_SCENE_PROJECTION_VERSION = 1;
+export const OPENING_SCENE_PROJECTION_VERSION = 2;
 export const OPENING_SCENE_PROFILE_ID = "zork1-release-119-opening";
 export const OPENING_SCENE_STORY_ID = "zork1-release-119";
 export const OPENING_SCENE_STORY_SHA256 =
@@ -91,6 +95,13 @@ export interface OpeningScenePendingCommand {
   readonly correlationId: string;
 }
 
+export interface OpeningSceneObjectFocus {
+  readonly objectId: string;
+  readonly command: string;
+  readonly revision: number;
+  readonly sourceEventIds: readonly string[];
+}
+
 export interface OpeningSceneProjection {
   readonly version: typeof OPENING_SCENE_PROJECTION_VERSION;
   readonly story: OpeningSceneStoryBinding;
@@ -107,6 +118,7 @@ export interface OpeningSceneProjection {
   readonly currentRelationIds: readonly string[];
   readonly contextualAffordances: readonly OpeningSceneAffordance[];
   readonly pendingCommand: OpeningScenePendingCommand | null;
+  readonly recentObjectFocus: OpeningSceneObjectFocus | null;
 }
 
 export interface OpeningSceneGuidance {
@@ -118,6 +130,12 @@ export interface OpeningSceneGuidance {
 export interface OpeningSceneObjectActionSuggestion {
   readonly selectedObject: OpeningObservedObjectOption;
   readonly suggestedActions: PendingOpeningContextualObjectActionPair;
+  readonly sourceIds: readonly string[];
+}
+
+export interface OpeningSceneFocusedObservation {
+  readonly command: CanonicalCommand;
+  readonly selectedObject: OpeningObservedObjectOption;
   readonly sourceIds: readonly string[];
 }
 
@@ -386,6 +404,7 @@ function freezeProjection(input: {
   relations: Iterable<MutableRelation | OpeningSceneRelation>;
   currentRelationIds: Iterable<string>;
   pendingCommand: OpeningScenePendingCommand | null;
+  recentObjectFocus: OpeningSceneObjectFocus | null;
 }): OpeningSceneProjection {
   const entities = [...input.entities]
     .sort((left, right) => left.id.localeCompare(right.id))
@@ -444,6 +463,15 @@ function freezeProjection(input: {
       input.pendingCommand === null
         ? null
         : Object.freeze({ ...input.pendingCommand }),
+    recentObjectFocus:
+      input.recentObjectFocus === null
+        ? null
+        : Object.freeze({
+            ...input.recentObjectFocus,
+            sourceEventIds: frozenSources(
+              input.recentObjectFocus.sourceEventIds,
+            ),
+          }),
   });
   trustedOpeningSceneProjections.add(projection);
   return projection;
@@ -478,6 +506,7 @@ export function createOpeningSceneProjection(
     relations: [],
     currentRelationIds: [],
     pendingCommand: null,
+    recentObjectFocus: null,
   });
 }
 
@@ -600,7 +629,18 @@ export function isOpeningSceneProjection(
     !Array.isArray(candidate.locations) ||
     !Array.isArray(candidate.relations) ||
     !Array.isArray(candidate.currentRelationIds) ||
-    !Array.isArray(candidate.contextualAffordances)
+    !Array.isArray(candidate.contextualAffordances) ||
+    (candidate.recentObjectFocus !== null &&
+      (typeof candidate.recentObjectFocus !== "object" ||
+        !Number.isSafeInteger(candidate.recentObjectFocus.revision) ||
+        candidate.recentObjectFocus.revision < 0 ||
+        candidate.recentObjectFocus.revision >
+          (candidate.engineRevision ?? -1) ||
+        typeof candidate.recentObjectFocus.command !== "string" ||
+        candidate.recentObjectFocus.command.length === 0 ||
+        candidate.recentObjectFocus.command.length > 160 ||
+        /\p{Cc}/u.test(candidate.recentObjectFocus.command) ||
+        !validSceneSourceIds(candidate.recentObjectFocus.sourceEventIds)))
   ) {
     return false;
   }
@@ -640,6 +680,12 @@ export function isOpeningSceneProjection(
     new Set(candidate.currentEntityIds).size !==
       candidate.currentEntityIds.length ||
     candidate.currentEntityIds.some((id) => !entityIds.has(id))
+  ) {
+    return false;
+  }
+  if (
+    candidate.recentObjectFocus !== null &&
+    !entityIds.has(candidate.recentObjectFocus.objectId)
   ) {
     return false;
   }
@@ -738,11 +784,17 @@ export function isOpeningSceneProjection(
 
 function commandObjectId(command: string): string | undefined {
   for (const label of ["house", "door", "mailbox", "leaflet"] as const) {
-    if (command === `take ${label}` || command === `read ${label}`) {
-      return sceneEntityId(label);
+    for (const verb of ["examine", "open", "read", "take"] as const) {
+      if (command === `${verb} ${label}`) return sceneEntityId(label);
     }
   }
   return undefined;
+}
+
+function placementChangingCommandObjectId(command: string): string | undefined {
+  return /^(?:read|take) /u.test(command)
+    ? commandObjectId(command)
+    : undefined;
 }
 
 export function projectOpeningSceneFromEvent(
@@ -768,6 +820,7 @@ export function projectOpeningSceneFromEvent(
   if (event.sequence <= projection.throughSequence) return projection;
 
   let pendingCommand = projection.pendingCommand;
+  let recentObjectFocus = projection.recentObjectFocus;
   let engineRevision = projection.engineRevision;
   const entities = entityMap(projection.entities);
   const locations = locationMap(projection.locations);
@@ -809,11 +862,12 @@ export function projectOpeningSceneFromEvent(
       const invalidatedObjectId =
         matchingCommand === null || preservesCurrentMailbox
           ? undefined
-          : commandObjectId(matchingCommand.command);
+          : placementChangingCommandObjectId(matchingCommand.command);
       if (clearsWholeScene) {
         currentEntityIds = new Set();
         currentRelationIds = new Set();
         currentLocationId = null;
+        recentObjectFocus = null;
       } else if (invalidatedObjectId !== undefined) {
         currentEntityIds.delete(invalidatedObjectId);
         for (const relation of relations.values()) {
@@ -1013,6 +1067,21 @@ export function projectOpeningSceneFromEvent(
           );
         }
       }
+      if (!clearsWholeScene) {
+        const focusedObjectId =
+          matchingCommand === null
+            ? undefined
+            : commandObjectId(matchingCommand.command);
+        recentObjectFocus =
+          focusedObjectId !== undefined && entities.has(focusedObjectId)
+            ? {
+                objectId: focusedObjectId,
+                command: matchingCommand!.command,
+                revision: event.payload.revision,
+                sourceEventIds: [matchingCommand!.sourceEventId, event.id],
+              }
+            : null;
+      }
       if (
         pendingCommand !== null &&
         event.payload.revision >= pendingCommand.revision
@@ -1036,6 +1105,7 @@ export function projectOpeningSceneFromEvent(
     relations: relations.values(),
     currentRelationIds,
     pendingCommand,
+    recentObjectFocus,
   });
 }
 
@@ -1048,6 +1118,56 @@ export function openingSceneCurrentObjectLabels(
       .filter((entity) => currentIds.has(entity.id))
       .map((entity) => entity.label),
   );
+}
+
+/**
+ * Resolves a tightly bounded deictic observation question against the last
+ * successfully completed object action. The engine still determines what the
+ * requested EXAMINE reveals; this focus never becomes an observed fact.
+ */
+export function resolveOpeningSceneFocusedObservationRequest(
+  utterance: string,
+  projection: OpeningSceneProjection,
+): OpeningSceneFocusedObservation | undefined {
+  if (
+    !isOpeningSceneProjection(projection) ||
+    typeof utterance !== "string" ||
+    projection.recentObjectFocus === null
+  ) {
+    return undefined;
+  }
+  const normalized = normalizedUtterance(utterance);
+  const refersToReverseSurface = [
+    "is there anything on the back",
+    "is there something on the back",
+    "is anything on the back",
+    "is anything written on the back",
+    "is anything printed on the back",
+    "what is on the back",
+    "what's on the back",
+    "does it have anything on the back",
+    "is there anything on the other side",
+    "is anything on the other side",
+    "what is on the other side",
+    "what's on the other side",
+  ].includes(normalized);
+  if (!refersToReverseSurface) return undefined;
+
+  const focusedEntity = projection.entities.find(
+    (entity) => entity.id === projection.recentObjectFocus?.objectId,
+  );
+  if (focusedEntity === undefined) return undefined;
+  return Object.freeze({
+    command: canonicalizeCommand(`examine ${focusedEntity.label}`),
+    selectedObject: Object.freeze({
+      id: focusedEntity.id,
+      label: focusedEntity.label,
+    }),
+    sourceIds: frozenSources([
+      "grammar.examine",
+      ...projection.recentObjectFocus.sourceEventIds,
+    ]),
+  });
 }
 
 const CONTEXTUAL_OBJECT_ACTION_BY_RULE_ID: Readonly<

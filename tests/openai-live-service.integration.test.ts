@@ -243,7 +243,7 @@ describe("OpenAI local live service", () => {
     );
   });
 
-  it("rejects transcription hints outside the reviewed object vocabulary", async () => {
+  it("accepts bounded source-backed transcription hints beyond the opening", async () => {
     const provider = new FakeProvider();
     const handle = createOpenAiLiveService({
       provider,
@@ -252,7 +252,30 @@ describe("OpenAI local live service", () => {
     });
 
     const response = await handle(
-      transcriptionRequest(new Uint8Array([1]), ["hidden treasure"]),
+      transcriptionRequest(new Uint8Array([1]), ["windows", "trees"]),
+    );
+
+    expect(response.status).toBe(200);
+    expect(provider.transcribe).toHaveBeenCalledWith(
+      new Uint8Array([1]),
+      "audio/webm",
+      expect.any(AbortSignal),
+      expect.objectContaining({
+        keywords: expect.arrayContaining(["windows", "trees"]),
+      }),
+    );
+  });
+
+  it("rejects malformed transcription hints before provider work", async () => {
+    const provider = new FakeProvider();
+    const handle = createOpenAiLiveService({
+      provider,
+      allowedOrigin: origin,
+      sessionToken: token,
+    });
+
+    const response = await handle(
+      transcriptionRequest(new Uint8Array([1]), ["window\u0000frame"]),
     );
 
     expect(response.status).toBe(400);

@@ -11,6 +11,7 @@ import { EventSequence } from "@zork-voice/events";
 import { selectOpeningNarrationText } from "../packages/experience/src/index.js";
 import { FakeGuideModel } from "../packages/guide-core/src/index.js";
 import {
+  narrationSegments,
   SemanticTurnCoordinator,
   type NarrationRequest,
 } from "../packages/session/src/index.js";
@@ -123,8 +124,10 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(duplicate).toEqual(opening);
     expect(opening.events.map((event) => event.type)).toEqual([
       "engine.output",
-      "narration.requested",
-      "narration.ready",
+      ...narrationSegments(openingInput.narrationText).flatMap(() => [
+        "narration.requested" as const,
+        "narration.ready" as const,
+      ]),
     ]);
     const openingOutput = opening.events[0];
     expect(openingOutput).toMatchObject({
@@ -146,15 +149,15 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(
       published.filter((event) => event.type === "save.checkpointed"),
     ).toHaveLength(0);
-    expect(narration).toEqual([
-      {
-        narrationId: "opening-narration-1",
+    expect(narration).toEqual(
+      narrationSegments(ZORK_RELEASE_119_SPOKEN_OPENING).map((text, index) => ({
+        narrationId: `opening-narration-${index + 1}`,
         role: "narrator",
-        text: ZORK_RELEASE_119_SPOKEN_OPENING,
+        text,
         sourceEventId: openingOutput?.id,
         correlationId: "story-opening",
-      },
-    ]);
+      })),
+    );
     expect(await engine.inspectPublicState()).toMatchObject({
       revision: 0,
       lastOutput: ZORK_RELEASE_119_OPENING,
@@ -981,10 +984,9 @@ describe("semantic turn through the isolated Dork engine", () => {
     expect(requestedCommands).not.toContain("read leaflet");
     expect(requestedCommands).not.toContain("take leaflet");
     expect(narration).toEqual([
-      expect.objectContaining({
-        role: "narrator",
-        text: ZORK_RELEASE_119_SPOKEN_OPENING,
-      }),
+      ...narrationSegments(ZORK_RELEASE_119_SPOKEN_OPENING).map((text) =>
+        expect.objectContaining({ role: "narrator", text }),
+      ),
       expect.objectContaining({
         role: "narrator",
         text: "Opening the small mailbox reveals a leaflet.\n\n>",
@@ -1011,5 +1013,305 @@ describe("semantic turn through the isolated Dork engine", () => {
       command: "inventory",
       output: "You are empty-handed.\n\n>",
     });
+  });
+
+  it("resolves a reverse-side question against the last successfully read object", async () => {
+    let messageId = 0;
+    const engine = new DorkWorkerEngine({
+      factory: new RuntimeFactory(),
+      storyBytes: new Uint8Array(await readFile(zorkStoryUrl)),
+      binding: DORK_WORKER_BINDING,
+      nextMessageId: () => `deictic-message-${++messageId}`,
+    });
+    const boot = await engine.boot({
+      storyId: ZORK_STORY_ID,
+      artifactSha256: ZORK_STORY_SHA256,
+    });
+    const published: SemanticEvent[] = [];
+    let eventId = 0;
+    let requestId = 0;
+    let narrationId = 0;
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "Open mailbox.") {
+        return {
+          kind: "execute",
+          command: "open mailbox",
+          intentSummary: "Open the mailbox",
+          confidence: 0.99,
+        };
+      }
+      if (input.playerUtterance === "Read leaflet.") {
+        return {
+          kind: "execute",
+          command: "read leaflet",
+          intentSummary: "Read the leaflet",
+          confidence: 0.99,
+        };
+      }
+      throw new Error(`Unexpected guide input: ${input.playerUtterance}`);
+    });
+    const subject = new SemanticTurnCoordinator({
+      engine,
+      guide,
+      narrator: { prepare: () => Promise.resolve() },
+      events: new EventSequence({
+        sessionId: "zork-deictic-focus-session",
+        now: () => "2026-08-20T20:00:00.000Z",
+        nextId: () => `deictic-event-${++eventId}`,
+      }),
+      nextRequestId: () => `deictic-request-${++requestId}`,
+      nextNarrationId: () => `deictic-narration-${++narrationId}`,
+      publish: (event) => published.push(event),
+    });
+
+    await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot,
+        narrationText: selectOpeningNarrationText(boot),
+      },
+      new AbortController().signal,
+    );
+    await subject.submitTurn(
+      {
+        interactionId: "open-mailbox",
+        transcript: "Open mailbox.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    const read = await subject.submitTurn(
+      {
+        interactionId: "read-leaflet",
+        transcript: "Read leaflet.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox", "leaflet"],
+      },
+      new AbortController().signal,
+    );
+    expect(read).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        command: "read leaflet",
+        output: expect.stringContaining("WELCOME TO ZORK!"),
+      },
+    });
+
+    const reverseSide = await subject.submitTurn(
+      {
+        interactionId: "inspect-leaflet-back",
+        transcript: "Is there anything on the back?",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(reverseSide).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        command: "examine leaflet",
+        output: expect.stringContaining("WELCOME TO ZORK!"),
+      },
+    });
+    expect(guide.calls).toBe(2);
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual(["open mailbox", "read leaflet", "examine leaflet"]);
+    expect(
+      reverseSide.events.some((event) => event.type === "guide.clarification"),
+    ).toBe(false);
+  });
+
+  it("grounds and helps with an entity disclosed after leaving the opening room", async () => {
+    let messageId = 0;
+    const engine = new DorkWorkerEngine({
+      factory: new RuntimeFactory(),
+      storyBytes: new Uint8Array(await readFile(zorkStoryUrl)),
+      binding: DORK_WORKER_BINDING,
+      nextMessageId: () => `world-message-${++messageId}`,
+    });
+    const boot = await engine.boot({
+      storyId: ZORK_STORY_ID,
+      artifactSha256: ZORK_STORY_SHA256,
+    });
+    const published: SemanticEvent[] = [];
+    let eventId = 0;
+    let requestId = 0;
+    let narrationId = 0;
+    const guide = new FakeGuideModel((input) => {
+      if (input.playerUtterance === "Go north.") {
+        return {
+          kind: "execute",
+          command: "north",
+          intentSummary: "Move north",
+          confidence: 0.99,
+        };
+      }
+      throw new Error(`Unexpected guide input: ${input.playerUtterance}`);
+    });
+    const subject = new SemanticTurnCoordinator({
+      engine,
+      guide,
+      narrator: { prepare: () => Promise.resolve() },
+      events: new EventSequence({
+        sessionId: "zork-observed-world-session",
+        now: () => "2026-08-20T21:00:00.000Z",
+        nextId: () => `world-event-${++eventId}`,
+      }),
+      nextRequestId: () => `world-request-${++requestId}`,
+      nextNarrationId: () => `world-narration-${++narrationId}`,
+      publish: (event) => published.push(event),
+    });
+
+    await subject.prepareOpening(
+      {
+        interactionId: "story-opening",
+        boot,
+        narrationText: selectOpeningNarrationText(boot),
+      },
+      new AbortController().signal,
+    );
+    const northOfHouse = await subject.submitTurn(
+      {
+        interactionId: "north-of-house",
+        transcript: "Go north.",
+        transcriptConfidence: 0.99,
+        observedObjects: ["house", "door", "mailbox"],
+      },
+      new AbortController().signal,
+    );
+    expect(northOfHouse).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "north" },
+    });
+    const forestPath = await subject.submitTurn(
+      {
+        interactionId: "forest-path",
+        transcript: "Go north.",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(forestPath).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        command: "north",
+        output: expect.stringContaining("Forest Path"),
+      },
+    });
+    expect(forestPath.engineResult?.output).toContain(
+      "One particularly large tree with some low branches",
+    );
+
+    const help = await subject.submitTurn(
+      {
+        interactionId: "tree-help",
+        transcript: "What can I do with the tree?",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(help).toMatchObject({ outcome: "explained" });
+    expect(
+      help.events.find((event) => event.type === "guide.explanation"),
+    ).toMatchObject({
+      payload: {
+        response: expect.stringContaining("EXAMINE"),
+        sourceIds: expect.arrayContaining(["grammar.examine"]),
+      },
+    });
+    expect(help).not.toHaveProperty("engineResult");
+
+    const examined = await subject.submitTurn(
+      {
+        interactionId: "examine-tree",
+        transcript: "Examine tree.",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(examined).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "examine tree" },
+    });
+
+    const inspectedAgain = await subject.submitTurn(
+      {
+        interactionId: "inspect-recent-tree",
+        transcript: "Inspect it.",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(inspectedAgain).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "examine tree" },
+    });
+
+    const clearing = await subject.submitTurn(
+      {
+        interactionId: "forest-path-to-clearing",
+        transcript: "Go north.",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(clearing).toMatchObject({
+      outcome: "committed",
+      engineResult: {
+        command: "north",
+        output: expect.stringContaining("On the ground is a pile of leaves."),
+      },
+    });
+
+    const examinedPile = await subject.submitTurn(
+      {
+        interactionId: "examine-pile-of-leaves",
+        transcript: "Examine pile of leaves.",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(examinedPile).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "examine pile of leaves" },
+    });
+
+    const examinedLeaves = await subject.submitTurn(
+      {
+        interactionId: "examine-leaves",
+        transcript: "Examine leaves.",
+        transcriptConfidence: 0.99,
+        observedObjects: [],
+      },
+      new AbortController().signal,
+    );
+    expect(examinedLeaves).toMatchObject({
+      outcome: "committed",
+      engineResult: { command: "examine leaves" },
+    });
+    expect(guide.calls).toBe(1);
+    expect(
+      published
+        .filter((event) => event.type === "engine.command.requested")
+        .map((event) => event.payload.command),
+    ).toEqual([
+      "north",
+      "north",
+      "examine tree",
+      "examine tree",
+      "north",
+      "examine pile of leaves",
+      "examine leaves",
+    ]);
   });
 });

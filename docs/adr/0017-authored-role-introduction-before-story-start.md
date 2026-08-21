@@ -22,7 +22,7 @@ and original game prose.
 A fresh playable session begins with one explicit `ENTER` action. That player
 gesture prepares and plays these two fixed, project-authored messages in order:
 
-- Guide: “Hello, traveler. I'm your Dungeon Guide. I can help you find the right
+- Guide: “Hello traveler. I'm your Dungeon Guide. I can help you find the right
   words, explain your options, and offer hints when invited, without taking the
   adventure from you. Our Narrator will give voice to the world itself.”
 - Narrator: “Greetings. I am the Narrator. I speak for each place, discovery,
