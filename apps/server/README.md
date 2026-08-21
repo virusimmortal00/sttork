@@ -20,12 +20,12 @@ not log request bodies, transcripts, audio, or credentials.
 
 ## Remote-device developer smoke
 
-The server always listens on `127.0.0.1`. With `ZORK_VOICE_PUBLIC_ORIGIN` unset,
-it also uses its printed loopback HTTP origin as the browser origin. Setting the
+The server always listens on `127.0.0.1`. With `STTORK_PUBLIC_ORIGIN` unset, it
+also uses its printed loopback HTTP origin as the browser origin. Setting the
 variable opts into an external browser origin without exposing the listener:
 
 ```sh
-ZORK_VOICE_PUBLIC_ORIGIN=https://voice-dev.example.test \
+STTORK_PUBLIC_ORIGIN=https://voice-dev.example.test \
   pnpm openai:live:serve
 ```
 
@@ -40,16 +40,16 @@ developer-machine endpoint reaches loopback; never publish the upstream port.
 The proxy is part of the live-smoke security boundary. It must terminate TLS
 with a certificate trusted by the test device, authenticate/restrict every path,
 preserve the external raw `Host` exactly (including a non-default port), and
-pass the browser's exact `Origin` and `x-zork-voice-live-session` headers
-unchanged. `X-Forwarded-Host` is ignored. A missing or mismatched raw host is
-rejected before static content, the session value, or an API route is served.
-The proxy must honor `Cache-Control: no-store`, disable intermediary caching and
-sensitive header/body logging, and avoid persisting buffered audio or JSON
-bodies. The server independently enforces a 2 MiB transcription-audio limit with
-16 KiB of multipart-envelope allowance and a 16 KiB guide/speech JSON limit. It
-validates browser-supplied observed-object labels against the reviewed opening
-vocabulary before deriving transcription prompt, keyword, and language hints.
-Speech voice/rate preferences are allowlisted and bounded, and provider audio is
+pass the browser's exact `Origin` and `x-sttork-live-session` headers unchanged.
+`X-Forwarded-Host` is ignored. A missing or mismatched raw host is rejected
+before static content, the session value, or an API route is served. The proxy
+must honor `Cache-Control: no-store`, disable intermediary caching and sensitive
+header/body logging, and avoid persisting buffered audio or JSON bodies. The
+server independently enforces a 2 MiB transcription-audio limit with 16 KiB of
+multipart-envelope allowance and a 16 KiB guide/speech JSON limit. It validates
+browser-supplied observed-object labels against the reviewed opening vocabulary
+before deriving transcription prompt, keyword, and language hints. Speech
+voice/rate preferences are allowlisted and bounded, and provider audio is
 proxied as a cancellable stream rather than materialized into a vendor object.
 
 The generated live-session value is not user authentication: an authorized page

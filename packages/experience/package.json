@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/experience",
+  "name": "@sttork/experience",
   "version": "0.0.0",
   "private": true,
   "description": "Audio session state and optional event projections.",
@@ -7,6 +7,6 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/contracts": "workspace:*"
+    "@sttork/contracts": "workspace:*"
   }
 }

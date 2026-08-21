@@ -4,7 +4,7 @@ import {
   OPENING_SCENE_READ_MAILBOX_REFUSAL_OUTPUT,
   OPENING_SCENE_STORY_ID,
   OPENING_SCENE_STORY_SHA256,
-} from "@zork-voice/command-knowledge";
+} from "@sttork/command-knowledge";
 import {
   canonicalizeCommand,
   type BootResult,
@@ -16,9 +16,9 @@ import {
   type PublicEngineState,
   type RestoreResult,
   type SemanticEvent,
-} from "@zork-voice/contracts";
-import { EventSequence } from "@zork-voice/events";
-import { FakeGuideModel } from "@zork-voice/guide-core";
+} from "@sttork/contracts";
+import { EventSequence } from "@sttork/events";
+import { FakeGuideModel } from "@sttork/guide-core";
 import { describe, expect, it } from "vitest";
 
 import {

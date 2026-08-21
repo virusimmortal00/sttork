@@ -16,7 +16,7 @@ export const DORK_WORKER_BINDING = {
     artifactSha256: DORK_WORKER_RUNTIME_ARTIFACT_SHA256,
   },
   adapter: {
-    id: "zork-voice-dork-worker-spike",
+    id: "sttork-dork-worker-spike",
     version: "1",
   },
   snapshotSchemaVersion: 1,

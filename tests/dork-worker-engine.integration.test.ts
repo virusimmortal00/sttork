@@ -1,9 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import {
-  canonicalizeCommand,
-  type EngineSnapshot,
-} from "@zork-voice/contracts";
+import { canonicalizeCommand, type EngineSnapshot } from "@sttork/contracts";
 import { DORK_WORKER_BINDING } from "../spikes/dork-worker/dork-worker-binding.js";
 import {
   DorkWorkerEngine,

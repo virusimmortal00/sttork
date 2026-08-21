@@ -1,6 +1,6 @@
 # Community Code of Conduct
 
-Zork Voice welcomes people with different backgrounds, abilities, identities,
+STTork welcomes people with different backgrounds, abilities, identities,
 experience levels, and ways of communicating.
 
 ## Expected conduct

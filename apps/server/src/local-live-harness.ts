@@ -10,7 +10,7 @@ import type {
 import { extname, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const liveSessionPlaceholder = "__ZORK_VOICE_SESSION_TOKEN__";
+const liveSessionPlaceholder = "__STTORK_SESSION_TOKEN__";
 const localEnvironmentFile = ".env.local";
 const maximumEnvironmentFileBytes = 64 * 1024;
 const jsonRequestLimit = 16 * 1024;

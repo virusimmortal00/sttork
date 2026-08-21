@@ -1,4 +1,4 @@
-# Zork Voice Architecture
+# STTork Architecture
 
 Status: initial implementation contract  
 Companion: [Product and Technical Strategy](./strategy.md)

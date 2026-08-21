@@ -76,7 +76,7 @@ For another phone, tablet, or computer, configure an exact HTTPS browser origin
 before serving:
 
 ```sh
-ZORK_VOICE_PUBLIC_ORIGIN=https://voice-dev.example.test \
+STTORK_PUBLIC_ORIGIN=https://voice-dev.example.test \
   pnpm openai:live:serve
 ```
 
@@ -84,9 +84,9 @@ Open the printed Browser URL, not the loopback Upstream URL, on the device. Its
 DNS and TLS certificate must be trusted there, and the page must report a secure
 context before requesting microphone permission. A private authenticated proxy
 for the whole origin forwards to the developer machine through loopback or an
-encrypted tunnel while preserving `Host`, `Origin`, and
-`x-zork-voice-live-session`. Direct `http://<LAN-IP>` access is deliberately
-unsupported because ordinary LAN HTTP is not a secure microphone context.
+encrypted tunnel while preserving `Host`, `Origin`, and `x-sttork-live-session`.
+Direct `http://<LAN-IP>` access is deliberately unsupported because ordinary LAN
+HTTP is not a secure microphone context.
 
 The proxy must not cache the injected HTML or API responses, persist request
 bodies, or log audio, transcripts, credentials, cookies, or the live-session

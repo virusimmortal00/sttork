@@ -18,16 +18,16 @@
     "decision": "blocked",
     "trademarkGrant": false,
     "conditions": [
-      "Treat Zork Voice as a development working title, not an approved public brand.",
+      "Do not revive Zork Voice as the public brand; ADR-0028 retires that development working title in favor of STTork.",
       "Complete a qualified name and trademark review or rename the project before a promoted public release.",
       "Do not use third-party logos, trade dress, packaging, or language implying sponsorship or endorsement."
     ]
   },
   "localPaths": [],
-  "verifiedAt": "2026-08-17",
+  "verifiedAt": "2026-08-21",
   "notes": [
     "The upstream source-code license expressly does not grant trademark or brand rights.",
     "This record documents an unresolved rights gate; it does not authorize trademark use.",
-    "The working title currently appears in repository metadata and documentation, so M0 cannot close until this record is superseded by an approved decision or the project is renamed."
+    "ADR-0028 resolves this Zork-brand boundary by renaming the project STTork. This record remains blocked because it still does not authorize Zork Voice as a brand."
   ]
 }

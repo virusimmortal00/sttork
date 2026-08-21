@@ -1,5 +1,5 @@
-import type { SemanticTurnResult } from "@zork-voice/session";
-import type { NarrationRequest } from "@zork-voice/session";
+import type { SemanticTurnResult } from "@sttork/session";
+import type { NarrationRequest } from "@sttork/session";
 import { describe, expect, it } from "vitest";
 
 import {

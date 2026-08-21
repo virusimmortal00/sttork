@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "sttork-public-name-review",
+  "name": "STTork public-name review",
+  "origin": "project-owned",
+  "kind": "name-trademark",
+  "importStatus": "reviewed",
+  "license": {
+    "spdx": "NOASSERTION",
+    "sourcePath": "docs/adr/0028-adopt-sttork-public-name.md",
+    "localNoticePaths": []
+  },
+  "redistribution": {
+    "decision": "eligible-after-audit",
+    "trademarkGrant": false,
+    "conditions": [
+      "Use STTork as the independent project word mark, pronounced stork.",
+      "Do not claim an exclusive registered trademark or confuse the project with the unrelated industrial STTORK controller.",
+      "Complete qualified clearance before a promoted release, trademark registration, store listing, or logo launch.",
+      "Use Zork and Dork only for accurate compatibility, provenance, and historical identification with explicit non-endorsement."
+    ]
+  },
+  "localPaths": [],
+  "verifiedAt": "2026-08-21",
+  "notes": [
+    "A preliminary exact-name sweep found no GitHub, npm, or PyPI software project named STTork.",
+    "An unrelated industrial motor-controller product uses STTORK; this review does not determine legal registrability or exclusive rights.",
+    "ADR-0028 records the naming decision and the preserved legacy compatibility identifiers."
+  ]
+}

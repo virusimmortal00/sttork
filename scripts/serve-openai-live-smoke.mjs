@@ -16,10 +16,10 @@ if (
 }
 
 const internalPackages = new Map([
-  ["@zork-voice/command-knowledge", "packages/command-knowledge"],
-  ["@zork-voice/contracts", "packages/contracts"],
-  ["@zork-voice/guide-core", "packages/guide-core"],
-  ["@zork-voice/providers", "packages/providers"],
+  ["@sttork/command-knowledge", "packages/command-knowledge"],
+  ["@sttork/contracts", "packages/contracts"],
+  ["@sttork/guide-core", "packages/guide-core"],
+  ["@sttork/providers", "packages/providers"],
 ]);
 registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -78,9 +78,9 @@ const [harness, service, providers] = await Promise.all([
   import(pathToFileURL(servicePath).href),
   import(pathToFileURL(providerPath).href),
 ]);
-const configuredPublicOrigin = process.env.ZORK_VOICE_PUBLIC_ORIGIN;
+const configuredPublicOrigin = process.env.STTORK_PUBLIC_ORIGIN;
 const maxRequests = parseLiveSmokeMaxRequests(
-  process.env.ZORK_VOICE_LIVE_MAX_REQUESTS,
+  process.env.STTORK_LIVE_MAX_REQUESTS,
 );
 const liveSmokeProfile = Object.freeze({
   ...providers.OPENAI_CHAINED_PROFILE_2026_08_19,

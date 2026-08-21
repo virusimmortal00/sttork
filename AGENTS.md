@@ -5,8 +5,9 @@ files may add local rules but may not weaken the invariants below.
 
 ## Mission
 
-Build a free, open-source, voice-native interface to the MIT-licensed Zork
-trilogy. A conversational Dungeon Guide helps players express intent and learn
+Build STTork, a free, open-source, voice-native interface for classic text
+adventures. The current compatibility target is the MIT-licensed Zork I Release
+119 only. A conversational Dungeon Guide helps players express intent and learn
 the game while the original Z-machine remains the only authority over world
 state.
 

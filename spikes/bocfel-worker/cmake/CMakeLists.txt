@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(ZorkVoiceBocfelWorkerSpike LANGUAGES C CXX)
+project(STTorkBocfelWorkerSpike LANGUAGES C CXX)
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 

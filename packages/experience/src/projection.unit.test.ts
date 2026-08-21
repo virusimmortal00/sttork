@@ -1,5 +1,5 @@
-import type { SemanticEvent } from "@zork-voice/contracts";
-import { EventSequence } from "@zork-voice/events";
+import type { SemanticEvent } from "@sttork/contracts";
+import { EventSequence } from "@sttork/events";
 import { describe, expect, it } from "vitest";
 
 import {

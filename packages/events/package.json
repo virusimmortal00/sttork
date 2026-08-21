@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/events",
+  "name": "@sttork/events",
   "version": "0.0.0",
   "private": true,
   "description": "Ordered canonical event construction and replay primitives.",
@@ -7,6 +7,6 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/contracts": "workspace:*"
+    "@sttork/contracts": "workspace:*"
   }
 }

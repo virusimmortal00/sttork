@@ -1,5 +1,5 @@
 {
-  "name": "@zork-voice/guide-core",
+  "name": "@sttork/guide-core",
   "version": "0.0.0",
   "private": true,
   "description": "Provider-neutral Dungeon Guide policy and orchestration.",
@@ -7,7 +7,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@zork-voice/command-knowledge": "workspace:*",
-    "@zork-voice/contracts": "workspace:*"
+    "@sttork/command-knowledge": "workspace:*",
+    "@sttork/contracts": "workspace:*"
   }
 }

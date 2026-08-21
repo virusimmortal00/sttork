@@ -5,7 +5,7 @@ import type {
   ExecuteResult,
   PublicEngineState,
   RestoreResult,
-} from "@zork-voice/contracts";
+} from "@sttork/contracts";
 
 export const ENGINE_WORKER_PROTOCOL_VERSION = 1 as const;
 

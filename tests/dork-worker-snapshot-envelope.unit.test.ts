@@ -1,4 +1,4 @@
-import { canonicalizeCommand } from "@zork-voice/contracts";
+import { canonicalizeCommand } from "@sttork/contracts";
 import {
   WORKER_SNAPSHOT_MAX_TOTAL_BYTES,
   WORKER_SNAPSHOT_SCHEMA_VERSION,

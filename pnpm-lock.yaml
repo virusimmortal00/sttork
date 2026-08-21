@@ -11,24 +11,24 @@ importers:
       '@eslint/js':
         specifier: 10.0.1
         version: 10.0.1(eslint@10.8.1)
+      '@sttork/contracts':
+        specifier: workspace:*
+        version: link:packages/contracts
+      '@sttork/events':
+        specifier: workspace:*
+        version: link:packages/events
+      '@sttork/providers':
+        specifier: workspace:*
+        version: link:packages/providers
+      '@sttork/server':
+        specifier: workspace:*
+        version: link:apps/server
+      '@sttork/test-support':
+        specifier: workspace:*
+        version: link:packages/test-support
       '@types/node':
         specifier: 26.2.0
         version: 26.2.0
-      '@zork-voice/contracts':
-        specifier: workspace:*
-        version: link:packages/contracts
-      '@zork-voice/events':
-        specifier: workspace:*
-        version: link:packages/events
-      '@zork-voice/providers':
-        specifier: workspace:*
-        version: link:packages/providers
-      '@zork-voice/server':
-        specifier: workspace:*
-        version: link:apps/server
-      '@zork-voice/test-support':
-        specifier: workspace:*
-        version: link:packages/test-support
       ajv:
         specifier: 8.18.0
         version: 8.18.0
@@ -53,49 +53,49 @@ importers:
 
   apps/server:
     dependencies:
-      '@zork-voice/command-knowledge':
+      '@sttork/command-knowledge':
         specifier: workspace:*
         version: link:../../packages/command-knowledge
-      '@zork-voice/guide-core':
+      '@sttork/guide-core':
         specifier: workspace:*
         version: link:../../packages/guide-core
-      '@zork-voice/providers':
+      '@sttork/providers':
         specifier: workspace:*
         version: link:../../packages/providers
 
   apps/web:
     dependencies:
-      '@zork-voice/audio':
+      '@sttork/audio':
         specifier: workspace:*
         version: link:../../packages/audio
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@zork-voice/events':
+      '@sttork/events':
         specifier: workspace:*
         version: link:../../packages/events
-      '@zork-voice/experience':
+      '@sttork/experience':
         specifier: workspace:*
         version: link:../../packages/experience
-      '@zork-voice/guide-core':
+      '@sttork/guide-core':
         specifier: workspace:*
         version: link:../../packages/guide-core
-      '@zork-voice/session':
+      '@sttork/session':
         specifier: workspace:*
         version: link:../../packages/session
 
   packages/audio:
     dependencies:
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@zork-voice/session':
+      '@sttork/session':
         specifier: workspace:*
         version: link:../session
 
   packages/command-knowledge:
     dependencies:
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
 
@@ -103,28 +103,28 @@ importers:
 
   packages/events:
     dependencies:
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
 
   packages/experience:
     dependencies:
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
 
   packages/game-engine:
     dependencies:
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
 
   packages/guide-core:
     dependencies:
-      '@zork-voice/command-knowledge':
+      '@sttork/command-knowledge':
         specifier: workspace:*
         version: link:../command-knowledge
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
 
@@ -134,29 +134,29 @@ importers:
 
   packages/providers:
     dependencies:
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@zork-voice/guide-core':
+      '@sttork/guide-core':
         specifier: workspace:*
         version: link:../guide-core
     devDependencies:
-      '@zork-voice/command-knowledge':
+      '@sttork/command-knowledge':
         specifier: workspace:*
         version: link:../command-knowledge
 
   packages/session:
     dependencies:
-      '@zork-voice/command-knowledge':
+      '@sttork/command-knowledge':
         specifier: workspace:*
         version: link:../command-knowledge
-      '@zork-voice/contracts':
+      '@sttork/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@zork-voice/events':
+      '@sttork/events':
         specifier: workspace:*
         version: link:../events
-      '@zork-voice/guide-core':
+      '@sttork/guide-core':
         specifier: workspace:*
         version: link:../guide-core
 

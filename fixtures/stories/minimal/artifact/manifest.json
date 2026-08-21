@@ -10,7 +10,7 @@
   "source": {
     "format": "Inform 6 source without the Inform library",
     "path": "fixtures/stories/minimal/source/minimal.inf",
-    "sha256": "dc84d54c2ef840e077c6fab1a68c8e87889a4a286e6088a1637e1f92e20d6f80"
+    "sha256": "7d2ba16a66849fdc9fede234e6972e80a0fd4e6abe85da873a58b3fe9183bc81"
   },
   "artifact": {
     "format": "Z-machine story file",

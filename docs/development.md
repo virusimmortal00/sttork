@@ -103,7 +103,7 @@ or an integer from 1024 through 65535.
 
 ### Testing live voice from another device
 
-Loopback remains the safe default. With `ZORK_VOICE_PUBLIC_ORIGIN` unset, the
+Loopback remains the safe default. With `STTORK_PUBLIC_ORIGIN` unset, the
 harness listens on `127.0.0.1` and its browser and upstream origin is
 `http://127.0.0.1:<port>`. Loopback HTTP is treated as a potentially trustworthy
 browser origin, so microphone capture can work without adding a TLS proxy.
@@ -114,8 +114,8 @@ example:
 
 ```sh
 pnpm openai:live:build
-ZORK_VOICE_PUBLIC_ORIGIN=https://voice-dev.example.test \
-ZORK_VOICE_LIVE_MAX_REQUESTS=10000 \
+STTORK_PUBLIC_ORIGIN=https://voice-dev.example.test \
+STTORK_LIVE_MAX_REQUESTS=10000 \
   pnpm openai:live:serve
 ```
 
@@ -136,9 +136,9 @@ forward that port directly onto the LAN or public internet. The proxy must:
 - terminate HTTPS with a certificate trusted by the test device and restrict
   every path to explicitly authorized users/devices on the private network;
 - preserve the original raw `Host` header exactly, including any non-default
-  port, and preserve the browser's `Origin` and `x-zork-voice-live-session`
-  headers without rewriting or stripping them; `X-Forwarded-Host` is ignored and
-  cannot substitute for the raw header;
+  port, and preserve the browser's `Origin` and `x-sttork-live-session` headers
+  without rewriting or stripping them; `X-Forwarded-Host` is ignored and cannot
+  substitute for the raw header;
 - forward the origin at `/` without a host-changing redirect, path prefix, or
   alternate origin;
 - honor `Cache-Control: no-store`, disable intermediary/CDN caching, and avoid
@@ -207,7 +207,7 @@ process-global smoke cap. The opt-in local smoke server raises that bounded cap
 from the provider profile's conservative 30-request default to 120 requests so
 sentence-level introduction synthesis and its two-segment lookahead remain
 usable during a manual session. A sustained developer instance may set
-`ZORK_VOICE_LIVE_MAX_REQUESTS` to an explicit integer from 1 through 1,000,000;
+`STTORK_LIVE_MAX_REQUESTS` to an explicit integer from 1 through 1,000,000;
 10,000 is the recommended high-development allowance. The guard cannot be
 disabled, and restarting the server resets its process-local count. Repeat must
 show Processing while it is synthesizing, reuse the same excerpt, and avoid

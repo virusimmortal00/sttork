@@ -4,16 +4,16 @@ import {
   resolvePendingOpeningContextualObjectActionChoiceObject,
   resolvePendingOpeningReadExamineChoiceObject,
   type PendingOpeningObjectIntent,
-} from "@zork-voice/command-knowledge";
-import { validateInitialGuideModelDecision } from "@zork-voice/guide-core";
+} from "@sttork/command-knowledge";
+import { validateInitialGuideModelDecision } from "@sttork/guide-core";
 import type {
   GuideDecisionWithUsage,
   ProviderSpeechOptions,
   ProviderSpeech,
   ProviderTranscription,
   ProviderTranscriptionContext,
-} from "@zork-voice/providers";
-import { OPENAI_TTS_VOICES, ProviderAdapterError } from "@zork-voice/providers";
+} from "@sttork/providers";
+import { OPENAI_TTS_VOICES, ProviderAdapterError } from "@sttork/providers";
 import { parseOpenAiLiveOrigin } from "./local-live-harness.js";
 
 export interface OpenAiLiveProviderPort {
@@ -48,7 +48,7 @@ export interface OpenAiLiveServiceOptions {
   readonly sessionToken: string;
 }
 
-const sessionHeader = "x-zork-voice-live-session";
+const sessionHeader = "x-sttork-live-session";
 const jsonLimit = 16 * 1024;
 const audioLimit = 2 * 1024 * 1024;
 const transcriptionRequestLimit = audioLimit + jsonLimit;
@@ -364,8 +364,8 @@ export function createOpenAiLiveService(options: OpenAiLiveServiceOptions) {
               : { "content-length": String(result.contentLength) }),
             "cache-control": "no-store",
             "x-content-type-options": "nosniff",
-            "x-zork-voice-provider": result.usage.provider,
-            "x-zork-voice-model": result.usage.model,
+            "x-sttork-provider": result.usage.provider,
+            "x-sttork-model": result.usage.model,
           },
         });
       }

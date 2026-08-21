@@ -1,4 +1,4 @@
-import { createOpeningCommandKnowledge } from "@zork-voice/command-knowledge";
+import { createOpeningCommandKnowledge } from "@sttork/command-knowledge";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProviderAdapterError } from "./contracts.js";

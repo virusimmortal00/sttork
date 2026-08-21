@@ -127,7 +127,7 @@ const expectedCheckpointAdapterId = "zork-voice-dork-checkpoint-v2";
 const expectedCheckpointWireV2GoldenSha256 =
   "79a7c7ff2a31ed69d2cd7045e91e84189e9fa967bab240424e6a8633c20471ba";
 const expectedDorkNoticeSectionSha256 =
-  "fb52a23f4d0bd74bb6bab3597c15ca494fb3db2c5033213024acc29392d3d1bf";
+  "cd7c82306b3c2f0c47aed3eabe7f316dd67143db1f2357075a4be49fe3ba9346";
 const expectedAdaptationDescription =
   "This is a modified downstream fork. It retains two build/type-only adaptations and adds explicit behavioral changes for a validated Version 3 host checkpoint at the post-decode READ boundary, a finite per-turn instruction budget, enforcement of the story's parse-buffer token capacity, and checkpointable Z-machine RANDOM semantics with deterministic reseeding and unbiased tail-rejection sampling.";
 const expectedChanges = [

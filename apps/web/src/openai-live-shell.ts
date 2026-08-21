@@ -284,7 +284,7 @@ function liveBrowserPreflight(): LiveBrowserPreflight {
 
 function sessionToken(): string {
   const token = document
-    .querySelector<HTMLMetaElement>('meta[name="zork-voice-live-session"]')
+    .querySelector<HTMLMetaElement>('meta[name="sttork-live-session"]')
     ?.content.trim();
   if (
     token === undefined ||

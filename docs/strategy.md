@@ -1,14 +1,21 @@
-# Zork Voice: Product and Technical Strategy
+# STTork: Product and Technical Strategy
 
 Status: initial architecture baseline  
 Audience: maintainers, contributors, product designers, and reviewers
 
 ## Product thesis
 
-Zork Voice is a free, open-source, voice-native way to experience the classic
-game through an AI Dungeon Guide. The player should be able to speak in natural
-language, hear the world respond, ask what is possible, and request help without
-having to learn a 1970s parser or watch a terminal.
+STTork (pronounced “stork”) is a free, open-source, voice-native interface for
+classic text adventures. It layers speech-to-text, a constrained agentic Dungeon
+Guide, and text-to-speech over an authoritative Z-machine game. The player
+should be able to speak in natural language, hear the world respond, ask what is
+possible, and request help without having to learn a 1970s parser or watch a
+terminal.
+
+The current compatibility target is Zork I Release 119 only. Zork II and Zork
+III require their own engine, provenance, save-compatibility, and experience
+evidence before support may be claimed. STTork is an independent project; game
+and interpreter names identify third-party works rather than the project brand.
 
 The original game remains the world. The AI is an interpreter and companion, not
 an alternate game engine. It may translate intent, explain parser behavior, ask
