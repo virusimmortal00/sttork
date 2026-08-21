@@ -155,6 +155,8 @@ describe("VoiceAudioController", () => {
           activations += 1;
         },
         play: async () => undefined,
+        pause: async () => undefined,
+        resume: async () => undefined,
         stop: async () => undefined,
       },
       nextInteractionId: () => "unused-interaction",
@@ -212,6 +214,8 @@ describe("VoiceAudioController", () => {
           play: async () => {
             throw failure;
           },
+          pause: async () => undefined,
+          resume: async () => undefined,
           stop: async () => undefined,
         },
         nextInteractionId: () => "playback-failure",
@@ -412,6 +416,60 @@ describe("VoiceAudioController", () => {
     ]);
   });
 
+  it("prepares the next two narration segments while the current one plays", async () => {
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const prefetched: string[] = [];
+    let releaseFirst!: () => void;
+    const firstPlaying = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let plays = 0;
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: {
+        prepare: async (request) => {
+          prefetched.push(request.text);
+        },
+        play: async (_request, _signal, lifecycle) => {
+          lifecycle.onStarted();
+          plays += 1;
+          if (plays === 1) await firstPlaying;
+        },
+        pause: async () => undefined,
+        resume: async () => undefined,
+        stop: async () => undefined,
+      },
+      nextInteractionId: () => "unused-interaction",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+    for (const [index, text] of ["One.", "Two.", "Three.", "Four."].entries()) {
+      await narration.prepare(
+        {
+          narrationId: `segment-${index + 1}`,
+          role: "narrator",
+          text,
+          sourceEventId: "segmented-output",
+          correlationId: "segmented-introduction",
+        },
+        new AbortController().signal,
+      );
+    }
+
+    const playing = controller.playPrepared("segmented-introduction");
+    await Promise.resolve();
+
+    expect(prefetched).toEqual(["Two.", "Three."]);
+
+    releaseFirst();
+    await expect(playing).resolves.toBe("complete");
+    expect(prefetched).toContain("Four.");
+  });
+
   it("preserves prepared narration while a semantic turn is active", async () => {
     const narration = new ScriptedNarrationPort();
     const turns = new StubTurns(narration);
@@ -520,6 +578,8 @@ describe("VoiceAudioController", () => {
           playbackReady();
           await finished;
         },
+        pause: async () => undefined,
+        resume: async () => undefined,
         stop: async () => undefined,
       },
       nextInteractionId: () => "delayed-audible-start",
@@ -805,6 +865,8 @@ describe("VoiceAudioController", () => {
           });
         });
       },
+      pause: async () => undefined,
+      resume: async () => undefined,
       stop: async () => undefined,
     };
     const narration = new ScriptedNarrationPort();
@@ -837,6 +899,114 @@ describe("VoiceAudioController", () => {
     expect(controller.state).toBe("ready");
   });
 
+  it("pauses active narration in place and resumes the same playback", async () => {
+    let playbackStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      playbackStarted = resolve;
+    });
+    let pauses = 0;
+    let resumes = 0;
+    const playback = {
+      play: async (
+        _request: NarrationRequest,
+        signal: AbortSignal,
+        lifecycle: PlaybackLifecycle,
+      ) => {
+        lifecycle.onStarted();
+        playbackStarted();
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+      },
+      pause: async () => {
+        pauses += 1;
+      },
+      resume: async () => {
+        resumes += 1;
+      },
+      stop: async () => undefined,
+    };
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback,
+      nextInteractionId: () => "pause-resume",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+
+    const submitting = controller.submitText("look");
+    await started;
+    await controller.pause();
+
+    expect(controller.state).toBe("paused");
+    expect(pauses).toBe(1);
+    expect(turns.lifecycle).toContain("paused");
+
+    await controller.resume();
+
+    expect(controller.state).toBe("narrator-speaking");
+    expect(resumes).toBe(1);
+    expect(turns.lifecycle).toContain("resumed");
+
+    await controller.stop();
+    await submitting;
+  });
+
+  it("keeps paused playback resumable when the browser rejects resume", async () => {
+    let playbackStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      playbackStarted = resolve;
+    });
+    const resumeError = new Error("resume blocked");
+    const narration = new ScriptedNarrationPort();
+    const turns = new StubTurns(narration);
+    const controller = new VoiceAudioController({
+      turns,
+      capture: new ScriptedCapturePort([]),
+      transcriber: new ScriptedTranscriber([]),
+      narration,
+      playback: {
+        play: async (_request, signal, lifecycle) => {
+          lifecycle.onStarted();
+          playbackStarted();
+          await new Promise<void>((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        },
+        pause: async () => undefined,
+        resume: async () => {
+          throw resumeError;
+        },
+        stop: async () => undefined,
+      },
+      nextInteractionId: () => "blocked-resume",
+      nextCaptureId: () => "unused-capture",
+      observedObjects: () => [],
+    });
+
+    const submitting = controller.submitText("look");
+    await started;
+    await controller.pause();
+
+    await expect(controller.resume()).rejects.toBe(resumeError);
+    expect(controller.state).toBe("paused");
+    expect(turns.lifecycle.filter((event) => event === "resumed")).toHaveLength(
+      0,
+    );
+
+    await controller.stop();
+    await submitting;
+  });
+
   it("does not announce a stale audible start after pre-onset stop", async () => {
     const narration = new ScriptedNarrationPort();
     const turns = new StubTurns(narration);
@@ -860,6 +1030,8 @@ describe("VoiceAudioController", () => {
             });
           });
         },
+        pause: async () => undefined,
+        resume: async () => undefined,
         stop: async () => undefined,
       },
       nextInteractionId: () => "pre-onset-stop",
@@ -901,6 +1073,8 @@ describe("VoiceAudioController", () => {
           });
         });
       },
+      pause: async () => undefined,
+      resume: async () => undefined,
       stop: async () => undefined,
     };
     const narration = new ScriptedNarrationPort();
@@ -967,6 +1141,8 @@ describe("VoiceAudioController", () => {
             });
           });
         },
+        pause: async () => undefined,
+        resume: async () => undefined,
         stop: async () => undefined,
       },
       nextInteractionId: () => "queued-stop",

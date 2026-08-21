@@ -417,6 +417,27 @@ competing T3 requests. READ remains T3 with no semantic fallback. Negated,
 ambiguous, unobserved, and multi-action requests retain their ordinary
 non-execution gates.
 
+For the authenticated opening profile, the latest completed object-directed
+command may also provide one event-derived conversational referent. A reviewed
+reverse-side question such as “Is there anything on the back?” immediately after
+reading the leaflet compiles to `examine leaflet`; the Guide does not answer
+from model knowledge. The Z-machine's exact output determines whether anything
+is there. This focus is distinct from current-location membership and from
+pending suggestion state, and does not authorize arbitrary pronoun resolution.
+See
+[ADR-0026](adr/0026-resolve-deictic-observation-from-recent-object-focus.md).
+
+For later rooms, a separate provider-neutral observed-world projection extracts
+bounded physical entity referents from exact canonical engine output and keeps
+their source sentence, event ID, and revision. A currently projected entity may
+fill an ordinary object slot, so “Examine tree” after the Forest Path
+description can compile locally. After the correlated result, an explicit
+“Inspect it” may reuse that one recent current referent. Both turns still pass
+the normal grammar, speech-act, risk, revision, and idempotency gates. The
+projection does not claim that the tree supports EXAMINE or predict the result;
+the Z-machine decides. See
+[ADR-0027](adr/0027-project-source-backed-observed-world-referents.md).
+
 When content wording does not identify an object, the guide retains a typed
 `content-object` intent while asking which current object the player means. A
 follow-up that names exactly one currently offered object produces its trusted
@@ -506,6 +527,11 @@ Memory exists to help with requests such as “where did I see the mailbox?” a
 game state.
 
 - Every fact includes source event IDs.
+- Generic observed-world referents are not facts by themselves. They identify a
+  bounded noun disclosed in exact physical-presentation prose and retain the
+  source sentence, event ID, and revision. Current membership may populate a
+  command slot but does not prove location, inventory, parser support, or an
+  action's outcome.
 - Exact engine statements are stored as `explicit`; model-derived summaries are
   stored as `inferred`.
 - The bounded opening-area projector is enabled only for the exact authenticated
@@ -698,6 +724,11 @@ The guide contract is not complete until automated fixtures cover at least:
     inexact output, stale current scene, player-authored fact, or
     provider-authored fact cannot create or resurrect scene state. Contextual
     suggestions never guarantee success or authorize navigation.
+14. After canonical movement to Forest Path, exact engine prose creates a
+    source-backed `tree` referent. Tree-scoped help suggests EXAMINE as a safe
+    first attempt, direct “Examine tree” executes exactly one `examine tree`,
+    and immediate “Inspect it” resolves the single current focus. Provider,
+    player, quoted, stale, or uncorrelated text cannot create that referent.
 
 ## Initial implementation sequence
 

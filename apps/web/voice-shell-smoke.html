@@ -3,12 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Zork Voice deterministic shell</title>
+    <title>Zork Voice</title>
     <link rel="stylesheet" href="/voice-shell.css" />
   </head>
   <body>
-    <main id="voice-shell" data-story-phase="booting">
+    <header class="app-header">
       <p class="eyebrow">Zork Voice</p>
+    </header>
+    <main id="voice-shell" data-story-phase="booting">
       <div class="status-stage">
         <h1 id="status" aria-live="polite" aria-atomic="true">Starting</h1>
         <div class="status-feedback">
@@ -28,36 +30,120 @@
           ></output>
         </div>
       </div>
-      <div
-        id="spoken-transcript"
-        class="spoken-transcript"
-        aria-hidden="true"
-        hidden
-      >
-        <p id="spoken-line" class="spoken-line"></p>
-        <ol id="spoken-history" class="spoken-history"></ol>
+      <div id="spoken-transcript" class="spoken-transcript" hidden>
+        <p id="spoken-line" class="spoken-line" aria-hidden="true"></p>
+        <div id="visual-status" class="visual-status" aria-hidden="true" hidden>
+          <span id="visual-status-text"></span>
+          <span class="visual-status-activity"> <i></i><i></i><i></i> </span>
+        </div>
+        <button id="story-gate" class="story-gate" type="button" hidden>
+          THE STORY BEGINS
+        </button>
+        <p id="idle-prompt" class="idle-prompt" aria-hidden="true" hidden>
+          What will you do?
+        </p>
+        <div
+          id="voice-waveform"
+          class="voice-waveform"
+          aria-hidden="true"
+          hidden
+        >
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span>
+        </div>
+        <nav class="conversation-actions" aria-label="Conversation playback">
+          <button
+            id="stop"
+            type="button"
+            aria-label="Stop playback"
+            title="Stop"
+            disabled
+          >
+            ■
+          </button>
+          <button
+            id="repeat"
+            type="button"
+            aria-label="Repeat last narration"
+            title="Repeat"
+            disabled
+          >
+            ↻
+          </button>
+        </nav>
+        <ol id="spoken-history" class="spoken-history" aria-hidden="true"></ol>
       </div>
       <div class="primary-action">
-        <button id="capture" type="button" aria-label="Start story" disabled>
-          BEGIN
-        </button>
+        <div class="input-control-row">
+          <div class="input-transport">
+            <button
+              id="capture"
+              type="button"
+              aria-label="Start story"
+              disabled
+            >
+              BEGIN
+            </button>
+            <form id="text-form" class="text-composer" hidden>
+              <label class="visually-hidden" for="text-input"
+                >Message the Dungeon Guide</label
+              >
+              <textarea
+                id="text-input"
+                rows="1"
+                maxlength="2000"
+                autocomplete="off"
+                placeholder="Tell the Guide what you want to do…"
+                disabled
+              ></textarea>
+              <button
+                id="text-submit"
+                type="submit"
+                aria-label="Send message"
+                title="Send"
+                disabled
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M12 19V5"></path>
+                  <path d="m6 11 6-6 6 6"></path>
+                </svg>
+              </button>
+            </form>
+          </div>
+          <div
+            id="input-mode-switch"
+            class="input-mode-switch"
+            role="group"
+            aria-label="Input mode"
+            hidden
+          >
+            <button
+              id="voice-mode"
+              type="button"
+              aria-label="Use voice input"
+              title="Voice input"
+              aria-pressed="true"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+                <path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6"></path>
+              </svg>
+            </button>
+            <button
+              id="text-mode"
+              type="button"
+              aria-label="Use text input"
+              title="Text input"
+              aria-pressed="false"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M5 6h14M12 6v13M8.5 19h7"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
         <p id="primary-cue" class="cue" aria-hidden="true"></p>
       </div>
-      <ol
-        id="action-log"
-        class="action-log"
-        role="list"
-        aria-label="Recent game commands"
-        tabindex="0"
-        hidden
-      ></ol>
-      <nav class="control-dock" aria-label="Voice session controls">
-        <div class="session-actions" role="group" aria-label="Playback">
-          <button id="stop" type="button" disabled>Stop</button>
-          <button id="pause" type="button" disabled>Pause</button>
-          <button id="repeat" type="button" disabled>Repeat</button>
-        </div>
-      </nav>
     </main>
     <footer class="app-footer">
       <nav class="utility-actions" aria-label="More options">
@@ -88,26 +174,43 @@
     >
       <header class="modal-header">
         <h2 id="transcript-heading">Transcript</h2>
-        <button
-          id="close-transcript"
-          class="modal-close"
-          type="button"
-          aria-label="Close transcript"
-        >
-          <span aria-hidden="true">×</span>
-        </button>
+        <div class="modal-header__actions">
+          <button
+            id="copy-transcript"
+            class="modal-icon-button"
+            type="button"
+            aria-label="Copy transcript to clipboard"
+            title="Copy transcript"
+            disabled
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+              <path
+                d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"
+              ></path>
+            </svg>
+          </button>
+          <button
+            id="close-transcript"
+            class="modal-close"
+            type="button"
+            aria-label="Close transcript"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
       </header>
+      <output
+        id="copy-transcript-status"
+        class="visually-hidden"
+        aria-live="polite"
+      ></output>
       <ol id="transcript-list"></ol>
       <nav class="event-page-controls" aria-label="Transcript pages">
         <button id="transcript-older" type="button">Older</button>
         <span id="transcript-page-status" aria-live="polite"></span>
         <button id="transcript-newer" type="button">Newer</button>
       </nav>
-      <form id="text-form">
-        <label for="text-input">Accessible text input</label>
-        <input id="text-input" autocomplete="off" disabled />
-        <button id="text-submit" type="submit" disabled>Send</button>
-      </form>
     </dialog>
     <dialog
       id="debug-panel"

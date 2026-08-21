@@ -49,6 +49,31 @@ decision with a new ADR and link both records.
   ADR-0016 supersedes its fixed READ-versus-EXAMINE suggestion shape.
 - [ADR-0016: Separate contextual suggestions from parser authority](0016-separate-contextual-suggestions-from-parser-authority.md)
   — accepted; contextual advice does not restrict explicit parser commands.
+- [ADR-0017: Add an authored role introduction before story start](0017-authored-role-introduction-before-story-start.md)
+  — accepted; the fixed Guide and Narrator welcome does not touch engine state.
+- [ADR-0018: Let visible speech replace redundant activity motion](0018-visible-speech-replaces-redundant-activity-motion.md)
+  — accepted; its settled height-collapse rule is superseded by ADR-0019.
+- [ADR-0019: Center active speech above a wider history](0019-center-active-speech-above-wider-history.md)
+  — accepted; its distinct-width rule is superseded by ADR-0024 while the
+  vertical hierarchy remains.
+- [ADR-0020: Focus committed commands in the visual conversation](0020-focus-committed-commands-in-visual-conversation.md)
+  — accepted; supersedes ADR-0013's separate command-list presentation.
+- [ADR-0021: Switch the primary input between voice and text](0021-switch-primary-input-between-voice-and-text.md)
+  — accepted; supersedes text entry inside the transcript modal.
+- [ADR-0022: Place operational status below active text](0022-place-operational-status-below-active-text.md)
+  — accepted; speaking attribution is no longer duplicated near the title.
+- [ADR-0023: Make the visible playback stop resumable](0023-make-visible-playback-stop-resumable.md)
+  — accepted; the square pauses active narration and becomes a resume triangle.
+- [ADR-0024: Use one conversation measure](0024-use-one-conversation-measure.md)
+  — accepted; active text and muted history share a responsive 50 rem cap.
+- [ADR-0025: Segment and prefetch authored narration](0025-segment-and-prefetch-authored-narration.md)
+  — accepted; N+1 and N+2 warm while N plays, but sentence starts remain serial.
+- [ADR-0026: Resolve deictic observation from recent object focus](0026-resolve-deictic-observation-from-recent-object-focus.md)
+  — accepted; a reviewed reverse-side question may EXAMINE the latest
+  event-derived object while the engine remains fact authority.
+- [ADR-0027: Project source-backed observed-world referents](0027-project-source-backed-observed-world-referents.md)
+  — accepted; exact engine prose may create attributable current referents for
+  ordinary grounding without exposing hidden interpreter state.
 
 ## Template
 

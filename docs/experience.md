@@ -46,8 +46,8 @@ The default screen contains no transcript and no game prose. It has:
 - a near-black, low-detail background;
 - one central state indicator with a non-color-only change for idle, listening,
   processing, guide speech, narrator speech, paused, and error states;
-- one bounded, newest-first list of recent canonical commands; the active
-  request is emphasized and confirmed prior commands remain slightly muted;
+- one bounded visual conversation for distinctly attributed Player, Guide,
+  Narrator, implicit game-action, and committed canonical-command lines;
 - a compact microphone control that is reachable by touch and keyboard;
 - a discoverable settings/transcript control that may recede when inactive;
 - an accessible status region, even when no text is visually rendered.
@@ -61,24 +61,57 @@ Transcript, voice preferences, and developer debug are utilities rather than
 gameplay controls. Their triggers live in a subdued page footer outside the
 centered play surface, and each opens a labeled modal without reflowing or
 displacing the active game. Opening a modal moves focus inside it; closing by
-its button, Escape, or backdrop restores focus to its trigger. Transcript keeps
-the complete accessible text-input fallback inside the modal.
+its button, Escape, or backdrop restores focus to its trigger. Transcript
+remains an inspection and copy/export surface. After the story gate, the main
+play surface instead offers the mutually exclusive Voice/Text input switch
+defined by [ADR-0021](adr/0021-switch-primary-input-between-voice-and-text.md).
+The switch is a compact pair of microphone and text symbols at the far right of
+the primary input row; each symbol retains an explicit accessible name and
+pressed state. Repeat sits immediately above the muted conversation history so
+it remains associated with the line it will replay rather than with input mode.
+Playback controls use symbols with explicit accessible names. During audible
+narration, the square pauses in place and becomes a play triangle that resumes
+the same clip; the circular arrow repeats from the beginning. During capture or
+processing, the square remains a hard Stop because those operations cannot
+safely continue from a media position, as defined by
+[ADR-0023](adr/0023-make-visible-playback-stop-resumable.md).
 
-The command history is governed by
-[ADR-0013](adr/0013-persistent-command-history-and-active-only-indicator.md). It
-displays only exact canonical commands. The active request comes from
-`engine.command.requested`; only a matching `engine.command.committed` enters
-the bounded muted history. Rejected, not-submitted, and uncertain requests do
-not appear as completed actions. Provider proposals never render in this
-surface.
+Canonical-command presentation is governed by
+[ADR-0020](adr/0020-focus-committed-commands-in-visual-conversation.md). Only an
+exact `engine.command.committed` command enters the visual conversation. It
+first occupies the central focal line as enlarged centered gold monospace text
+without a visible tag, then settles into the same bounded muted history with an
+explicit `COMMAND` role. Rejected, not-submitted, uncertain, and
+provider-proposed commands never render in this surface. The visually hidden
+live command cue continues to announce the earlier request boundary without
+duplicating the decorative conversation for assistive technology.
+
+That same ADR places the normalized `transcript.final` text in the focal line
+briefly before interpretation, with an orange `PLAYER` role tag and no
+progressive word reveal. It then settles into the shared muted history. Partial
+transcription remains absent, and the canonical transcript event remains the
+source of truth.
 
 The decorative activity indicator is absent while the player is simply ready,
 paused, blocked, or finished. It appears during startup, microphone permission,
-listening, and processing/reconnecting. It is hidden whenever visible spoken
-text is carrying that same activity context, including the preparation gap
-between sequential voices; the spoken-text surface replaces redundant motion
-under ADR-0018. Stable status text communicates every state independently of
-motion.
+listening, and processing/reconnecting before visual conversation exists. Once
+an active line is present, its role tag replaces the redundant upper “speaking”
+badge. Active content always takes visual priority: processing or reconnecting
+remains hidden while any focal line is present, including throughout its exit
+transition. If work is still pending after that line has fully left the active
+area, a compact label and small decorative animation may occupy the reserved
+status row without shifting the layout. Audible playback and settled states show
+neither. The polite live region continues communicating every state
+independently of motion under
+[ADR-0022](adr/0022-place-operational-status-below-active-text.md).
+
+When visible conversation is present, its active line and bounded muted history
+share one responsive reading measure under
+[ADR-0024](adr/0024-use-one-conversation-measure.md). History remains in a lower
+secondary band, separated by enough space that previous lines do not compete
+with the words currently being spoken. The layout retains that vertical and
+tonal hierarchy after playback settles and compresses the separation at narrow
+viewport widths.
 
 Progressive spoken text retains direct references to its bounded active-line
 word elements and advances them with at most one scheduled callback. It does not
@@ -102,14 +135,14 @@ story-pinned whole-line excerpt in
 [ADR-0014](adr/0014-story-pinned-spoken-opening-excerpt.md), with the complete
 output as the fallback for any identity or text mismatch. While the opening is
 being prepared or played, ordinary capture and text submission remain gated and
-Stop remains available. After playback completes, is interrupted, or fails, the
-primary control becomes the ordinary speaking control, visually labeled `SPEAK`,
-and the accessibility text path becomes available. Completion and interruption
-show Ready; failure preserves a recoverable blocked state while those ordinary
-controls remain usable. Known safe failures replace generic `Action needed` with
-an actionable status: browser playback authorization asks the player to tap
-Repeat, and the bounded developer profile reports when its request limit has
-been reached.
+the square can cancel preparation or pause and resume audible playback. After
+playback completes, is cancelled, or fails, the primary control becomes the
+ordinary speaking control, visually labeled `SPEAK`, and the accessibility text
+path becomes available. Completion and cancellation show Ready; failure
+preserves a recoverable blocked state while those ordinary controls remain
+usable. Known safe failures replace generic `Action needed` with an actionable
+status: browser playback authorization asks the player to tap Repeat, and the
+bounded developer profile reports when its request limit has been reached.
 
 ## Display-state projection
 
@@ -155,6 +188,17 @@ ready -> ended
 The UI must not show `ready` while capture is active or show `listening` while
 audio is being transmitted without the player's knowledge.
 
+Fixed role-introduction and story-opening prose is projected as ordered sentence
+or line segments under
+[ADR-0025](adr/0025-segment-and-prefetch-authored-narration.md). While one
+segment plays, the next two may synthesize in parallel into bounded session
+memory, but neither may play or replace the active visual line before the prior
+segment reaches its playback-ended boundary. Visual word reveal may finish early
+or be completed at that boundary; it never advances into the next sentence on an
+estimated timer alone. When the fixed Narrator introduction begins, the first
+two opening clips may also warm without publishing or exposing the revision-zero
+opening before the player activates the story-start gate.
+
 Speech synthesis, response download, decoding, and buffering remain
 `processing`. The role-specific speaking state begins only when the browser
 reports its first `playing` event for that utterance. That boundary emits
@@ -192,13 +236,14 @@ The first run should be brief and playable without a visual tutorial:
    `engine.output` at revision zero. Request the deterministic ADR-0014 spoken
    selection once in the narrator role, falling back to the complete output on
    any story/build/opening mismatch.
-5. After opening playback completes, is interrupted with Stop, or fails, expose
-   the ordinary speaking and accessible-text controls. Preserve the exact
-   opening in the transcript/accessibility projection in every case. Keep a
-   failed opening visibly recoverable with an actionable safe status where one
-   is known; do not put it back behind `START STORY`.
-6. Ask for microphone access immediately before the first capture, with a
-   concise explanation and an equivalent text-input path.
+5. After opening playback completes, is cancelled before audible playback, or
+   fails, expose the ordinary speaking and accessible-text controls. Preserve
+   the exact opening in the transcript/accessibility projection in every case.
+   Keep a failed opening visibly recoverable with an actionable safe status
+   where one is known; do not put it back behind `START STORY`.
+6. Expose Voice/Text input modes. Ask for microphone access immediately before
+   the first Voice capture, with a concise explanation; Text remains directly
+   available on the play surface.
 7. Teach “stop” and “help” by voice, reinforce the narrator/guide distinction,
    and ask whether captions and proactive hint offers should remain enabled.
 
@@ -461,10 +506,12 @@ duration, role labels, and copy/export controls. Opening or closing it does not
 pause or branch gameplay. Long transcripts are exposed in bounded pages with
 Older and Newer controls; moving between pages is a projection-only operation.
 
-Text input may be enabled as an accessibility or test accommodation. Submitted
-text is normalized at the same semantic boundary as `transcript.final` and
-receives the same guide grounding, hint policy, and engine execution behavior as
-speech. It does not bypass the guide or become a separate save format.
+Text input is a primary-surface accessibility and test accommodation selected by
+the Voice/Text switch after the opening gate. Submitted text is normalized at
+the same semantic boundary as `transcript.final` and receives the same guide
+grounding, hint policy, and engine execution behavior as speech. It does not
+bypass the guide or become a separate save format. The transcript modal does not
+own text entry.
 
 ## Accessibility requirements
 
@@ -472,7 +519,7 @@ speech. It does not bypass the guide or become a separate save format.
   narrator speech even when visible captions are off.
 - Keep `START STORY` keyboard operable and enabled before microphone permission;
   activating it must not request or begin microphone capture.
-- Provide keyboard equivalents for capture, stop, repeat, pause, transcript, and
+- Provide keyboard equivalents for capture, stop/resume, repeat, transcript, and
   settings.
 - Do not require hold gestures; tap-to-talk is always available.
 - Do not communicate role or state through color, motion, stereo position, or

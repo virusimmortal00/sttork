@@ -64,11 +64,17 @@ describe("opening observed-object projection", () => {
       bootOutput,
     );
 
-    expect(projected).toEqual({
-      version: 2,
+    expect(projected).toMatchObject({
+      version: 3,
       observedObjects: ["house", "door", "mailbox"],
       currentObjects: ["house", "door", "mailbox"],
       pendingMovementRevision: null,
+    });
+    expect(projected.entities).toHaveLength(3);
+    expect(projected.entities[0]).toMatchObject({
+      id: "observed-object:house",
+      label: "house",
+      sourceEventIds: ["unattributed-engine-output"],
     });
     expect(Object.isFrozen(projected)).toBe(true);
     expect(Object.isFrozen(projected.observedObjects)).toBe(true);
@@ -125,8 +131,8 @@ describe("opening observed-object projection", () => {
         1,
       ),
     );
-    expect(away).toEqual({
-      version: 2,
+    expect(away).toMatchObject({
+      version: 3,
       observedObjects: ["house", "door", "mailbox"],
       currentObjects: [],
       pendingMovementRevision: null,
@@ -227,5 +233,87 @@ describe("opening observed-object projection", () => {
         `${"x".repeat(MAX_OPENING_ENGINE_OUTPUT_LENGTH)}\nOpening the small mailbox reveals a leaflet.`,
       ),
     ).toBe(initial);
+  });
+
+  it("creates current source-backed referents from later physical scene prose", () => {
+    const forestPath =
+      "Forest Path\nThis is a path winding through a dimly lit forest. The path heads north-south here. One particularly large tree with some low branches stands at the edge of the path.\n\n>";
+    const moved = projectOpeningObjectsFromEvent(
+      projectOpeningObjectsFromEvent(
+        projectOpeningObjectsFromEngineOutput(
+          createOpeningObjectProjection(),
+          bootOutput,
+        ),
+        committedCommand("north", 1),
+      ),
+      {
+        ...engineOutput(forestPath, 1),
+        causationId: "committed-1",
+      },
+    );
+
+    expect(moved.currentObjects).toEqual(["branches", "tree"]);
+    expect(moved.observedObjects).toEqual([
+      "house",
+      "door",
+      "mailbox",
+      "branches",
+      "tree",
+    ]);
+    expect(
+      moved.entities.find((entity) => entity.label === "tree"),
+    ).toMatchObject({
+      id: "observed-object:tree",
+      sourceEventIds: ["event-1"],
+      sourceLines: [
+        "One particularly large tree with some low branches stands at the edge of the path.",
+      ],
+    });
+
+    const examining = projectOpeningObjectsFromEvent(
+      moved,
+      committedCommand("examine tree", 2),
+    );
+    const examined = projectOpeningObjectsFromEvent(examining, {
+      ...engineOutput("You see nothing special about the tree.\n\n>", 2),
+      id: "event-2",
+      correlationId: "interaction-2",
+      causationId: "committed-2",
+    });
+    expect(examined.recentObjectFocus).toMatchObject({
+      objectId: "observed-object:tree",
+      command: "examine tree",
+      revision: 2,
+      sourceEventIds: ["committed-2", "event-2"],
+    });
+  });
+
+  it("extracts full and shorthand referents from locative presentation prose", () => {
+    const clearing = projectOpeningObjectsFromEvent(
+      projectOpeningObjectsFromEvent(
+        createOpeningObjectProjection(),
+        committedCommand("north", 1),
+      ),
+      {
+        ...engineOutput(
+          "Clearing\nYou are in a clearing, with a forest surrounding you on all sides. A path leads south.\nOn the ground is a pile of leaves.\n\n>",
+          1,
+        ),
+        causationId: "committed-1",
+      },
+    );
+
+    expect(clearing.currentObjects).toEqual([
+      "leaves",
+      "pile",
+      "pile of leaves",
+    ]);
+    for (const label of clearing.currentObjects) {
+      expect(
+        clearing.entities.find((entity) => entity.label === label),
+      ).toMatchObject({
+        sourceLines: ["On the ground is a pile of leaves."],
+      });
+    }
   });
 });

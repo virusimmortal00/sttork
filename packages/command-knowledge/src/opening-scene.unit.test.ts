@@ -13,6 +13,7 @@ import {
   openingSceneCurrentObjectLabels,
   projectOpeningSceneFromEvent,
   resolveOpeningSceneObjectActionSuggestion,
+  resolveOpeningSceneFocusedObservationRequest,
   resolvePendingOpeningContextualObjectActionChoiceForScene,
   resolveOpeningSceneGuidance,
 } from "./opening-scene.js";
@@ -428,6 +429,56 @@ describe("opening scene projection", () => {
       ),
     ).toBeUndefined();
     expect(opened.locations[0]?.sourceEventIds).toEqual(["opening-output"]);
+  });
+
+  it("retains a completed object action as bounded conversational focus", () => {
+    const events = [
+      output("opening-output", 1, 0, OPENING_SCENE_BOOT_OUTPUT),
+      committed("open-commit", 2, 1, "open mailbox"),
+      output(
+        "open-output",
+        3,
+        1,
+        "Opening the small mailbox reveals a leaflet.\n\n>",
+        "open-commit",
+      ),
+      committed("read-commit", 4, 2, "read leaflet"),
+      output(
+        "read-output",
+        5,
+        2,
+        '(Taken)\n"WELCOME TO ZORK!"\n\n>',
+        "read-commit",
+      ),
+    ] as const;
+    const scene = events.reduce(projectOpeningSceneFromEvent, initial());
+
+    expect(scene.currentEntityIds).not.toContain("observed-object:leaflet");
+    expect(scene.recentObjectFocus).toEqual({
+      objectId: "observed-object:leaflet",
+      command: "read leaflet",
+      revision: 2,
+      sourceEventIds: ["read-commit", "read-output"],
+    });
+    expect(
+      resolveOpeningSceneFocusedObservationRequest(
+        "Is there anything on the back?",
+        scene,
+      ),
+    ).toEqual({
+      command: "examine leaflet",
+      selectedObject: {
+        id: "observed-object:leaflet",
+        label: "leaflet",
+      },
+      sourceIds: ["grammar.examine", "read-commit", "read-output"],
+    });
+    expect(
+      resolveOpeningSceneFocusedObservationRequest(
+        "Is there anything behind the house?",
+        scene,
+      ),
+    ).toBeUndefined();
   });
 
   it("reprojects the mailbox from its exact correlated READ refusal", () => {

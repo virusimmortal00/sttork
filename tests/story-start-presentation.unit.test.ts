@@ -4,20 +4,40 @@ import {
   applyStoryStartPresentation,
   openingActivationFailureDisposition,
   openingPreparationDisposition,
+  textComposerShouldSubmit,
 } from "../apps/web/src/story-start-presentation.js";
 
 function elements() {
   return {
-    shell: { dataset: {} as { storyPhase?: string } },
+    shell: {
+      dataset: {} as { storyPhase?: string; inputMode?: string },
+    },
     primaryButton: {
       textContent: "SPEAK",
+      hidden: false,
       disabled: true,
       setAttribute: vi.fn<(name: string, value: string) => void>(),
       removeAttribute: vi.fn<(name: string) => void>(),
     },
-    stopButton: { disabled: false },
-    pauseButton: { disabled: false },
+    storyGateButton: { hidden: true, disabled: true },
+    idlePrompt: { hidden: true },
+    stopButton: {
+      disabled: false,
+      textContent: "■",
+      setAttribute: vi.fn<(name: string, value: string) => void>(),
+    },
     repeatButton: { disabled: false },
+    inputModeSwitch: { hidden: false },
+    voiceModeButton: {
+      disabled: false,
+      setAttribute: vi.fn<(name: string, value: string) => void>(),
+    },
+    textModeButton: {
+      disabled: false,
+      setAttribute: vi.fn<(name: string, value: string) => void>(),
+    },
+    voiceWaveform: { hidden: false },
+    textForm: { hidden: false },
     textInput: { disabled: false },
     textSubmitButton: { disabled: false },
     primaryCue: { textContent: "" },
@@ -25,6 +45,30 @@ function elements() {
 }
 
 describe("story start presentation", () => {
+  it("submits plain Enter while preserving composition and Shift+Enter", () => {
+    expect(
+      textComposerShouldSubmit({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: false,
+      }),
+    ).toBe(true);
+    expect(
+      textComposerShouldSubmit({
+        key: "Enter",
+        shiftKey: true,
+        isComposing: false,
+      }),
+    ).toBe(false);
+    expect(
+      textComposerShouldSubmit({
+        key: "Enter",
+        shiftKey: false,
+        isComposing: true,
+      }),
+    ).toBe(false);
+  });
+
   it("returns a player-stopped pre-output activation to the start gate", () => {
     expect(openingActivationFailureDisposition(true, true)).toBe(
       "player-cancelled",
@@ -51,7 +95,7 @@ describe("story start presentation", () => {
   it("offers an introduction action even without a microphone", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("welcome", "ready", false, subject);
+    applyStoryStartPresentation("welcome", "ready", false, "text", subject);
 
     expect(subject.primaryButton.textContent).toBe("ENTER");
     expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
@@ -60,55 +104,77 @@ describe("story start presentation", () => {
     );
     expect(subject.shell.dataset.storyPhase).toBe("welcome");
     expect(subject.primaryButton.disabled).toBe(false);
+    expect(subject.primaryButton.hidden).toBe(false);
+    expect(subject.storyGateButton.hidden).toBe(true);
     expect(subject.primaryButton.removeAttribute).toHaveBeenCalledWith(
       "aria-pressed",
     );
     expect(subject.stopButton.disabled).toBe(true);
     expect(subject.textInput.disabled).toBe(true);
+    expect(subject.inputModeSwitch.hidden).toBe(true);
+    expect(subject.textForm.hidden).toBe(true);
     expect(subject.primaryCue.textContent).toBe("");
   });
 
-  it("allows Stop while the role introduction plays", () => {
+  it("removes the inactive primary action while the role introduction plays", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("introducing", "guide-speaking", true, subject);
+    applyStoryStartPresentation(
+      "introducing",
+      "guide-speaking",
+      true,
+      "voice",
+      subject,
+    );
 
-    expect(subject.primaryButton.textContent).toBe("LISTEN");
+    expect(subject.primaryButton.textContent).toBe("ENTER");
+    expect(subject.primaryButton.hidden).toBe(true);
+    expect(subject.storyGateButton.hidden).toBe(true);
     expect(subject.primaryButton.disabled).toBe(true);
     expect(subject.stopButton.disabled).toBe(false);
-    expect(subject.pauseButton.disabled).toBe(true);
+    expect(subject.stopButton.textContent).toBe("■");
   });
 
   it("presents a distinct story gate after the introduction", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("story-ready", "ready", false, subject);
+    applyStoryStartPresentation("story-ready", "ready", false, "text", subject);
 
-    expect(subject.primaryButton.textContent).toBe("THE STORY BEGINS");
-    expect(subject.primaryButton.disabled).toBe(false);
+    expect(subject.primaryButton.textContent).toBe("ENTER");
+    expect(subject.primaryButton.hidden).toBe(true);
+    expect(subject.storyGateButton.hidden).toBe(false);
+    expect(subject.storyGateButton.disabled).toBe(false);
     expect(subject.stopButton.disabled).toBe(true);
-    expect(subject.primaryCue.textContent).toBe("Begin the adventure.");
+    expect(subject.primaryCue.textContent).toBe("");
   });
 
   it("allows Stop but no second activation while the opening is playing", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("starting", "narrator-speaking", true, subject);
+    applyStoryStartPresentation(
+      "starting",
+      "narrator-speaking",
+      true,
+      "voice",
+      subject,
+    );
 
-    expect(subject.primaryButton.textContent).toBe("THE STORY BEGINS");
+    expect(subject.primaryButton.textContent).toBe("ENTER");
     expect(subject.shell.dataset.storyPhase).toBe("starting");
     expect(subject.primaryButton.disabled).toBe(true);
+    expect(subject.storyGateButton.hidden).toBe(false);
+    expect(subject.storyGateButton.disabled).toBe(true);
     expect(subject.stopButton.disabled).toBe(false);
-    expect(subject.pauseButton.disabled).toBe(true);
     expect(subject.repeatButton.disabled).toBe(true);
   });
 
   it("becomes the ordinary capture control only after the opening terminal", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("started", "ready", true, subject);
+    applyStoryStartPresentation("started", "ready", true, "voice", subject);
 
     expect(subject.primaryButton.textContent).toBe("SPEAK");
+    expect(subject.primaryButton.hidden).toBe(false);
     expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
       "aria-label",
       "Start speaking",
@@ -120,12 +186,19 @@ describe("story start presentation", () => {
       "false",
     );
     expect(subject.stopButton.disabled).toBe(true);
-    expect(subject.pauseButton.disabled).toBe(true);
     expect(subject.repeatButton.disabled).toBe(false);
-    expect(subject.textInput.disabled).toBe(false);
+    expect(subject.idlePrompt.hidden).toBe(false);
+    expect(subject.textInput.disabled).toBe(true);
+    expect(subject.inputModeSwitch.hidden).toBe(false);
+    expect(subject.textForm.hidden).toBe(true);
+    expect(subject.voiceModeButton.setAttribute).toHaveBeenCalledWith(
+      "aria-pressed",
+      "true",
+    );
     expect(subject.primaryCue.textContent).toBe("or press V");
 
-    applyStoryStartPresentation("started", "listening", true, subject);
+    applyStoryStartPresentation("started", "listening", true, "voice", subject);
+    expect(subject.idlePrompt.hidden).toBe(true);
     expect(subject.primaryButton.textContent).toBe("DONE");
     expect(subject.primaryButton.setAttribute).toHaveBeenCalledWith(
       "aria-label",
@@ -136,18 +209,55 @@ describe("story start presentation", () => {
       "true",
     );
     expect(subject.stopButton.disabled).toBe(false);
-    expect(subject.pauseButton.disabled).toBe(false);
     expect(subject.repeatButton.disabled).toBe(true);
     expect(subject.textInput.disabled).toBe(true);
+    expect(subject.voiceWaveform.hidden).toBe(false);
   });
 
-  it("shows only Resume while the session is paused", () => {
+  it("replaces capture with the main text composer in text mode", () => {
     const subject = elements();
 
-    applyStoryStartPresentation("started", "paused", true, subject);
+    applyStoryStartPresentation("started", "ready", true, "text", subject);
 
-    expect(subject.stopButton.disabled).toBe(true);
-    expect(subject.pauseButton.disabled).toBe(false);
+    expect(subject.shell.dataset.inputMode).toBe("text");
+    expect(subject.primaryButton.hidden).toBe(true);
+    expect(subject.textForm.hidden).toBe(false);
+    expect(subject.textInput.disabled).toBe(false);
+    expect(subject.textSubmitButton.disabled).toBe(false);
+    expect(subject.textModeButton.setAttribute).toHaveBeenCalledWith(
+      "aria-pressed",
+      "true",
+    );
+    expect(subject.primaryCue.textContent).toBe("Enter to send");
+  });
+
+  it("falls back to text mode when microphone capture is unavailable", () => {
+    const subject = elements();
+
+    applyStoryStartPresentation("started", "ready", false, "voice", subject);
+
+    expect(subject.shell.dataset.inputMode).toBe("text");
+    expect(subject.voiceModeButton.disabled).toBe(true);
+    expect(subject.primaryButton.hidden).toBe(true);
+    expect(subject.textForm.hidden).toBe(false);
+    expect(subject.textInput.disabled).toBe(false);
+  });
+
+  it("turns the stop symbol into an accessible Resume while paused", () => {
+    const subject = elements();
+
+    applyStoryStartPresentation("started", "paused", true, "voice", subject);
+
+    expect(subject.stopButton.disabled).toBe(false);
+    expect(subject.stopButton.textContent).toBe("▶");
+    expect(subject.stopButton.setAttribute).toHaveBeenCalledWith(
+      "aria-label",
+      "Resume playback",
+    );
+    expect(subject.stopButton.setAttribute).toHaveBeenCalledWith(
+      "title",
+      "Resume",
+    );
     expect(subject.repeatButton.disabled).toBe(true);
   });
 });

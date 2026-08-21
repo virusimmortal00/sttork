@@ -29,9 +29,6 @@ function presentationElements(): LivePreflightPresentationElements & {
     textContent: string | null;
     setAttribute: ReturnType<typeof vi.fn>;
   };
-  readonly transcriptButton: {
-    setAttribute: ReturnType<typeof vi.fn>;
-  };
   readonly otherControl: { disabled: boolean };
 } {
   const status = {
@@ -39,18 +36,11 @@ function presentationElements(): LivePreflightPresentationElements & {
     setAttribute: vi.fn(),
   };
   const captureButton = { disabled: false };
-  const transcriptPanel = { showModal: vi.fn() };
-  const transcriptButton = { setAttribute: vi.fn() };
-  const textForm = { hidden: true };
   const textInput = { disabled: true, tabIndex: -1 };
   const otherControl = { disabled: false };
   return {
     status,
     captureButton,
-    transcriptPanel,
-    transcriptButton,
-    textForm,
-    textInput,
     allControls: [captureButton, otherControl, textInput],
     otherControl,
   };
@@ -84,8 +74,7 @@ describe("OpenAI live browser preflight", () => {
       storyAuthenticationAvailable: true,
       audioRecordingAvailable: true,
       errorCode: "secure-context-required",
-      statusText:
-        "Secure connection required for microphone. Use accessible text input.",
+      statusText: "Secure connection required for microphone. Choose Text.",
     });
   });
 
@@ -99,7 +88,7 @@ describe("OpenAI live browser preflight", () => {
       storyAuthenticationAvailable: true,
       audioRecordingAvailable: true,
       errorCode: "microphone-unavailable",
-      statusText: "Microphone unavailable. Use accessible text input.",
+      statusText: "Microphone unavailable. Choose Text.",
     });
   });
 
@@ -132,7 +121,7 @@ describe("OpenAI live browser preflight", () => {
 });
 
 describe("OpenAI live preflight presentation", () => {
-  it("makes the text fallback visible and focusable while disabling capture", () => {
+  it("leaves the main experience available while disabling capture", () => {
     const elements = presentationElements();
     const preflight = evaluateLiveBrowserPreflight(
       capabilities({ getUserMedia: undefined }),
@@ -140,16 +129,9 @@ describe("OpenAI live preflight presentation", () => {
 
     expect(applyLivePreflightPresentation(preflight, elements)).toBe(true);
     expect(elements.status.textContent).toBe(
-      "Microphone unavailable. Use accessible text input.",
+      "Microphone unavailable. Choose Text.",
     );
     expect(elements.captureButton.disabled).toBe(true);
-    expect(elements.transcriptPanel.showModal).toHaveBeenCalledOnce();
-    expect(elements.transcriptButton.setAttribute).toHaveBeenCalledWith(
-      "aria-expanded",
-      "true",
-    );
-    expect(elements.textForm.hidden).toBe(false);
-    expect(elements.textInput.disabled).toBe(false);
     expect(elements.otherControl.disabled).toBe(false);
   });
 

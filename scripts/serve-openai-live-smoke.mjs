@@ -4,6 +4,8 @@ import { registerHooks } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
+import { parseLiveSmokeMaxRequests } from "./live-smoke-request-limit.mjs";
+
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const port = Number(process.argv[2] ?? "4175");
 if (
@@ -77,6 +79,13 @@ const [harness, service, providers] = await Promise.all([
   import(pathToFileURL(providerPath).href),
 ]);
 const configuredPublicOrigin = process.env.ZORK_VOICE_PUBLIC_ORIGIN;
+const maxRequests = parseLiveSmokeMaxRequests(
+  process.env.ZORK_VOICE_LIVE_MAX_REQUESTS,
+);
+const liveSmokeProfile = Object.freeze({
+  ...providers.OPENAI_CHAINED_PROFILE_2026_08_19,
+  maxRequests,
+});
 if (configuredPublicOrigin !== undefined) {
   harness.parseOpenAiLiveOrigin(configuredPublicOrigin);
 }
@@ -104,6 +113,7 @@ server.listen(port, "127.0.0.1", () => {
   const allowedOrigin = configuredPublicOrigin ?? upstreamOrigin;
   const provider = new providers.OpenAiChainedProvider({
     apiKey,
+    profile: liveSmokeProfile,
     safetyIdentifier: sessionToken,
   });
   const handleApi = service.createOpenAiLiveService({
@@ -121,4 +131,5 @@ server.listen(port, "127.0.0.1", () => {
   process.stdout.write(
     `OpenAI live voice smoke upstream: ${upstreamOrigin}/\n`,
   );
+  process.stdout.write(`OpenAI live voice smoke request cap: ${maxRequests}\n`);
 });

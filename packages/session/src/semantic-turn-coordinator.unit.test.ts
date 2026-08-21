@@ -27,6 +27,7 @@ import {
   SemanticTurnCapacityError,
   SemanticTurnConflictError,
   SemanticTurnCoordinator,
+  narrationSegments,
   type NarrationPort,
   type NarrationRequest,
 } from "./semantic-turn-coordinator.js";
@@ -202,6 +203,19 @@ const turn = {
 } as const;
 
 describe("SemanticTurnCoordinator", () => {
+  it("segments deterministic narration into ordered sentence and line units", () => {
+    expect(
+      narrationSegments(
+        "First sentence. Second sentence!\nRoom heading\nReady?",
+      ),
+    ).toEqual([
+      "First sentence.",
+      "Second sentence!",
+      "Room heading",
+      "Ready?",
+    ]);
+  });
+
   it("prepares an attributed authored introduction without touching the engine", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();
@@ -243,6 +257,32 @@ describe("SemanticTurnCoordinator", () => {
       total: 2,
       retention: "session-only",
     });
+  });
+
+  it("prepares authored introduction sentences in deterministic role order", async () => {
+    const engine = new FakeEngine();
+    const narrator = new FakeNarrator();
+    const subject = coordinator(engine, narrator);
+
+    await subject.prepareRoleIntroduction(
+      {
+        interactionId: "segmented-role-introduction",
+        messages: [
+          { role: "guide", text: "Guide one. Guide two." },
+          { role: "narrator", text: "Narrator one. Narrator two." },
+        ],
+      },
+      new AbortController().signal,
+    );
+
+    expect(narrator.requests.map(({ role, text }) => ({ role, text }))).toEqual(
+      [
+        { role: "guide", text: "Guide one." },
+        { role: "guide", text: "Guide two." },
+        { role: "narrator", text: "Narrator one." },
+        { role: "narrator", text: "Narrator two." },
+      ],
+    );
   });
 
   it("publishes and prepares the exact authenticated opening once", async () => {
@@ -397,16 +437,21 @@ describe("SemanticTurnCoordinator", () => {
       type: "engine.output",
       payload: { exactText: engine.openingOutput },
     });
-    expect(result.events[1]).toMatchObject({
-      type: "narration.requested",
-      payload: { text: narrationText, sourceEventId: result.events[0]?.id },
-    });
-    expect(narrator.requests).toEqual([
-      expect.objectContaining({
-        text: narrationText,
-        sourceEventId: result.events[0]?.id,
-      }),
+    expect(
+      result.events
+        .filter((event) => event.type === "narration.requested")
+        .map((event) => event.payload.text),
+    ).toEqual(["Story Title", "Opening Room", "The exact scene description."]);
+    expect(narrator.requests.map((request) => request.text)).toEqual([
+      "Story Title",
+      "Opening Room",
+      "The exact scene description.",
     ]);
+    expect(
+      narrator.requests.every(
+        (request) => request.sourceEventId === result.events[0]?.id,
+      ),
+    ).toBe(true);
   });
 
   it.each([
@@ -462,7 +507,7 @@ describe("SemanticTurnCoordinator", () => {
         new AbortController().signal,
       ),
     ).rejects.toBeInstanceOf(SemanticTurnConflictError);
-    expect(narrator.requests).toHaveLength(1);
+    expect(narrator.requests).toHaveLength(2);
   });
 
   it("rejects an opening that no longer matches authoritative public state", async () => {
@@ -520,22 +565,26 @@ describe("SemanticTurnCoordinator", () => {
     expect(retried.events.map((event) => event.type)).toEqual([
       "narration.requested",
       "narration.ready",
+      "narration.requested",
+      "narration.ready",
     ]);
     expect(
       published.filter((event) => event.type === "engine.output"),
     ).toHaveLength(1);
     expect(
       published.filter((event) => event.type === "narration.requested"),
-    ).toHaveLength(2);
-    expect(narrator.requests).toHaveLength(2);
+    ).toHaveLength(3);
+    expect(narrator.requests).toHaveLength(3);
     const output = published.find((event) => event.type === "engine.output");
     expect(narrator.requests.map((request) => request.sourceEventId)).toEqual([
       output?.id,
       output?.id,
+      output?.id,
     ]);
     expect(narrator.requests.map((request) => request.text)).toEqual([
-      "Title\nScene",
-      "Title\nScene",
+      "Title",
+      "Title",
+      "Scene",
     ]);
     expect(engine.inspectCalls).toBe(inspectionCount);
   });

@@ -150,6 +150,14 @@ export class ScriptedPlaybackPort implements PlaybackPort {
   public async stop(): Promise<void> {
     await Promise.resolve();
   }
+
+  public async pause(): Promise<void> {
+    await Promise.resolve();
+  }
+
+  public async resume(): Promise<void> {
+    await Promise.resolve();
+  }
 }
 
 export class ScriptedNarrationPort implements NarrationPort {

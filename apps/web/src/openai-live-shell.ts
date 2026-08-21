@@ -4,8 +4,8 @@ import {
   type VoiceAudioState,
 } from "../../../packages/audio/src/index.js";
 import {
-  createOpeningObjectProjection,
-  projectOpeningObjectsFromEvent,
+  createObservedWorldProjection,
+  projectObservedWorldFromEvent,
 } from "../../../packages/command-knowledge/src/index.js";
 import type { SemanticEvent } from "../../../packages/contracts/src/index.js";
 import { EventSequence } from "../../../packages/events/src/index.js";
@@ -37,8 +37,8 @@ import {
   type OpenAiLiveVoicePreferences,
   type OpenAiTtsVoice,
 } from "./openai-live-preferences.js";
-import { applyActionLogPresentation } from "./action-log-presentation.js";
 import { createModalController } from "./modal-controller.js";
+import { deterministicOpeningPrefetchRequests } from "./deterministic-narration-prefetch.js";
 import { OptionalEventLogPresentation } from "./optional-event-log-presentation.js";
 import {
   ROLE_INTRODUCTION,
@@ -49,9 +49,12 @@ import {
   applyStoryStartPresentation,
   openingActivationFailureDisposition,
   openingPreparationDisposition,
+  textComposerShouldSubmit,
+  type PlayerInputMode,
   type StoryStartPhase,
   type StoryStartPresentationElements,
 } from "./story-start-presentation.js";
+import { copyTranscriptToClipboard } from "./transcript-copy.js";
 import {
   authoritativeVoiceStatePresentation,
   applyCommandCuePresentation,
@@ -136,12 +139,6 @@ interface LiveStatusElement {
 export interface LivePreflightPresentationElements {
   readonly status: LiveStatusElement;
   readonly captureButton: DisableableControl;
-  readonly transcriptPanel: { showModal(): void };
-  readonly transcriptButton: {
-    setAttribute(name: string, value: string): void;
-  };
-  readonly textForm: { hidden: boolean | string };
-  readonly textInput: DisableableControl;
   readonly allControls: readonly DisableableControl[];
 }
 
@@ -176,7 +173,7 @@ export function evaluateLiveBrowserPreflight(
       audioRecordingAvailable,
       errorCode: "secure-context-required",
       statusText: storyAuthenticationAvailable
-        ? "Secure connection required for microphone. Use accessible text input."
+        ? "Secure connection required for microphone. Choose Text."
         : "Secure connection required. Open this page over HTTPS in a supported browser.",
     };
   }
@@ -200,7 +197,7 @@ export function evaluateLiveBrowserPreflight(
       storyAuthenticationAvailable: true,
       audioRecordingAvailable,
       errorCode: "microphone-unavailable",
-      statusText: "Microphone unavailable. Use accessible text input.",
+      statusText: "Microphone unavailable. Choose Text.",
     };
   }
   if (!audioRecordingAvailable) {
@@ -211,7 +208,7 @@ export function evaluateLiveBrowserPreflight(
       storyAuthenticationAvailable: true,
       audioRecordingAvailable: false,
       errorCode: "audio-recording-unavailable",
-      statusText: "Audio recording unavailable. Use accessible text input.",
+      statusText: "Audio recording unavailable. Choose Text.",
     };
   }
   return {
@@ -251,12 +248,6 @@ export function applyLivePreflightPresentation(
 
   elements.status.textContent = preflight.statusText;
   elements.captureButton.disabled = !preflight.voiceAvailable;
-  if (!preflight.voiceAvailable) {
-    elements.transcriptPanel.showModal();
-    elements.transcriptButton.setAttribute("aria-expanded", "true");
-    elements.textForm.hidden = false;
-    elements.textInput.disabled = false;
-  }
   return true;
 }
 
@@ -317,16 +308,19 @@ async function run(): Promise<void> {
   const status = required<HTMLElement>("status");
   const activityIndicator = required<HTMLElement>("activity-indicator");
   const commandCue = required<HTMLOutputElement>("command-cue");
-  const actionLog = required<HTMLOListElement>("action-log");
   const primaryCue = required<HTMLElement>("primary-cue");
   const captureButton = required<HTMLButtonElement>("capture");
+  const storyGateButton = required<HTMLButtonElement>("story-gate");
   const stopButton = required<HTMLButtonElement>("stop");
-  const pauseButton = required<HTMLButtonElement>("pause");
   const repeatButton = required<HTMLButtonElement>("repeat");
   const transcriptButton = required<HTMLButtonElement>("toggle-transcript");
   const debugButton = required<HTMLButtonElement>("toggle-debug");
   const settingsButton = required<HTMLButtonElement>("toggle-settings");
   const transcriptCloseButton = required<HTMLButtonElement>("close-transcript");
+  const transcriptCopyButton = required<HTMLButtonElement>("copy-transcript");
+  const transcriptCopyStatus = required<HTMLOutputElement>(
+    "copy-transcript-status",
+  );
   const debugCloseButton = required<HTMLButtonElement>("close-debug");
   const settingsCloseButton = required<HTMLButtonElement>("close-settings");
   const transcriptPanel = required<HTMLDialogElement>("transcript-panel");
@@ -353,8 +347,12 @@ async function run(): Promise<void> {
   const narratorRateValue = required<HTMLOutputElement>("narrator-rate-value");
   const previewGuide = required<HTMLButtonElement>("preview-guide");
   const previewNarrator = required<HTMLButtonElement>("preview-narrator");
+  const inputModeSwitch = required<HTMLElement>("input-mode-switch");
+  const voiceModeButton = required<HTMLButtonElement>("voice-mode");
+  const textModeButton = required<HTMLButtonElement>("text-mode");
+  const voiceWaveform = required<HTMLElement>("voice-waveform");
   const textForm = required<HTMLFormElement>("text-form");
-  const textInput = required<HTMLInputElement>("text-input");
+  const textInput = required<HTMLTextAreaElement>("text-input");
   const textSubmitButton = required<HTMLButtonElement>("text-submit");
   const allControls = Array.from(
     document.querySelectorAll<
@@ -367,22 +365,26 @@ async function run(): Promise<void> {
   const presentation: LivePreflightPresentationElements = {
     status,
     captureButton,
-    transcriptPanel,
-    transcriptButton,
-    textForm,
-    textInput,
     allControls,
   };
   const voicePresentation: VoiceStatePresentationElements = {
     status,
     activityIndicator,
+    visualStatus: required<HTMLElement>("visual-status"),
+    visualStatusText: required<HTMLElement>("visual-status-text"),
   };
   const storyStartPresentation: StoryStartPresentationElements = {
     shell: required<HTMLElement>("voice-shell"),
     primaryButton: captureButton,
+    storyGateButton,
+    idlePrompt: required<HTMLElement>("idle-prompt"),
     stopButton,
-    pauseButton,
     repeatButton,
+    inputModeSwitch,
+    voiceModeButton,
+    textModeButton,
+    voiceWaveform,
+    textForm,
     textInput,
     textSubmitButton,
     primaryCue,
@@ -475,7 +477,7 @@ async function run(): Promise<void> {
     artifactSha256: STORY_SHA256,
   });
   const openingNarrationText = selectOpeningNarrationText(boot);
-  let observedObjectProjection = createOpeningObjectProjection();
+  let observedWorld = createObservedWorldProjection();
 
   let projection: ExperienceProjectionState = initialExperienceProjection();
   const canonicalEvents: SemanticEvent[] = [];
@@ -501,7 +503,11 @@ async function run(): Promise<void> {
   );
   const narrationById = new Map<
     string,
-    { readonly role: "guide" | "narrator"; readonly text: string }
+    {
+      readonly role: "guide" | "narrator";
+      readonly text: string;
+      hasPlayed: boolean;
+    }
   >();
   let turns = 0;
   let eventId = 0;
@@ -510,6 +516,7 @@ async function run(): Promise<void> {
   let interactionId = 0;
   let captureId = 0;
   let storyStartPhase: StoryStartPhase = "welcome";
+  let inputMode: PlayerInputMode = preflight.voiceAvailable ? "voice" : "text";
   let introductionPromise: Promise<void> | undefined;
   let introductionAbort: AbortController | undefined;
   let introductionStopRequested = false;
@@ -520,13 +527,14 @@ async function run(): Promise<void> {
   let openingPreparationFailed = false;
   let openingNarrationRetryActive = false;
   let openingNarrationRetryPromise: Promise<void> | undefined;
+  let storyOpeningPrefetch: Promise<void> | undefined;
   const narration = new ScriptedNarrationPort();
   const capturedAudio = new InMemoryCapturedAudioStore();
   const capture = new BrowserMicrophoneCapturePort({ store: capturedAudio });
   const transcriber = new OpenAiLiveTranscriber({
     store: capturedAudio,
     sessionToken: token,
-    observedObjects: () => observedObjectProjection.currentObjects,
+    observedObjects: () => observedWorld.currentObjects,
   });
   const guide = new OpenAiLiveGuideModel({ sessionToken: token });
   const playback = new OpenAiLivePlaybackPort({
@@ -561,15 +569,22 @@ async function run(): Promise<void> {
       );
     }
     applyCommandCuePresentation(projection.activeCommand, commandCue);
-    applyActionLogPresentation(
-      projection.actionLog,
-      projection.activeCommand,
-      actionLog,
-    );
     optionalEventLog.update(projection);
+    transcriptCopyButton.disabled = projection.transcript.length === 0;
   }
 
   function publish(event: SemanticEvent): void {
+    if (event.type === "session.paused") {
+      spokenTranscript.pause();
+    } else if (event.type === "session.resumed") {
+      spokenTranscript.resume();
+    }
+    if (event.type === "transcript.final") {
+      spokenTranscript.showPlayer(event.payload.text);
+    }
+    if (event.type === "engine.command.committed") {
+      spokenTranscript.showCommand(event.payload.command);
+    }
     if (
       event.type === "narration.requested" &&
       (event.payload.role === "guide" || event.payload.role === "narrator")
@@ -584,25 +599,28 @@ async function run(): Promise<void> {
       narrationById.set(event.payload.narrationId, {
         role: event.payload.role,
         text: event.payload.text,
+        hasPlayed:
+          narrationById.get(event.payload.narrationId)?.hasPlayed ?? false,
       });
     } else if (event.type === "audio.playback.started") {
       const narration = narrationById.get(event.payload.narrationId);
       if (narration !== undefined) {
-        spokenTranscript.start(
+        const present = narration.hasPlayed
+          ? spokenTranscript.replay.bind(spokenTranscript)
+          : spokenTranscript.start.bind(spokenTranscript);
+        present(
           narration.text,
           narration.role === "guide"
             ? voicePreferenceSession.current.guideRate
             : voicePreferenceSession.current.narratorRate,
           narration.role,
         );
+        narration.hasPlayed = true;
       }
     } else if (event.type === "audio.playback.ended") {
       spokenTranscript.finish(event.payload.outcome);
     }
-    observedObjectProjection = projectOpeningObjectsFromEvent(
-      observedObjectProjection,
-      event,
-    );
+    observedWorld = projectObservedWorldFromEvent(observedWorld, event);
     canonicalEvents.push(event);
     projection = reduceExperienceProjection(projection, event);
     renderProjection();
@@ -630,8 +648,23 @@ async function run(): Promise<void> {
     playback,
     nextInteractionId: () => `interaction-${++interactionId}`,
     nextCaptureId: () => `capture-${++captureId}`,
-    observedObjects: () => observedObjectProjection.currentObjects,
+    observedObjects: () => observedWorld.currentObjects,
     onState: (state: VoiceAudioState) => {
+      if (
+        storyStartPhase === "introducing" &&
+        state === "narrator-speaking" &&
+        storyOpeningPrefetch === undefined &&
+        introductionAbort !== undefined
+      ) {
+        const signal = introductionAbort.signal;
+        storyOpeningPrefetch = Promise.all(
+          deterministicOpeningPrefetchRequests(openingNarrationText).map(
+            (request) => playback.prepare(request, signal),
+          ),
+        )
+          .then(() => undefined)
+          .catch(() => undefined);
+      }
       const voiceState = authoritativeVoiceStatePresentation(
         state,
         statusTextForVoiceAudioState(
@@ -651,9 +684,9 @@ async function run(): Promise<void> {
         storyStartPhase,
         state,
         preflight.voiceAvailable,
+        inputMode,
         storyStartPresentation,
       );
-      pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
     },
     onTurn: () => {
       turns += 1;
@@ -720,9 +753,9 @@ async function run(): Promise<void> {
       storyStartPhase,
       state,
       preflight.voiceAvailable,
+      inputMode,
       storyStartPresentation,
     );
-    pauseButton.textContent = state === "paused" ? "Resume" : "Pause";
   }
 
   function presentOpeningRetryState(): void {
@@ -751,6 +784,7 @@ async function run(): Promise<void> {
       storyStartPhase,
       controller.state,
       preflight.voiceAvailable,
+      inputMode,
       storyStartPresentation,
     );
     const abort = new AbortController();
@@ -812,6 +846,7 @@ async function run(): Promise<void> {
       storyStartPhase,
       controller.state,
       preflight.voiceAvailable,
+      inputMode,
       storyStartPresentation,
     );
     const abort = new AbortController();
@@ -876,9 +911,9 @@ async function run(): Promise<void> {
       "started",
       "processing",
       preflight.voiceAvailable,
+      inputMode,
       storyStartPresentation,
     );
-    pauseButton.disabled = true;
     repeatButton.disabled = true;
     const abort = new AbortController();
     openingAbort = abort;
@@ -1065,11 +1100,52 @@ async function run(): Promise<void> {
     controller.activatePlaybackFromUserGesture();
     runControl(primaryAction);
   });
-  stopButton.addEventListener("click", () => runControl(stopActive));
-  pauseButton.addEventListener("click", () =>
+  storyGateButton.addEventListener("click", () => {
+    controller.activatePlaybackFromUserGesture();
+    runControl(primaryAction);
+  });
+  voiceModeButton.addEventListener("click", () => {
+    if (!preflight.voiceAvailable || storyStartPhase !== "started") return;
+    inputMode = "voice";
+    presentControllerState();
+    captureButton.focus();
+  });
+  textModeButton.addEventListener("click", () => {
+    if (storyStartPhase !== "started") return;
+    inputMode = "text";
+    presentControllerState();
+    textInput.focus();
+  });
+  transcriptCopyButton.addEventListener("click", () => {
+    transcriptCopyStatus.textContent = "";
+    const clipboard = navigator.clipboard;
+    if (clipboard === undefined) {
+      transcriptCopyStatus.textContent = "Clipboard unavailable";
+      return;
+    }
+    void copyTranscriptToClipboard(projection.transcript, clipboard)
+      .then((copied) => {
+        transcriptCopyStatus.textContent = copied
+          ? "Transcript copied"
+          : "Transcript is empty";
+        transcriptCopyButton.dataset.state = copied ? "copied" : "idle";
+      })
+      .catch(() => {
+        transcriptCopyStatus.textContent = "Could not copy transcript";
+        transcriptCopyButton.dataset.state = "idle";
+      });
+  });
+  stopButton.addEventListener("click", () =>
     runControl(async () => {
       if (controller.state === "paused") await controller.resume();
-      else await controller.pause();
+      else if (
+        controller.state === "guide-speaking" ||
+        controller.state === "narrator-speaking"
+      ) {
+        await controller.pause();
+      } else {
+        await stopActive();
+      }
       await updateEvidence();
     }),
   );
@@ -1117,12 +1193,24 @@ async function run(): Promise<void> {
       return;
     }
     controller.activatePlaybackFromUserGesture();
-    const text = textInput.value;
+    const text = textInput.value.trim();
+    if (text.length === 0) return;
     textInput.value = "";
+    textInput.style.height = "auto";
     runControl(async () => {
       await controller.submitText(text);
       await updateEvidence();
     });
+  });
+  textInput.addEventListener("keydown", (event) => {
+    if (textComposerShouldSubmit(event) && !textInput.disabled) {
+      event.preventDefault();
+      textForm.requestSubmit();
+    }
+  });
+  textInput.addEventListener("input", () => {
+    textInput.style.height = "auto";
+    textInput.style.height = `${Math.min(textInput.scrollHeight, 128)}px`;
   });
   document.addEventListener("keydown", (event) => {
     if (
@@ -1131,7 +1219,7 @@ async function run(): Promise<void> {
       event.target === document.body
     ) {
       event.preventDefault();
-      if (storyStartPhase === "started") {
+      if (storyStartPhase === "started" && inputMode === "voice") {
         controller.activatePlaybackFromUserGesture();
         runControl(toggleCapture);
       }

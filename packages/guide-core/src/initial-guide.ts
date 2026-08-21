@@ -12,6 +12,7 @@ import {
   identifyOpeningReadExamineClarificationChoice,
   inferPendingOpeningObjectIntent,
   isOpeningSceneProjection,
+  isObservedWorldProjection,
   isPendingOpeningObjectIntent,
   openingActionOptionsRequested,
   openingCommandHelp,
@@ -19,11 +20,14 @@ import {
   openingObjectActionMentioned,
   openingObjectObservationDirectlyRequested,
   openingObjectSelectionUniquelyMentioned,
+  observedWorldCurrentEntity,
+  observedWorldRecentEntity,
   openingReadExamineActionMentioned,
   openingSceneCurrentObjectLabels,
   openingScopedActionOptionsRequested,
   openingUtteranceMatchesObjectFocus,
   resolveOpeningSceneGuidance,
+  resolveOpeningSceneFocusedObservationRequest,
   resolveOpeningSceneObjectActionSuggestion,
   resolvePendingOpeningContentObjectReply,
   resolveOpeningCommandComparisonQuestion,
@@ -34,6 +38,7 @@ import {
   type OpeningObservedObjectOption,
   type OpeningSceneObjectActionSuggestion,
   type OpeningSceneProjection,
+  type ObservedWorldProjection,
   type PendingOpeningObjectIntent,
 } from "../../command-knowledge/src/index.js";
 import type {
@@ -56,11 +61,12 @@ export interface InitialGuideInput {
   readonly observedObjects: readonly string[];
   readonly pendingIntent?: PendingOpeningObjectIntent;
   readonly scene?: OpeningSceneProjection;
+  readonly observedWorld?: ObservedWorldProjection;
 }
 
 export interface InitialGuideModelInput extends Omit<
   InitialGuideInput,
-  "scene"
+  "scene" | "observedWorld"
 > {
   readonly knowledge: OpeningCommandKnowledge;
 }
@@ -250,6 +256,53 @@ function containsNegation(utterance: string): boolean {
   return /\b(?:do not|don't|dont|never|not)\b/iu.test(utterance);
 }
 
+function objectScopedActionHelpTarget(
+  utterance: string,
+  knowledge: OpeningCommandKnowledge,
+): OpeningObservedObjectOption | undefined {
+  const normalized = utterance
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}'-]+/gu, " ")
+    .trim();
+  if (
+    !/^(?:what can i (?:do|try)|what are my (?:options|choices)|what actions? (?:can i|could i) (?:do|try))(?: with| to| for| on| about) /u.test(
+      normalized,
+    )
+  ) {
+    return undefined;
+  }
+  const mentioned = knowledge.observedObjectOptions.filter((object) =>
+    openingObjectSelectionUniquelyMentioned(object, utterance, knowledge),
+  );
+  return mentioned.length === 1 ? mentioned[0] : undefined;
+}
+
+function groundRecentObservedObjectReference(
+  utterance: string,
+  knowledge: OpeningCommandKnowledge,
+  world: ObservedWorldProjection,
+) {
+  const recentEntity = observedWorldRecentEntity(world);
+  if (
+    recentEntity === undefined ||
+    !world.currentObjects.includes(recentEntity.label) ||
+    !/\bit\b/iu.test(utterance)
+  ) {
+    return undefined;
+  }
+  const resolvedUtterance = utterance.replace(
+    /\bit\b/giu,
+    `the ${recentEntity.label}`,
+  );
+  const grounding = groundOpeningCommand(
+    resolvedUtterance.replace(/[.!?]+$/u, ""),
+    resolvedUtterance,
+    knowledge,
+  );
+  return grounding.ok ? { grounding, recentEntity } : undefined;
+}
+
 function transcriptConfidenceRequiresClarification(
   transcriptConfidence: number | undefined,
 ): boolean {
@@ -310,11 +363,22 @@ export async function decideInitialGuideTurn(
     if (
       input.scene !== undefined &&
       (!isOpeningSceneProjection(input.scene) ||
-        JSON.stringify(openingSceneCurrentObjectLabels(input.scene)) !==
-          JSON.stringify(knowledge.observedObjects))
+        openingSceneCurrentObjectLabels(input.scene).some(
+          (object) => !knowledge.observedObjects.includes(object),
+        ))
     ) {
       throw new TypeError(
         "Initial guide scene does not match current objects.",
+      );
+    }
+    if (
+      input.observedWorld !== undefined &&
+      (!isObservedWorldProjection(input.observedWorld) ||
+        JSON.stringify(input.observedWorld.currentObjects) !==
+          JSON.stringify(input.observedObjects))
+    ) {
+      throw new TypeError(
+        "Initial guide observed world does not match current objects.",
       );
     }
   } catch {
@@ -467,6 +531,88 @@ export async function decideInitialGuideTurn(
       "What single action would you like me to perform instead?",
       "The utterance contains a negation, so executing the proposed command would be unsafe.",
     );
+  }
+
+  if (input.observedWorld !== undefined && input.scene === undefined) {
+    const directCommand = groundOpeningCommand(
+      input.playerUtterance.replace(/[.!?]+$/u, ""),
+      input.playerUtterance,
+      knowledge,
+    );
+    if (directCommand.ok) {
+      return {
+        kind: "execute",
+        command: directCommand.command,
+        decision: {
+          kind: "execute",
+          command: directCommand.command,
+          intentSummary:
+            "Execute one explicit command against a source-backed current referent.",
+          confidence: 1,
+        },
+        groundingSourceId: directCommand.ruleId,
+      };
+    }
+
+    const recentReference = groundRecentObservedObjectReference(
+      input.playerUtterance,
+      knowledge,
+      input.observedWorld,
+    );
+    if (recentReference !== undefined) {
+      return {
+        kind: "execute",
+        command: recentReference.grounding.command,
+        decision: {
+          kind: "execute",
+          command: recentReference.grounding.command,
+          intentSummary: `Execute one explicit command against the recently focused ${recentReference.recentEntity.label}.`,
+          confidence: 1,
+        },
+        groundingSourceId: recentReference.grounding.ruleId,
+      };
+    }
+
+    const helpTarget = objectScopedActionHelpTarget(
+      input.playerUtterance,
+      knowledge,
+    );
+    const currentEntity =
+      helpTarget === undefined
+        ? undefined
+        : observedWorldCurrentEntity(input.observedWorld, helpTarget.label);
+    if (helpTarget !== undefined && currentEntity !== undefined) {
+      return {
+        kind: "explain",
+        decision: {
+          kind: "explain",
+          response: `The game has shown the ${helpTarget.label} here. A safe first step is to EXAMINE it. If you have another action in mind, say it directly and the game will decide whether it works.`,
+          basis: "command-help",
+          sourceIds: ["grammar.examine", ...currentEntity.sourceEventIds],
+        },
+      };
+    }
+  }
+
+  const focusedObservation =
+    input.scene === undefined
+      ? undefined
+      : resolveOpeningSceneFocusedObservationRequest(
+          input.playerUtterance,
+          input.scene,
+        );
+  if (focusedObservation !== undefined) {
+    return {
+      kind: "execute",
+      command: focusedObservation.command,
+      decision: {
+        kind: "execute",
+        command: focusedObservation.command,
+        intentSummary: `Inspect the recently focused ${focusedObservation.selectedObject.label} for the detail the player asked about.`,
+        confidence: 1,
+      },
+      groundingSourceId: "grammar.examine",
+    };
   }
 
   if (localContentAmbiguity !== undefined) {
@@ -637,8 +783,13 @@ export async function decideInitialGuideTurn(
 
   let unknownDecision: unknown;
   try {
-    const { scene: _localScene, ...modelInput } = input;
+    const {
+      scene: _localScene,
+      observedWorld: _localObservedWorld,
+      ...modelInput
+    } = input;
     void _localScene;
+    void _localObservedWorld;
     unknownDecision = await model.decide({ ...modelInput, knowledge }, signal);
   } catch (error) {
     if (signal.aborted) {

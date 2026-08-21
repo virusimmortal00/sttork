@@ -223,7 +223,9 @@ The initial bounded implementation lives in `packages/guide-core` and
 `packages/command-knowledge`. It validates the full decision union but enables
 only execute, clarification, and deterministic command-help explanation for the
 first vertical slice. Its curated opening grammar and caller-supplied observed
-object names are a narrow bootstrap view, not the complete generated grammar,
+object names are a narrow bootstrap view. The session now prefers its
+event-derived observed-world projection when canonical engine output has
+established current referents; this is still not the complete generated grammar,
 memory model, or hint registry described below.
 
 For the exact authenticated Zork I Release 119 opening tuple, the session may
@@ -248,6 +250,25 @@ while missing or stale scene context, global help, or an unrelated accepted turn
 clears or supersedes it. See
 [ADR-0015](adr/0015-preserve-object-focus-through-scoped-help.md) and
 [ADR-0016](adr/0016-separate-contextual-suggestions-from-parser-authority.md).
+
+The scene projection also retains one recent object focus from an exactly
+correlated committed command and engine result. Unlike a pending suggestion,
+this records what object the player just acted on, not which action is allowed.
+It may remain referentially available when READ or TAKE removes the object from
+the current-location set. Reviewed deictic observation wording can use it only
+to compile one T2 EXAMINE; the engine output supplies every resulting fact. A
+movement, unmatched result, or completed non-object command clears it. See
+[ADR-0026](adr/0026-resolve-deictic-observation-from-recent-object-focus.md).
+
+Outside that story-specific enrichment, every session folds canonical engine
+events into a bounded `ObservedWorldProjection`. Exact physical-presentation
+prose can create an entity referent with source sentence, event ID, and engine
+revision. Movement and LOOK results replace current-scene membership while
+historical entities remain available for later source-backed memory. This
+projection supplies eligible object slots and one current recent-object focus;
+it does not assert parser support, action success, relations, inventory, or
+hidden state. See
+[ADR-0027](adr/0027-project-source-backed-observed-world-referents.md).
 
 An execute decision contains one command. A multi-step player request is stored
 as a pending goal and advanced through successive decisions, one command per
@@ -281,8 +302,10 @@ until their contextual and confirmation contracts land.
 The current affordance index is narrower than observed-memory history. A
 committed movement invalidates the prior scene's object slots when its engine
 output arrives, while historical observations remain available for bounded
-memory and explanation. Reviewed disclosures in later authenticated engine
-output repopulate the current slot set.
+memory and explanation. Bounded physical-presentation clauses in later exact
+engine output repopulate current entity slots with source evidence. Reviewed,
+story-specific projections may add richer facts and suggestions but cannot
+replace or contradict canonical output.
 
 The first scene-model slice makes that distinction concrete for the exact Zork I
 Release 119 story ID and artifact hash. The session creates a versioned

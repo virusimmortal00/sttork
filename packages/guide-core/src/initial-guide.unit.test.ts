@@ -1,10 +1,13 @@
 import {
+  createObservedWorldProjection,
   createOpeningSceneProjection,
   OPENING_SCENE_BOOT_OUTPUT,
   OPENING_SCENE_MAILBOX_REVEAL_OUTPUT,
   OPENING_SCENE_STORY_ID,
   OPENING_SCENE_STORY_SHA256,
   projectOpeningSceneFromEvent,
+  projectObservedWorldFromEngineOutput,
+  projectObservedWorldFromEvent,
   type OpeningSceneProjection,
 } from "../../command-knowledge/src/index.js";
 import type { SemanticEvent } from "../../contracts/src/index.js";
@@ -99,6 +102,44 @@ function openedMailboxScene(): OpeningSceneProjection {
   } satisfies SemanticEvent<"engine.output">);
 }
 
+function readLeafletScene(): OpeningSceneProjection {
+  const opened = openedMailboxScene();
+  const committed = projectOpeningSceneFromEvent(opened, {
+    schemaVersion: 1,
+    id: "read-leaflet-commit",
+    sessionId: "session-1",
+    sequence: 4,
+    occurredAt: "2026-08-20T12:00:03.000Z",
+    type: "engine.command.committed",
+    correlationId: "interaction-read-leaflet",
+    visibility: "debug",
+    payload: {
+      requestId: "read-leaflet-request",
+      previousRevision: 1,
+      revision: 2,
+      command: "read leaflet",
+      boundary: "input-requested",
+    },
+  } satisfies SemanticEvent<"engine.command.committed">);
+  return projectOpeningSceneFromEvent(committed, {
+    schemaVersion: 1,
+    id: "read-leaflet-output",
+    sessionId: "session-1",
+    sequence: 5,
+    occurredAt: "2026-08-20T12:00:04.000Z",
+    type: "engine.output",
+    correlationId: "interaction-read-leaflet",
+    causationId: "read-leaflet-commit",
+    visibility: "accessible",
+    payload: {
+      revision: 2,
+      exactText: '(Taken)\n"WELCOME TO ZORK!"\n\n>',
+      boundary: "input-requested",
+      retention: "local-save",
+    },
+  } satisfies SemanticEvent<"engine.output">);
+}
+
 function openedMailboxSceneInput(): {
   readonly observedObjects: readonly string[];
   readonly scene: OpeningSceneProjection;
@@ -148,6 +189,121 @@ function movementClearedOpeningScene(): OpeningSceneProjection {
 }
 
 describe("initial bounded Dungeon Guide", () => {
+  it("grounds an explicit EXAMINE against a later source-backed world referent", async () => {
+    let observedWorld = projectObservedWorldFromEngineOutput(
+      createObservedWorldProjection(),
+      "Forest Path\nOne particularly large tree with some low branches stands at the edge of the path.\n\n>",
+    );
+    const model = new FakeGuideModel(() => {
+      throw new Error("The provider must not be needed.");
+    });
+
+    await expect(
+      decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "Examine tree.",
+          observedObjects: observedWorld.currentObjects,
+          observedWorld,
+        },
+        signal,
+      ),
+    ).resolves.toMatchObject({
+      kind: "execute",
+      command: "examine tree",
+      groundingSourceId: "grammar.examine",
+    });
+    expect(model.calls).toBe(0);
+
+    await expect(
+      decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "Go north.",
+          observedObjects: observedWorld.currentObjects,
+          observedWorld,
+        },
+        signal,
+      ),
+    ).resolves.toMatchObject({ kind: "execute", command: "north" });
+    expect(model.calls).toBe(0);
+
+    await expect(
+      decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "What can I do with the tree?",
+          observedObjects: observedWorld.currentObjects,
+          observedWorld,
+        },
+        signal,
+      ),
+    ).resolves.toMatchObject({
+      kind: "explain",
+      decision: {
+        response: expect.stringContaining("EXAMINE"),
+        sourceIds: expect.arrayContaining(["grammar.examine"]),
+      },
+    });
+    expect(model.calls).toBe(0);
+
+    observedWorld = projectObservedWorldFromEvent(observedWorld, {
+      schemaVersion: 1,
+      id: "examine-tree-commit",
+      sessionId: "session-1",
+      sequence: 2,
+      occurredAt: "2026-08-20T12:00:01.000Z",
+      type: "engine.command.committed",
+      correlationId: "examine-tree",
+      visibility: "debug",
+      payload: {
+        requestId: "request-examine-tree",
+        previousRevision: 0,
+        revision: 1,
+        command: "examine tree",
+        boundary: "input-requested",
+      },
+    } satisfies SemanticEvent<"engine.command.committed">);
+    observedWorld = projectObservedWorldFromEvent(observedWorld, {
+      schemaVersion: 1,
+      id: "examine-tree-output",
+      sessionId: "session-1",
+      sequence: 3,
+      occurredAt: "2026-08-20T12:00:02.000Z",
+      type: "engine.output",
+      correlationId: "examine-tree",
+      causationId: "examine-tree-commit",
+      visibility: "accessible",
+      payload: {
+        revision: 1,
+        exactText: "You see nothing special about the tree.\n\n>",
+        boundary: "input-requested",
+        retention: "local-save",
+      },
+    } satisfies SemanticEvent<"engine.output">);
+
+    await expect(
+      decideInitialGuideTurn(
+        model,
+        {
+          ...baseInput,
+          playerUtterance: "Inspect it.",
+          observedObjects: observedWorld.currentObjects,
+          observedWorld,
+        },
+        signal,
+      ),
+    ).resolves.toMatchObject({
+      kind: "execute",
+      command: "examine tree",
+      groundingSourceId: "grammar.examine",
+    });
+    expect(model.calls).toBe(0);
+  });
+
   it.each([
     {
       playerUtterance: "Walk to the mailbox.",
@@ -410,6 +566,36 @@ describe("initial bounded Dungeon Guide", () => {
       }
     },
   );
+
+  it("uses recent object focus to inspect an implicitly referenced reverse side", async () => {
+    const model = FakeGuideModel.returning({
+      kind: "clarify",
+      question: "Could you say which single action you want me to try?",
+      ambiguity: "generic",
+    });
+    const result = await decideInitialGuideTurn(
+      model,
+      {
+        ...baseInput,
+        playerUtterance: "Is there anything on the back?",
+        observedObjects: ["door", "house", "mailbox"],
+        scene: readLeafletScene(),
+      },
+      signal,
+    );
+
+    expect(result).toMatchObject({
+      kind: "execute",
+      command: "examine leaflet",
+      groundingSourceId: "grammar.examine",
+      decision: {
+        kind: "execute",
+        command: "examine leaflet",
+        confidence: 1,
+      },
+    });
+    expect(model.calls).toBe(0);
+  });
 
   it("semantically examines the correctly selected longer overlapping object", async () => {
     const result = await decideInitialGuideTurn(
