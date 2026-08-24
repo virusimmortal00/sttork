@@ -285,16 +285,53 @@ function validatedRoleIntroduction(
 }
 
 export function narrationSegments(text: string): readonly string[] {
-  return text
-    .split(/\r?\n/u)
-    .flatMap(
-      (line) =>
-        line
-          .trim()
-          .match(/[^.!?]+(?:[.!?]+(?=\s|$)|$)/gu)
-          ?.map((segment) => segment.trim().replace(/\s+/gu, " ")) ?? [],
-    )
-    .filter((segment) => segment.length > 0);
+  return text.split(/\r?\n/u).flatMap(segmentNarrationLine);
+}
+
+function segmentNarrationLine(line: string): readonly string[] {
+  const value = line.trim();
+  const segments: string[] = [];
+  let segmentStart = 0;
+  let index = 0;
+
+  while (index < value.length) {
+    if (!isSentencePunctuation(value[index])) {
+      index += 1;
+      continue;
+    }
+
+    let punctuationEnd = index + 1;
+    while (isSentencePunctuation(value[punctuationEnd])) {
+      punctuationEnd += 1;
+    }
+    if (
+      punctuationEnd === value.length ||
+      isWhitespace(value[punctuationEnd])
+    ) {
+      appendNarrationSegment(
+        segments,
+        value.slice(segmentStart, punctuationEnd),
+      );
+      segmentStart = punctuationEnd;
+    }
+    index = punctuationEnd;
+  }
+
+  appendNarrationSegment(segments, value.slice(segmentStart));
+  return segments;
+}
+
+function isSentencePunctuation(value: string | undefined): boolean {
+  return value === "." || value === "!" || value === "?";
+}
+
+function isWhitespace(value: string | undefined): boolean {
+  return value !== undefined && /\s/u.test(value);
+}
+
+function appendNarrationSegment(segments: string[], value: string): void {
+  const segment = value.trim().replace(/\s+/gu, " ");
+  if (segment.length > 0 && /[^.!?]/u.test(segment)) segments.push(segment);
 }
 
 function fingerprint(input: SemanticTurnInput): string {

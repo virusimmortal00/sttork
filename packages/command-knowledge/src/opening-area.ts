@@ -253,6 +253,12 @@ function appearsMultiStep(value: string): boolean {
   return /[;\n]|\b(?:and|or|then|after that|followed by)\b/iu.test(value);
 }
 
+function containsPairedCurlyQuote(value: string): boolean {
+  const openingIndex = value.indexOf("‘");
+  if (openingIndex < 0) return false;
+  return value.indexOf("’", openingIndex + 1) > openingIndex + 1;
+}
+
 function containsQuotedDiscussion(value: string): boolean {
   const trimmed = value.trimStart();
   return (
@@ -260,7 +266,7 @@ function containsQuotedDiscussion(value: string): boolean {
     /["“”«»‹›`()[\]{}「」『』〝〞＂]/u.test(value) ||
     /^\s*>/u.test(value) ||
     /(?:^|\s)'[^']+'(?:\s|$)/u.test(value) ||
-    /‘[^’]+’/u.test(value)
+    containsPairedCurlyQuote(value)
   );
 }
 
@@ -374,16 +380,22 @@ function directlyRequestsOpeningAction(
       )
       .some((request) => qualifiedCandidate.endsWith(request));
   const actionUtterance = safelyQualifiedExamine
-    ? playerUtterance.replace(
-        /\s+without taking it(?=\s*,?\s*(?:(?:please|for me|now)\s*)?[?!.]?\s*$)/iu,
-        "",
-      )
+    ? removeLastCaseInsensitivePhrase(playerUtterance, withoutTakingSuffix)
     : playerUtterance;
   const actionBody = directOpeningActionBody(actionUtterance);
   return (
     actionBody !== undefined &&
     matchesDirectRuleRequest(actionBody, rule, object)
   );
+}
+
+function removeLastCaseInsensitivePhrase(
+  value: string,
+  phrase: string,
+): string {
+  const start = value.toLocaleLowerCase("en-US").lastIndexOf(phrase);
+  if (start < 0) return value;
+  return value.slice(0, start) + value.slice(start + phrase.length);
 }
 
 export const PENDING_OPENING_CONTEXTUAL_OBJECT_ACTIONS: readonly PendingOpeningContextualObjectAction[] =

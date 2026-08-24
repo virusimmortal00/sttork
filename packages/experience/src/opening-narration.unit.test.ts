@@ -46,7 +46,7 @@ describe("selectOpeningNarrationText", () => {
     { storyId: "another-story" },
     { artifactSha256: "f".repeat(64) },
     { output: `${exactOpening} ` },
-    { output: exactOpening.replace("\n", "\r\n") },
+    { output: exactOpening.replaceAll("\n", "\r\n") },
     { output: exactOpening.replace("ZORK I", "Zork I") },
   ])("fails closed to exact output for a nonmatching profile", (override) => {
     const input = boot(override);

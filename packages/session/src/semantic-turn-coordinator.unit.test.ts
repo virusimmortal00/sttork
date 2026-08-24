@@ -216,6 +216,14 @@ describe("SemanticTurnCoordinator", () => {
     ]);
   });
 
+  it("preserves internal punctuation while scanning sentence boundaries linearly", () => {
+    expect(
+      narrationSegments(
+        "Version 1.2 is ready... Really?!\n  Room   heading  \n...",
+      ),
+    ).toEqual(["Version 1.2 is ready...", "Really?!", "Room heading"]);
+  });
+
   it("prepares an attributed authored introduction without touching the engine", async () => {
     const engine = new FakeEngine();
     const narrator = new FakeNarrator();
